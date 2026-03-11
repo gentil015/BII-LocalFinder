@@ -2950,9 +2950,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
             }
             
             // Validate time if provided
-            const preferredTime = document.querySelector('input[name="preferred_time"]').value;
-            if (preferredTime) {
-                const time = preferredTime.split(':');
+            const preferredTimeValue = document.querySelector('input[name="preferred_time"]').value;
+            if (preferredTimeValue) {
+                const time = preferredTimeValue.split(':');
                 const hours = parseInt(time[0]);
                 const minutes = parseInt(time[1]);
                 
