@@ -1,0 +1,2808 @@
+<?php
+session_start();
+require_once '../config/database.php';
+require_once '../includes/functions.php';
+require_once '../includes/language.php';
+require_once '../includes/ai_helpers.php';
+require_once '../includes/provider_requirements.php';
+require_once '../includes/profession_titles.php';
+
+requireProvider();
+
+// Check maintenance mode
+if (isMaintenanceMode() && !isAdmin()) {
+    $maintenance_warning = true;
+}
+
+$db = Database::getInstance()->getConnection();
+
+// Get section from URL (default to 'basic')
+$section = isset($_GET['section']) ? sanitize($_GET['section']) : 'basic';
+$valid_sections = ['basic', 'services', 'portfolio', 'social', 'requirements'];
+if (!in_array($section, $valid_sections)) {
+    $section = 'basic';
+}
+$aiHelper = new AIHelper($db);
+$success = '';
+$errors = [];
+
+// Check if AI features are enabled (default to enabled if setting doesn't exist)
+$enable_ai_features = true;
+try {
+    $stmt = $db->prepare("SELECT value FROM platform_settings WHERE setting_key = ?");
+    $stmt->execute(['enable_ai_features']);
+    $result = $stmt->fetch();
+    $enable_ai_features = $result ? ($result['value'] === '1') : true;
+} catch (Exception $e) {
+    $enable_ai_features = true; // Default to enabled if check fails
+}
+
+// Get provider profile
+$stmt = $db->prepare("
+    SELECT sp.*, u.email, u.phone, u.profile_image, u.full_name
+    FROM service_providers sp
+    JOIN users u ON sp.user_id = u.id
+    WHERE sp.user_id = ?
+");
+$stmt->execute([$_SESSION['user_id']]);
+$provider = $stmt->fetch();
+
+// Get provider social links
+$social_platforms = [
+    'website' => $provider['website'] ?? '',
+    'facebook' => $provider['facebook'] ?? '',
+    'twitter' => $provider['twitter'] ?? '',
+    'instagram' => $provider['instagram'] ?? '',
+    'linkedin' => $provider['linkedin'] ?? '',
+    'youtube' => $provider['youtube'] ?? '',
+    'whatsapp' => $provider['whatsapp'] ?? '',
+    'tiktok' => $provider['tiktok'] ?? '',
+    'other_social' => $provider['other_social'] ?? '',
+    'other_social_label' => $provider['other_social_label'] ?? ''
+];
+
+// Get provider categories/services
+$stmt = $db->prepare("
+    SELECT c.* 
+    FROM categories c
+    JOIN provider_categories pc ON c.id = pc.category_id
+    WHERE pc.provider_id = ?
+");
+$stmt->execute([$provider['id']]);
+$provider_categories = $stmt->fetchAll();
+$provider_category_ids = array_column($provider_categories, 'id');
+
+// Get all categories
+$stmt = $db->query("SELECT * FROM categories WHERE is_active = 1 ORDER BY name");
+$all_categories = $stmt->fetchAll();
+
+// Get all districts for dropdown
+$districts = getAllDistricts();
+
+// Get portfolio images
+$stmt = $db->prepare("
+    SELECT * FROM portfolio_images 
+    WHERE provider_id = ? AND is_active = 1 
+    ORDER BY display_order, uploaded_at DESC
+");
+$stmt->execute([$provider['id']]);
+$portfolio_images = $stmt->fetchAll();
+$portfolio_count = count($portfolio_images);
+
+// Get portfolio videos (single video per provider)
+$stmt = $db->prepare("
+    SELECT * FROM portfolio_videos 
+    WHERE provider_id = ? AND is_active = 1 
+    ORDER BY uploaded_at DESC
+    LIMIT 1
+");
+$stmt->execute([$provider['id']]);
+$portfolio_video = $stmt->fetch();
+$has_portfolio_video = !empty($portfolio_video);
+
+// Get portfolio settings
+$max_portfolio_images = 6; // Default
+$portfolio_enabled = true; // Default
+
+try {
+    $stmt = $db->prepare("SELECT value FROM platform_settings WHERE setting_key = ?");
+    $stmt->execute(['max_portfolio_images']);
+    $result = $stmt->fetch();
+    $max_portfolio_images = $result ? intval($result['value']) : 6;
+    
+    $stmt->execute(['portfolio_enabled']);
+    $result = $stmt->fetch();
+    $portfolio_enabled = $result ? ($result['value'] === '1') : true;
+} catch (Exception $e) {
+    // Use defaults
+}
+
+// Handle profile update
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
+    $full_name = sanitize($_POST['full_name']);
+    $phone = sanitize($_POST['phone']);
+    $professional_title = sanitize($_POST['professional_title']);
+    $profession = sanitize($_POST['profession']);
+    $bio = sanitize($_POST['bio']);
+    $location = sanitize($_POST['location']);
+    $district = sanitize($_POST['district']);
+    $sector = sanitize($_POST['sector']);
+    $experience_years = intval($_POST['experience_years']);
+    $selected_categories = $_POST['categories'] ?? [];
+    
+    // Handle social media links
+    $social_links_data = [
+        'website' => sanitize($_POST['website'] ?? ''),
+        'facebook' => sanitize($_POST['facebook'] ?? ''),
+        'twitter' => sanitize($_POST['twitter'] ?? ''),
+        'instagram' => sanitize($_POST['instagram'] ?? ''),
+        'linkedin' => sanitize($_POST['linkedin'] ?? ''),
+        'youtube' => sanitize($_POST['youtube'] ?? ''),
+        'whatsapp' => sanitize($_POST['whatsapp'] ?? ''),
+        'tiktok' => sanitize($_POST['tiktok'] ?? ''),
+        'other_social' => sanitize($_POST['other_social'] ?? ''),
+        'other_social_label' => sanitize($_POST['other_social_label'] ?? '')
+    ];
+    
+    // Validation
+    if (empty($full_name) || empty($phone) || empty($profession) || empty($professional_title) || empty($location)) {
+        $errors[] = "Please fill all required fields";
+    }
+    
+    // Validate profession and professional title
+    if (!isValidProfession($profession)) {
+        $errors[] = "Invalid profession selected";
+    }
+    
+    if (!isValidProfessionalTitle($profession, $professional_title)) {
+        $errors[] = "Invalid professional title selected for this profession";
+    }
+    
+    if (empty($selected_categories)) {
+        $errors[] = "Please select at least one service category";
+    }
+    
+    // Validate phone number format
+    if (!empty($phone) && !preg_match('/^\+?[\d\s\-\(\)]{10,}$/', $phone)) {
+        $errors[] = "Please enter a valid phone number";
+    }
+    
+    // hourly_rate removed: service prices will be used from provider services
+    
+    // Validate social media URLs if provided
+    foreach ($social_links_data as $platform => $url) {
+        if (!empty($url) && $platform !== 'whatsapp' && $platform !== 'other_social_label') {
+            if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                $errors[] = "Invalid URL for $platform";
+            }
+        }
+    }
+    
+    // Use AI to improve bio if enabled
+    if ($enable_ai_features && !empty($bio) && strlen($bio) > 20) {
+        $original_bio = $bio;
+        $improved_bio = $aiHelper->improveProfessionalBio($bio, $profession, $experience_years);
+        
+        // Only use AI version if it's significantly better
+        if ($improved_bio !== $bio && strlen($improved_bio) > strlen($bio) * 0.8) {
+            $bio = $improved_bio;
+            $_SESSION['ai_improved_bio'] = true;
+        }
+    }
+    
+    // Handle profile image upload
+    $profile_image = $provider['profile_image'];
+    if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] === UPLOAD_ERR_OK) {
+        $allowed_types = getAllowedFileTypes();
+        $max_file_size = getMaxFileSize() * 1024 * 1024;
+        
+        $file_type = $_FILES['profile_image']['type'];
+        $file_size = $_FILES['profile_image']['size'];
+        $file_extension = strtolower(pathinfo($_FILES['profile_image']['name'], PATHINFO_EXTENSION));
+        
+        if (!in_array($file_extension, $allowed_types) && !in_array($file_type, ['image/jpeg', 'image/png', 'image/jpg', 'image/gif'])) {
+            $errors[] = "Invalid image type. Please upload JPG, PNG, or GIF files only.";
+        } elseif ($file_size > $max_file_size) {
+            $errors[] = "Image size must be less than " . getMaxFileSize() . "MB";
+        } else {
+            $new_filename = 'profile_' . $_SESSION['user_id'] . '_' . time() . '.' . $file_extension;
+            $upload_path = '../uploads/profiles/' . $new_filename;
+            
+            if (!is_dir('../uploads/profiles')) {
+                mkdir('../uploads/profiles', 0755, true);
+            }
+            
+            if (move_uploaded_file($_FILES['profile_image']['tmp_name'], $upload_path)) {
+                if ($profile_image && file_exists('../uploads/profiles/' . $profile_image)) {
+                    unlink('../uploads/profiles/' . $profile_image);
+                }
+                $profile_image = $new_filename;
+            } else {
+                $errors[] = "Failed to upload image. Please try again.";
+            }
+        }
+    }
+    
+    // Handle portfolio image uploads
+    $uploaded_portfolio_files = $_FILES['portfolio_images'] ?? [];
+    $portfolio_titles = $_POST['portfolio_titles'] ?? [];
+    $portfolio_descriptions = $_POST['portfolio_descriptions'] ?? [];
+    
+    if (!empty($uploaded_portfolio_files['name'][0]) && $portfolio_enabled) {
+        $uploaded_count = 0;
+        
+        foreach ($uploaded_portfolio_files['name'] as $index => $name) {
+            if ($portfolio_count + $uploaded_count >= $max_portfolio_images) {
+                $errors[] = "Maximum $max_portfolio_images portfolio images allowed";
+                break;
+            }
+            
+            if ($uploaded_portfolio_files['error'][$index] === UPLOAD_ERR_OK) {
+                $file_type = $uploaded_portfolio_files['type'][$index];
+                $file_size = $uploaded_portfolio_files['size'][$index];
+                $file_extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+                
+                // Validate file
+                if (!in_array($file_extension, $allowed_types) && 
+                    !in_array($file_type, ['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp'])) {
+                    $errors[] = "Invalid image type for portfolio image: " . htmlspecialchars($name);
+                    continue;
+                }
+                
+                if ($file_size > $max_file_size) {
+                    $errors[] = "Portfolio image too large: " . htmlspecialchars($name) . 
+                               " (Max: " . getMaxFileSize() . "MB)";
+                    continue;
+                }
+                
+                // Generate unique filename
+                $new_filename = 'portfolio_' . $provider['id'] . '_' . time() . '_' . $index . '.' . $file_extension;
+                $upload_path = '../uploads/portfolio/' . $new_filename;
+                
+                // Create directory if needed
+                if (!is_dir('../uploads/portfolio')) {
+                    mkdir('../uploads/portfolio', 0755, true);
+                }
+                
+                if (move_uploaded_file($uploaded_portfolio_files['tmp_name'][$index], $upload_path)) {
+                    $title = sanitize($portfolio_titles[$index] ?? '');
+                    $description = sanitize($portfolio_descriptions[$index] ?? '');
+                    
+                    $stmt = $db->prepare("
+                        INSERT INTO portfolio_images (provider_id, image_path, title, description, display_order)
+                        VALUES (?, ?, ?, ?, ?)
+                    ");
+                    $stmt->execute([
+                        $provider['id'],
+                        $new_filename,
+                        $title,
+                        $description,
+                        $portfolio_count + $uploaded_count
+                    ]);
+                    
+                    $uploaded_count++;
+                }
+            }
+        }
+    }
+    
+    // Handle portfolio image deletions
+    $deleted_portfolio_ids = $_POST['deleted_portfolio'] ?? [];
+    if (!empty($deleted_portfolio_ids) && $portfolio_enabled) {
+        foreach ($deleted_portfolio_ids as $image_id) {
+            $image_id = intval($image_id);
+            
+            // Get image path before deleting
+            $stmt = $db->prepare("SELECT image_path FROM portfolio_images WHERE id = ? AND provider_id = ?");
+            $stmt->execute([$image_id, $provider['id']]);
+            $image_data = $stmt->fetch();
+            
+            if ($image_data) {
+                // Delete from database
+                $stmt = $db->prepare("DELETE FROM portfolio_images WHERE id = ? AND provider_id = ?");
+                $stmt->execute([$image_id, $provider['id']]);
+                
+                // Delete file
+                $file_path = '../uploads/portfolio/' . $image_data['image_path'];
+                if (file_exists($file_path)) {
+                    unlink($file_path);
+                }
+            }
+        }
+    }
+    
+    // Handle portfolio image updates (titles/descriptions)
+    $existing_portfolio_ids = $_POST['existing_portfolio_ids'] ?? [];
+    $existing_portfolio_titles = $_POST['existing_portfolio_titles'] ?? [];
+    $existing_portfolio_descriptions = $_POST['existing_portfolio_descriptions'] ?? [];
+    
+    if (!empty($existing_portfolio_ids) && $portfolio_enabled) {
+        foreach ($existing_portfolio_ids as $index => $image_id) {
+            $image_id = intval($image_id);
+            $title = sanitize($existing_portfolio_titles[$index] ?? '');
+            $description = sanitize($existing_portfolio_descriptions[$index] ?? '');
+            
+            $stmt = $db->prepare("
+                UPDATE portfolio_images 
+                SET title = ?, description = ?
+                WHERE id = ? AND provider_id = ?
+            ");
+            $stmt->execute([$title, $description, $image_id, $provider['id']]);
+        }
+    }
+    
+    // Handle portfolio video uploads (single video per provider)
+    $uploaded_portfolio_videos = $_FILES['portfolio_videos'] ?? [];
+    $portfolio_video_titles = $_POST['portfolio_video_titles'] ?? [];
+    $portfolio_video_descriptions = $_POST['portfolio_video_descriptions'] ?? [];
+    
+    if (!empty($uploaded_portfolio_videos['name'][0]) && $portfolio_enabled) {
+        foreach ($uploaded_portfolio_videos['name'] as $index => $name) {
+            if ($uploaded_portfolio_videos['error'][$index] === UPLOAD_ERR_OK) {
+                $file_type = $uploaded_portfolio_videos['type'][$index];
+                $file_size = $uploaded_portfolio_videos['size'][$index];
+                $file_extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+                
+                // Validate video file
+                $allowed_video_formats = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv', 'ogv'];
+                $max_video_size = getMaxFileSize() * 2 * 1024 * 1024; // 2x image size for videos
+                
+                if (!in_array($file_extension, $allowed_video_formats)) {
+                    $errors[] = "Invalid video format. Allowed formats: " . implode(', ', $allowed_video_formats);
+                    continue;
+                }
+                
+                if ($file_size > $max_video_size) {
+                    $errors[] = "Video file size must be less than " . (getMaxFileSize() * 2) . "MB";
+                    continue;
+                }
+                
+                // If provider already has a video, delete the old one
+                if ($has_portfolio_video) {
+                    $stmt = $db->prepare("SELECT video_path FROM portfolio_videos WHERE provider_id = ? AND is_active = 1");
+                    $stmt->execute([$provider['id']]);
+                    $old_video = $stmt->fetch();
+                    
+                    if ($old_video) {
+                        // Delete old video file
+                        $old_file_path = '../uploads/portfolio/' . $old_video['video_path'];
+                        if (file_exists($old_file_path)) {
+                            unlink($old_file_path);
+                        }
+                        
+                        // Mark old video as inactive
+                        $stmt = $db->prepare("UPDATE portfolio_videos SET is_active = 0 WHERE provider_id = ?");
+                        $stmt->execute([$provider['id']]);
+                    }
+                }
+                
+                // Generate unique filename
+                $new_filename = 'portfolio_video_' . $provider['id'] . '_' . time() . '.' . $file_extension;
+                $upload_path = '../uploads/portfolio/' . $new_filename;
+                
+                // Create directory if needed
+                if (!is_dir('../uploads/portfolio')) {
+                    mkdir('../uploads/portfolio', 0755, true);
+                }
+                
+                if (move_uploaded_file($uploaded_portfolio_videos['tmp_name'][$index], $upload_path)) {
+                    $title = sanitize($portfolio_video_titles[$index] ?? 'Portfolio Video');
+                    $description = sanitize($portfolio_video_descriptions[$index] ?? '');
+                    
+                    $stmt = $db->prepare("
+                        INSERT INTO portfolio_videos (provider_id, video_path, title, description, is_active)
+                        VALUES (?, ?, ?, ?, 1)
+                    ");
+                    $stmt->execute([
+                        $provider['id'],
+                        $new_filename,
+                        $title,
+                        $description
+                    ]);
+                    
+                    $has_portfolio_video = true;
+                    break; // Only one video allowed
+                } else {
+                    $errors[] = "Failed to upload video. Please try again.";
+                }
+            }
+        }
+    }
+    
+    // Handle portfolio video deletion
+    $delete_portfolio_video = isset($_POST['delete_portfolio_video']) && $_POST['delete_portfolio_video'] == '1';
+    if ($delete_portfolio_video && $has_portfolio_video && $portfolio_enabled) {
+        $stmt = $db->prepare("SELECT video_path FROM portfolio_videos WHERE provider_id = ? AND is_active = 1");
+        $stmt->execute([$provider['id']]);
+        $video_data = $stmt->fetch();
+        
+        if ($video_data) {
+            // Delete from database
+            $stmt = $db->prepare("DELETE FROM portfolio_videos WHERE provider_id = ?");
+            $stmt->execute([$provider['id']]);
+            
+            // Delete file
+            $file_path = '../uploads/portfolio/' . $video_data['video_path'];
+            if (file_exists($file_path)) {
+                unlink($file_path);
+            }
+            
+            $has_portfolio_video = false;
+        }
+    }
+    
+    if (empty($errors)) {
+        try {
+            $db->beginTransaction();
+            
+            // Update users table
+            $stmt = $db->prepare("
+                UPDATE users 
+                SET full_name = ?, phone = ?, profile_image = ?, updated_at = NOW()
+                WHERE id = ?
+            ");
+            $stmt->execute([$full_name, $phone, $profile_image, $_SESSION['user_id']]);
+            
+            // Update service_providers table with social links
+            $stmt = $db->prepare("
+                UPDATE service_providers 
+                SET profession = ?, bio = ?, location = ?, district = ?, 
+                    sector = ?, experience_years = ?,
+                    website = ?, facebook = ?, twitter = ?, instagram = ?,
+                    linkedin = ?, youtube = ?, whatsapp = ?, tiktok = ?,
+                    other_social = ?, other_social_label = ?, updated_at = NOW()
+                WHERE user_id = ?
+            ");
+            $stmt->execute([
+                $profession, $bio, $location, $district, 
+                $sector, $experience_years,
+                $social_links_data['website'], $social_links_data['facebook'], 
+                $social_links_data['twitter'], $social_links_data['instagram'],
+                $social_links_data['linkedin'], $social_links_data['youtube'], 
+                $social_links_data['whatsapp'], $social_links_data['tiktok'],
+                $social_links_data['other_social'], $social_links_data['other_social_label'],
+                $_SESSION['user_id']
+            ]);
+            
+            // Update provider -> category mapping (use provider_categories table)
+            $stmt = $db->prepare("DELETE FROM provider_categories WHERE provider_id = ?");
+            $stmt->execute([$provider['id']]);
+            
+            $stmt = $db->prepare("INSERT INTO provider_categories (provider_id, category_id) VALUES (?, ?)");
+            foreach ($selected_categories as $category_id) {
+                $stmt->execute([$provider['id'], intval($category_id)]);
+            }
+            
+            $db->commit();
+            
+            $_SESSION['user_name'] = $full_name;
+            $success = "Profile updated successfully!";
+            
+            // Refresh provider data
+            $stmt = $db->prepare("
+                SELECT sp.*, u.email, u.phone, u.profile_image, u.full_name
+                FROM service_providers sp
+                JOIN users u ON sp.user_id = u.id
+                WHERE sp.user_id = ?
+            ");
+            $stmt->execute([$_SESSION['user_id']]);
+            $provider = $stmt->fetch();
+            
+            // Refresh social links
+            $social_platforms = [
+                'website' => $provider['website'] ?? '',
+                'facebook' => $provider['facebook'] ?? '',
+                'twitter' => $provider['twitter'] ?? '',
+                'instagram' => $provider['instagram'] ?? '',
+                'linkedin' => $provider['linkedin'] ?? '',
+                'youtube' => $provider['youtube'] ?? '',
+                'whatsapp' => $provider['whatsapp'] ?? '',
+                'tiktok' => $provider['tiktok'] ?? '',
+                'other_social' => $provider['other_social'] ?? '',
+                'other_social_label' => $provider['other_social_label'] ?? ''
+            ];
+            
+            // Refresh categories
+            $stmt = $db->prepare("
+                SELECT c.* 
+                FROM categories c
+                JOIN provider_categories pc ON c.id = pc.category_id
+                WHERE pc.provider_id = ?
+            ");
+            $stmt->execute([$provider['id']]);
+            $provider_categories = $stmt->fetchAll();
+            $provider_category_ids = array_column($provider_categories, 'id');
+            
+            // Refresh portfolio images
+            $stmt = $db->prepare("
+                SELECT * FROM portfolio_images 
+                WHERE provider_id = ? AND is_active = 1 
+                ORDER BY display_order, uploaded_at DESC
+            ");
+            $stmt->execute([$provider['id']]);
+            $portfolio_images = $stmt->fetchAll();
+            $portfolio_count = count($portfolio_images);
+            
+            // Refresh portfolio videos
+            $stmt = $db->prepare("
+                SELECT * FROM portfolio_videos 
+                WHERE provider_id = ? AND is_active = 1 
+                ORDER BY uploaded_at DESC
+                LIMIT 1
+            ");
+            $stmt->execute([$provider['id']]);
+            $portfolio_video = $stmt->fetch();
+            $has_portfolio_video = !empty($portfolio_video);
+            
+        } catch (Exception $e) {
+            $db->rollBack();
+            $errors[] = "Failed to update profile. Please try again.";
+            error_log("Profile update error: " . $e->getMessage());
+        }
+    }
+}
+
+// Handle AJAX section updates
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_section'])) {
+    header('Content-Type: application/json');
+    $section = sanitize($_POST['ajax_section']);
+    $response = ['success' => false, 'message' => 'Unknown error', 'errors' => []];
+    
+    try {
+        $db->beginTransaction();
+        
+        switch ($section) {
+            case 'basic_info':
+                $full_name = sanitize($_POST['full_name'] ?? '');
+                $phone = sanitize($_POST['phone'] ?? '');
+                $profession = sanitize($_POST['profession'] ?? '');
+                $professional_title = sanitize($_POST['professional_title'] ?? '');
+                $bio = sanitize($_POST['bio'] ?? '');
+                $experience_years = intval($_POST['experience_years'] ?? 0);
+                
+                if (empty($full_name) || empty($phone) || empty($profession) || empty($professional_title)) {
+                    $response['errors'][] = "Please fill all required fields";
+                } elseif (!isValidProfession($profession)) {
+                    $response['errors'][] = "Invalid profession selected";
+                } elseif (!isValidProfessionalTitle($profession, $professional_title)) {
+                    $response['errors'][] = "Invalid professional title for selected profession";
+                } elseif (!preg_match('/^\+?[\d\s\-\(\)]{10,}$/', $phone)) {
+                    $response['errors'][] = "Please enter a valid phone number";
+                } else {
+                    // Use AI to improve bio if enabled
+                    if ($enable_ai_features && !empty($bio) && strlen($bio) > 20) {
+                        $improved_bio = $aiHelper->improveProfessionalBio($bio, $profession, $experience_years);
+                        if ($improved_bio !== $bio && strlen($improved_bio) > strlen($bio) * 0.8) {
+                            $bio = $improved_bio;
+                        }
+                    }
+                    
+                    $stmt = $db->prepare("UPDATE users SET full_name = ?, phone = ?, updated_at = NOW() WHERE id = ?");
+                    $stmt->execute([$full_name, $phone, $_SESSION['user_id']]);
+                    
+                    $stmt = $db->prepare("UPDATE service_providers SET profession = ?, bio = ?, experience_years = ?, updated_at = NOW() WHERE user_id = ?");
+                    $stmt->execute([$profession, $bio, $experience_years, $_SESSION['user_id']]);
+                    
+                    $response['success'] = true;
+                    $response['message'] = "Basic information updated successfully!";
+                }
+                break;
+                
+            case 'location_info':
+                $location = sanitize($_POST['location'] ?? '');
+                $district = sanitize($_POST['district'] ?? '');
+                $sector = sanitize($_POST['sector'] ?? '');
+                
+                if (empty($location) || empty($district)) {
+                    $response['errors'][] = "Please fill all required location fields";
+                } else {
+                    $stmt = $db->prepare("UPDATE service_providers SET location = ?, district = ?, sector = ?, updated_at = NOW() WHERE user_id = ?");
+                    $stmt->execute([$location, $district, $sector, $_SESSION['user_id']]);
+                    
+                    $response['success'] = true;
+                    $response['message'] = "Location information updated successfully!";
+                }
+                break;
+                
+            case 'services':
+                $selected_categories = $_POST['categories'] ?? [];
+                
+                if (empty($selected_categories)) {
+                    $response['errors'][] = "Please select at least one service category";
+                } else {
+                    $stmt = $db->prepare("DELETE FROM provider_categories WHERE provider_id = ?");
+                    $stmt->execute([$provider['id']]);
+                    
+                    $stmt = $db->prepare("INSERT INTO provider_categories (provider_id, category_id) VALUES (?, ?)");
+                    foreach ($selected_categories as $category_id) {
+                        $stmt->execute([$provider['id'], intval($category_id)]);
+                    }
+                    
+                    $response['success'] = true;
+                    $response['message'] = "Services updated successfully!";
+                }
+                break;
+                
+            case 'social_media':
+                $social_links_data = [
+                    'website' => sanitize($_POST['website'] ?? ''),
+                    'facebook' => sanitize($_POST['facebook'] ?? ''),
+                    'twitter' => sanitize($_POST['twitter'] ?? ''),
+                    'instagram' => sanitize($_POST['instagram'] ?? ''),
+                    'linkedin' => sanitize($_POST['linkedin'] ?? ''),
+                    'youtube' => sanitize($_POST['youtube'] ?? ''),
+                    'whatsapp' => sanitize($_POST['whatsapp'] ?? ''),
+                    'tiktok' => sanitize($_POST['tiktok'] ?? ''),
+                    'other_social' => sanitize($_POST['other_social'] ?? ''),
+                    'other_social_label' => sanitize($_POST['other_social_label'] ?? '')
+                ];
+                
+                // Validate URLs
+                foreach ($social_links_data as $platform => $url) {
+                    if (!empty($url) && $platform !== 'whatsapp' && $platform !== 'other_social_label') {
+                        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                            $response['errors'][] = "Invalid URL for $platform";
+                        }
+                    }
+                }
+                
+                if (empty($response['errors'])) {
+                    $stmt = $db->prepare("
+                        UPDATE service_providers 
+                        SET website = ?, facebook = ?, twitter = ?, instagram = ?, 
+                            linkedin = ?, youtube = ?, whatsapp = ?, tiktok = ?,
+                            other_social = ?, other_social_label = ?, updated_at = NOW()
+                        WHERE user_id = ?
+                    ");
+                    $stmt->execute([
+                        $social_links_data['website'], $social_links_data['facebook'],
+                        $social_links_data['twitter'], $social_links_data['instagram'],
+                        $social_links_data['linkedin'], $social_links_data['youtube'],
+                        $social_links_data['whatsapp'], $social_links_data['tiktok'],
+                        $social_links_data['other_social'], $social_links_data['other_social_label'],
+                        $_SESSION['user_id']
+                    ]);
+                    
+                    $response['success'] = true;
+                    $response['message'] = "Social media links updated successfully!";
+                }
+                break;
+                
+            case 'portfolio':
+                // Handle portfolio image updates (titles/descriptions and deletions)
+                $existing_portfolio_ids = $_POST['existing_portfolio_ids'] ?? [];
+                $existing_portfolio_titles = $_POST['existing_portfolio_titles'] ?? [];
+                $existing_portfolio_descriptions = $_POST['existing_portfolio_descriptions'] ?? [];
+                $deleted_portfolio_ids = $_POST['deleted_portfolio'] ?? [];
+                
+                // Delete items marked for deletion
+                if (!empty($deleted_portfolio_ids)) {
+                    foreach ($deleted_portfolio_ids as $image_id) {
+                        $image_id = intval($image_id);
+                        
+                        // Get image path before deleting
+                        $stmt = $db->prepare("SELECT image_path FROM portfolio_images WHERE id = ? AND provider_id = ?");
+                        $stmt->execute([$image_id, $provider['id']]);
+                        $image_data = $stmt->fetch();
+                        
+                        if ($image_data) {
+                            // Delete from database
+                            $stmt = $db->prepare("DELETE FROM portfolio_images WHERE id = ? AND provider_id = ?");
+                            $stmt->execute([$image_id, $provider['id']]);
+                            
+                            // Delete file
+                            $file_path = '../uploads/portfolio/' . $image_data['image_path'];
+                            if (file_exists($file_path)) {
+                                unlink($file_path);
+                            }
+                        }
+                    }
+                }
+                
+                // Update titles and descriptions for existing images
+                if (!empty($existing_portfolio_ids)) {
+                    foreach ($existing_portfolio_ids as $index => $image_id) {
+                        $image_id = intval($image_id);
+                        $title = sanitize($existing_portfolio_titles[$index] ?? '');
+                        $description = sanitize($existing_portfolio_descriptions[$index] ?? '');
+                        
+                        $stmt = $db->prepare("
+                            UPDATE portfolio_images 
+                            SET title = ?, description = ?
+                            WHERE id = ? AND provider_id = ?
+                        ");
+                        $stmt->execute([$title, $description, $image_id, $provider['id']]);
+                    }
+                }
+                
+                $response['success'] = true;
+                $response['message'] = "Portfolio updated successfully!";
+                break;
+        }
+        
+        if ($response['success']) {
+            $db->commit();
+        } else {
+            $db->rollBack();
+        }
+        
+    } catch (Exception $e) {
+        $db->rollBack();
+        error_log("AJAX update error: " . $e->getMessage());
+        $response['errors'][] = "Failed to update. Please try again.";
+    }
+    
+    echo json_encode($response);
+    exit;
+}
+
+// Initialize requirements checker
+$requirements = new ProviderRequirements($db, $provider['id']);
+$requirements_details = $requirements->getRequirementsWithDetails();
+$completion_pct = $requirements->getCompletionPercentage();
+$is_profile_complete = $requirements->isComplete();
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><?php echo __("title", [], "profile"); ?> - <?php echo getPlatformName(); ?></title>
+    <link rel="stylesheet" href="../bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/provider-requirements.css">
+    <style>
+        :root {
+            --primary: #0d6efd;
+            --secondary: #6c757d;
+            --success: #198754;
+            --danger: #dc3545;
+            --warning: #ffc107;
+            --info: #0dcaf0;
+            --light: #f8f9fa;
+            --dark: #212529;
+            --sidebar-width: 250px;
+        }
+        
+        body {
+            background-color: #f5f7fb;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        /* Maintenance Warning */
+        .maintenance-warning {
+            background: linear-gradient(135deg, #ffc107, #e0a800);
+            color: #856404;
+            border: none;
+            margin-bottom: 1rem;
+        }
+        
+        /* AI Features */
+        .ai-features {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            margin-bottom: 1rem;
+        }
+        
+        .ai-badge {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+        
+        /* Sidebar Styles */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: linear-gradient(180deg, var(--primary), #0a58ca);
+            color: white;
+            position: fixed;
+            height: 100vh;
+            left: 0;
+            top: 0;
+            transition: all 0.3s;
+            z-index: 1000;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+        }
+        
+        .sidebar-header {
+            padding: 1.5rem 1rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            text-align: center;
+        }
+        
+        .sidebar-header h2 {
+            margin: 0;
+            font-weight: 700;
+            font-size: 1.3rem;
+        }
+        
+        .sidebar-header p {
+            margin: 0.5rem 0 0 0;
+            opacity: 0.8;
+            font-size: 0.9rem;
+        }
+        
+        .sidebar-menu {
+            list-style: none;
+            padding: 1rem 0;
+            margin: 0;
+        }
+        
+        .sidebar-menu li {
+            margin: 0.2rem 0;
+        }
+        
+        .sidebar-menu a {
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            padding: 0.8rem 1.5rem;
+            display: flex;
+            align-items: center;
+            transition: all 0.3s;
+            border-left: 3px solid transparent;
+        }
+        
+        .sidebar-menu a:hover,
+        .sidebar-menu a.active {
+            background: rgba(255,255,255,0.1);
+            color: white;
+            border-left-color: white;
+        }
+        
+        .sidebar-menu i {
+            width: 25px;
+            margin-right: 10px;
+            font-size: 1.1rem;
+        }
+        
+        /* Main Content */
+        .main-content {
+            margin-left: var(--sidebar-width);
+            padding: 1rem 2rem;
+            min-height: 100vh;
+        }
+        
+        /* Header */
+        .profile-header {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+        
+        .profile-header h1 {
+            color: var(--dark);
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.8rem;
+            margin: 0 0 0.5rem 0;
+        }
+        
+        .profile-header h1 i {
+            color: var(--primary);
+            font-size: 1.8rem;
+        }
+        
+        .profile-header p {
+            color: var(--secondary);
+            margin: 0;
+            font-size: 0.95rem;
+        }
+        
+        /* Section Tabs */
+        .view-tabs {
+            display: flex;
+            gap: 0.5rem;
+            border-bottom: 2px solid #dee2e6;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+        
+        .view-tab {
+            padding: 0.75rem 1.5rem;
+            text-decoration: none;
+            color: var(--secondary);
+            font-weight: 500;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .view-tab:hover {
+            color: var(--primary);
+        }
+        
+        .view-tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+        
+        .view-tab i {
+            font-size: 1.1rem;
+        }
+        
+        /* Section Content */
+        .profile-section-content {
+            display: none;
+        }
+        
+        .profile-section-content.active {
+            display: block;
+        }
+        
+        /* Card Styles */
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            border: none;
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover {
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .card h2 {
+            color: var(--dark);
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.4rem;
+            border-bottom: 3px solid var(--primary);
+            padding-bottom: 1rem;
+        }
+        
+        .card h2 i {
+            color: var(--primary);
+            font-size: 1.5rem;
+        }
+        
+        .card > p:nth-of-type(1) {
+            color: var(--secondary);
+            font-size: 0.95rem;
+            margin-bottom: 1.5rem;
+            font-weight: 500;
+        }
+        
+        /* Profile Image Section */
+        .profile-image-section {
+            display: flex;
+            align-items: center;
+            gap: 2.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+        }
+        
+        .current-image {
+            width: 130px;
+            height: 130px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), #0a58ca);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 2.8rem;
+            overflow: hidden;
+            border: 5px solid white;
+            box-shadow: 0 6px 20px rgba(13, 110, 253, 0.3);
+            flex-shrink: 0;
+        }
+        
+        .current-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .image-upload-btn {
+            position: relative;
+        }
+        
+        .image-upload-btn input[type="file"] {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .image-upload-btn label {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.85rem 1.8rem;
+            background: linear-gradient(135deg, var(--primary), #0a58ca);
+            border: 2px solid var(--primary);
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(13, 110, 253, 0.2);
+        }
+        
+        .image-upload-btn label:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(13, 110, 253, 0.35);
+        }
+        
+        .image-preview {
+            color: var(--secondary);
+            font-size: 0.85rem;
+            margin-top: 0.75rem;
+            font-weight: 500;
+            line-height: 1.6;
+        }
+        
+        /* Form Styles */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .form-label {
+            font-weight: 600;
+            margin-bottom: 0.65rem;
+            color: var(--dark);
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        
+        .required {
+            color: var(--danger);
+            font-weight: 700;
+        }
+        
+        .form-control, .form-select {
+            padding: 0.85rem 1rem;
+            border-radius: 8px;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s;
+            font-size: 0.95rem;
+            background-color: #f8f9fa;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            border-color: var(--primary);
+            background-color: white;
+            box-shadow: 0 0 0 0.3rem rgba(13, 110, 253, 0.15);
+        }
+        
+        .form-text {
+            color: var(--secondary);
+            font-size: 0.8rem;
+            margin-top: 0.4rem;
+            font-weight: 500;
+        }
+        
+        textarea.form-control {
+            resize: vertical;
+            min-height: 120px;
+        }
+        
+        /* Categories Grid */
+        .categories-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+            gap: 1.2rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .category-checkbox {
+            position: relative;
+        }
+        
+        .category-checkbox input[type="checkbox"] {
+            position: absolute;
+            opacity: 0;
+        }
+        
+        .category-label {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1.1rem;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: white;
+            font-weight: 500;
+            color: var(--dark);
+        }
+        
+        .category-label:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(13, 110, 253, 0.15);
+            background: #f8f9ff;
+        }
+        
+        .category-checkbox input[type="checkbox"]:checked + .category-label {
+            border-color: var(--primary);
+            background: rgba(13, 110, 253, 0.08);
+            color: var(--primary);
+            box-shadow: 0 4px 12px rgba(13, 110, 253, 0.2);
+        }
+        
+        .category-label i {
+            font-size: 1.3rem;
+            width: 30px;
+            text-align: center;
+            color: var(--primary);
+        }
+        
+        .category-checkbox input[type="checkbox"]:checked + .category-label i {
+            color: var(--primary);
+            font-weight: 700;
+        }
+        
+        .category-label div {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        
+        .premium-badge {
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            color: #92400e;
+            padding: 0.25rem 0.7rem;
+            border-radius: 6px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            margin-left: 0.5rem;
+            border: 1px solid #fcd34d;
+        }
+        
+        /* Save Button */
+        .btn-save {
+            background: var(--success);
+            color: white;
+            border: none;
+            padding: 0.85rem 2.2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.6rem;
+            transition: all 0.3s;
+            box-shadow: 0 4px 12px rgba(25, 135, 84, 0.3);
+            cursor: pointer;
+        }
+        
+        .btn-save:hover {
+            background: #157347;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(25, 135, 84, 0.4);
+        }
+        
+        .btn-save:active {
+            transform: translateY(0);
+        }
+        
+        .btn-success {
+            background: var(--success);
+            color: white;
+            border: none;
+            padding: 0.65rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s;
+            box-shadow: 0 2px 8px rgba(25, 135, 84, 0.2);
+            cursor: pointer;
+        }
+        
+        .btn-success:hover {
+            background: #157347;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(25, 135, 84, 0.35);
+            text-decoration: none;
+        }
+        
+        /* Alert Styles */
+        .alert {
+            border-radius: 10px;
+            border: none;
+            margin-bottom: 1.5rem;
+            padding: 1rem 1.2rem;
+            font-weight: 500;
+        }
+        
+        .alert-success {
+            background: linear-gradient(135deg, #d4edda, #c3e6cb);
+            color: #155724;
+            border-left: 5px solid var(--success);
+        }
+        
+        .alert-danger {
+            background: linear-gradient(135deg, #f8d7da, #f5c6cb);
+            color: #721c24;
+            border-left: 5px solid var(--danger);
+        }
+        
+        .section-alert {
+            margin-bottom: 1.2rem;
+        }
+        
+        /* Portfolio Styles */
+        .portfolio-item {
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .portfolio-item:hover {
+            transform: translateY(-5px);
+        }
+        
+        .portfolio-item .card {
+            border: 2px solid #e9ecef;
+        }
+        
+        .portfolio-item:hover .card {
+            border-color: var(--primary);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        /* Portfolio Tabs */
+        .nav-tabs {
+            border-bottom: 2px solid #e9ecef !important;
+        }
+        
+        .nav-tabs .nav-link {
+            color: var(--secondary);
+            border: none;
+            border-bottom: 3px solid transparent;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        
+        .nav-tabs .nav-link:hover {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+        
+        .nav-tabs .nav-link.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+            background: transparent;
+        }
+        
+        .portfolio-upload-slot {
+            border: 2px dashed #dee2e6;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            background: #f8f9fa;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .portfolio-upload-slot:hover {
+            border-color: var(--primary);
+            background: #f0f4ff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(13, 110, 253, 0.15);
+        }
+        
+        .portfolio-upload-slot .remove-btn {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            background: var(--danger);
+            color: white;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            cursor: pointer;
+            z-index: 10;
+            transition: all 0.3s;
+            box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+        }
+        
+        .portfolio-upload-slot .remove-btn:hover {
+            background: #c82333;
+            transform: scale(1.1);
+        }
+        
+        .portfolio-image-preview {
+            max-height: 150px;
+            object-fit: cover;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            display: none;
+        }
+        
+        .portfolio-video-preview {
+            max-height: 150px;
+            max-width: 100%;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            display: none;
+            background: #000;
+        }
+        
+        .portfolio-upload-btn,
+        .video-upload-btn {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+        
+        .portfolio-upload-btn label,
+        .video-upload-btn label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 1.5rem 1rem;
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            border: 2px dashed #dee2e6;
+            border-radius: 8px;
+            color: var(--dark);
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+        
+        .portfolio-upload-btn label:hover,
+        .video-upload-btn label:hover {
+            background: linear-gradient(135deg, var(--primary), #0a58ca);
+            color: white;
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(13, 110, 253, 0.2);
+        }
+        
+        .portfolio-upload-btn input[type="file"],
+        .video-upload-btn input[type="file"] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+        
+        /* Social Media Styles */
+        .social-preview {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+            margin-top: 1.2rem;
+            padding: 1.3rem;
+            background: linear-gradient(135deg, #f8f9ff, #f0f4ff);
+            border-radius: 10px;
+            border: 1px solid #e0e7ff;
+        }
+        
+        .social-link-preview {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.6rem 1.2rem;
+            background: white;
+            border-radius: 8px;
+            border: 2px solid #e9ecef;
+            text-decoration: none;
+            color: var(--dark);
+            transition: all 0.3s ease;
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+        
+        .social-link-preview:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-decoration: none;
+        }
+        
+        .social-link-preview i {
+            font-size: 1.1rem;
+            width: 20px;
+            text-align: center;
+        }
+        
+        .social-link-preview.facebook { border-color: #1877f2; color: #1877f2; }
+        .social-link-preview.facebook:hover { background: #f0f7ff; }
+        .social-link-preview.facebook i { color: #1877f2; }
+        
+        .social-link-preview.twitter { border-color: #1da1f2; color: #1da1f2; }
+        .social-link-preview.twitter:hover { background: #f0f7ff; }
+        .social-link-preview.twitter i { color: #1da1f2; }
+        
+        .social-link-preview.instagram { border-color: #e4405f; color: #e4405f; }
+        .social-link-preview.instagram:hover { background: #fff0f5; }
+        .social-link-preview.instagram i { color: #e4405f; }
+        
+        .social-link-preview.linkedin { border-color: #0a66c2; color: #0a66c2; }
+        .social-link-preview.linkedin:hover { background: #f0f7ff; }
+        .social-link-preview.linkedin i { color: #0a66c2; }
+        
+        .social-link-preview.youtube { border-color: #ff0000; color: #ff0000; }
+        .social-link-preview.youtube:hover { background: #fff0f0; }
+        .social-link-preview.youtube i { color: #ff0000; }
+        
+        .social-link-preview.whatsapp { border-color: #25d366; color: #25d366; }
+        .social-link-preview.whatsapp:hover { background: #f0fff4; }
+        .social-link-preview.whatsapp i { color: #25d366; }
+        
+        .social-link-preview.website { border-color: var(--primary); color: var(--primary); }
+        .social-link-preview.website:hover { background: #f0f4ff; }
+        .social-link-preview.website i { color: var(--primary); }
+        
+        .social-link-preview.tiktok { border-color: #000000; color: #000000; }
+        .social-link-preview.tiktok:hover { background: #f5f5f5; }
+        .social-link-preview.tiktok i { color: #000000; }
+        
+        .social-validation {
+            font-size: 0.75rem;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            margin-top: 0.3rem;
+            font-weight: 600;
+        }
+        
+        .social-validation.valid {
+            background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+            color: #065f46;
+            border: 1px solid #6ee7b7;
+        }
+        
+        .social-validation.invalid {
+            background: linear-gradient(135deg, #fee2e2, #fecaca);
+            color: #991b1b;
+            border: 1px solid #fca5a5;
+        }
+        
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .sidebar.mobile-open {
+                transform: translateX(0);
+            }
+            
+            .main-content {
+                margin-left: 0;
+                padding: 1rem;
+            }
+            
+            .mobile-menu-toggle {
+                display: block !important;
+            }
+            
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .categories-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .profile-image-section {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            .portfolio-item {
+                margin-bottom: 1rem;
+            }
+            
+            .social-preview {
+                justify-content: center;
+            }
+        }
+        
+        .mobile-menu-toggle {
+            display: none;
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 1100;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            width: 45px;
+            height: 45px;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+        
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+        }
+        
+        .overlay.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <!-- Mobile Menu Toggle -->
+    <button class="mobile-menu-toggle" id="mobileToggle">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Mobile Overlay -->
+    <div class="overlay" id="overlay"></div>
+
+    <!-- Sidebar -->
+    <?php include __DIR__ . '/includes/sidebar.php'; ?>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Maintenance Warning -->
+        <?php if (isset($maintenance_warning)): ?>
+            <div class="alert maintenance-warning">
+                <i class="fas fa-tools me-2"></i>
+                <strong>Maintenance Mode Active</strong>
+                <p class="mb-0 mt-2">The platform is currently under maintenance. Some features may be limited.</p>
+            </div>
+        <?php endif; ?>
+
+        <!-- AI Features Notice -->
+        <?php if ($enable_ai_features): ?>
+            <div class="alert ai-features">
+                <i class="fas fa-robot me-2"></i>
+                <strong>AI Assistant Active</strong>
+                <p class="mb-0 mt-2">Our AI assistant can help improve your profile!</p>
+            </div>
+        <?php endif; ?>
+
+        <!-- Header -->
+        <div class="profile-header">
+            <h1><i class="fas fa-user-edit"></i> <?php echo __("title", [], "profile"); ?></h1>
+            <p><?php echo __("subtitle", [], "profile"); ?></p>
+        </div>
+
+        <!-- Section Navigation Tabs -->
+        <div class="view-tabs">
+            <a href="?section=basic" class="view-tab <?php echo $section === 'basic' ? 'active' : ''; ?>">
+                <i class="fas fa-id-card"></i> <?php echo __("tabs.basic", [], "profile"); ?>
+            </a>
+            <a href="?section=services" class="view-tab <?php echo $section === 'services' ? 'active' : ''; ?>">
+                <i class="fas fa-briefcase"></i> <?php echo __("tabs.services", [], "profile"); ?>
+            </a>
+            <a href="?section=portfolio" class="view-tab <?php echo $section === 'portfolio' ? 'active' : ''; ?>">
+                <i class="fas fa-images"></i> <?php echo __("tabs.portfolio", [], "profile"); ?>
+            </a>
+            <a href="?section=social" class="view-tab <?php echo $section === 'social' ? 'active' : ''; ?>">
+                <i class="fas fa-share-alt"></i> <?php echo __("tabs.social", [], "profile"); ?>
+            </a>
+            <a href="?section=requirements" class="view-tab <?php echo $section === 'requirements' ? 'active' : ''; ?>">
+                <i class="fas fa-clipboard-check"></i> <?php echo __("tabs.requirements", [], "profile"); ?>
+            </a>
+        </div>
+
+        <?php if ($success): ?>
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="fas fa-check-circle me-2"></i> <?php echo $success; ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        <?php endif; ?>
+
+        <?php if (!empty($errors)): ?>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <?php foreach ($errors as $error): ?>
+                    <p class="mb-1"><i class="fas fa-exclamation-circle me-2"></i> <?php echo $error; ?></p>
+                <?php endforeach; ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        <?php endif; ?>
+
+        <!-- Profile Completion Checklist -->
+        <?php if ($section === 'requirements'): ?>
+        <div class="profile-section-content active">
+            <div class="row mb-4">
+                <div class="col-lg-8">
+                    <?php echo $requirements->renderChecklist(true); ?>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <form method="POST" enctype="multipart/form-data" id="profileForm">
+            <!-- Profile Image (Part of Basic Section) -->
+            <?php if ($section === 'basic'): ?>
+            <div class="profile-section-content active">
+                <!-- Profile Image -->
+                <div class="card">
+                    <h2><i class="fas fa-image"></i> <?php echo __("profile_picture.title", [], "profile"); ?></h2>
+                    <div class="profile-image-section">
+                        <div class="current-image" id="imagePreview">
+                            <?php if (!empty($provider['profile_image'])): ?>
+                                <img src="../uploads/profiles/<?php echo htmlspecialchars($provider['profile_image']); ?>" alt="Profile" onerror="this.style.display='none'; this.parentNode.innerHTML='<?php echo strtoupper(substr($provider['full_name'], 0, 1)); ?>';">
+                            <?php else: ?>
+                                <?php echo strtoupper(substr($provider['full_name'], 0, 1)); ?>
+                            <?php endif; ?>
+                        </div>
+                        <div class="image-upload-btn">
+                            <input type="file" name="profile_image" id="profileImage" accept="image/*" onchange="previewImage(this)">
+                            <label for="profileImage">
+                                <i class="fas fa-camera"></i> <?php echo __('profile_picture.change_photo', [], 'profile'); ?>
+                            </label>
+                        </div>
+                        <p class="image-preview" id="fileName">
+                            <?php echo __("profile_picture.file_size_info", [], "profile"); ?>: <?php echo getMaxFileSize(); ?>MB<br>
+                            <?php echo __("profile_picture.allowed_formats", [], "profile"); ?>: JPG, PNG, GIF
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Basic Information -->
+                <div class="card">
+                    <h2><i class="fas fa-info-circle"></i> <?php echo __("basic_info.title", [], "profile"); ?></h2>
+                    <div class="form-grid">
+                        <div class="mb-3">
+                            <label class="form-label"><?php echo __("basic_info.full_name", [], "profile"); ?> <span class="required">*</span></label>
+                            <input type="text" name="full_name" class="form-control" required value="<?php echo htmlspecialchars($provider['full_name']); ?>">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label"><?php echo __("basic_info.email", [], "profile"); ?> <span class="required">*</span></label>
+                            <input type="email" class="form-control" value="<?php echo htmlspecialchars($provider['email']); ?>" disabled>
+                            <div class="form-text"><?php echo __("alerts.email_cannot_change", [], "profile"); ?></div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label"><?php echo __("basic_info.phone", [], "profile"); ?> <span class="required">*</span></label>
+                            <input type="tel" name="phone" class="form-control" required value="<?php echo htmlspecialchars($provider['phone']); ?>" placeholder="<?php echo __("basic_info.phone_placeholder", [], "profile"); ?>">
+                            <div class="form-text"><?php echo __("basic_info.phone_help", [], "profile"); ?></div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label"><?php echo __("basic_info.profession", [], "profile"); ?> <span class="required">*</span></label>
+                            <select name="profession" id="professionSelect" class="form-select form-control" required>
+                                <option value="">-- Select Your Category --</option>
+                                <?php foreach (getProfessionCategories() as $prof): ?>
+                                    <option value="<?php echo htmlspecialchars($prof); ?>" <?php echo $provider['profession'] === $prof ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($prof); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <div class="form-text">Choose your primary service category</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label"><?php echo __("basic_info.professional_title", [], "profile") ?? "Professional Title"; ?> <span class="required">*</span></label>
+                            <select name="professional_title" id="titleSelect" class="form-select form-control" required>
+                                <option value="">-- Select First --</option>
+                                <?php if (!empty($provider['profession'])): ?>
+                                    <?php foreach (getProfessionalTitles($provider['profession']) as $title): ?>
+                                        <option value="<?php echo htmlspecialchars($title); ?>" <?php echo $provider['profession_title'] === $title ? 'selected' : ''; ?>>
+                                            <?php echo htmlspecialchars($title); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </select>
+                            <div class="form-text">Select your specific professional title</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label"><?php echo __("basic_info.experience_years", [], "profile"); ?></label>
+                            <input type="number" name="experience_years" class="form-control" min="0" max="50" value="<?php echo $provider['experience_years'] ?? 0; ?>">
+                            <div class="form-text"><?php echo __("basic_info.experience_help", [], "profile"); ?></div>
+                        </div>
+
+                        <!-- Hourly rate removed: prices are defined per-service -->
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label"><?php echo __("basic_info.bio", [], "profile"); ?></label>
+                        <textarea name="bio" class="form-control" rows="5" placeholder="<?php echo __("basic_info.bio_placeholder", [], "profile"); ?>"><?php echo htmlspecialchars($provider['bio'] ?? ''); ?></textarea>
+                        <div class="form-text"><?php echo __("basic_info.bio_help", [], "profile"); ?></div>
+                    </div>
+                    
+                    <!-- Section Save Button -->
+                    <div class="mt-4 pt-3 border-top">
+                        <button type="button" class="btn btn-success" onclick="saveSection('basic_info', this)">
+                            <i class="fas fa-save me-2"></i> <?php echo __("actions.save", [], "profile"); ?>
+                        </button>
+                        <small class="text-muted d-block mt-2">Saving in real-time</small>
+                    </div>
+                </div>
+
+                <!-- Location Information -->
+            <div class="card">
+                <h2><i class="fas fa-map-marker-alt"></i> <?php echo __("location_info.title", [], "profile"); ?></h2>
+                <div class="form-grid">
+                    <div class="mb-3">
+                        <label class="form-label"><?php echo __("location_info.location", [], "profile"); ?> <span class="required">*</span></label>
+                        <input type="text" name="location" class="form-control" required value="<?php echo htmlspecialchars($provider['location'] ?? ''); ?>" placeholder="<?php echo __("location_info.location_placeholder", [], "profile"); ?>">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label"><?php echo __("location_info.district", [], "profile"); ?></label>
+                        <select name="district" class="form-select">
+                            <option value=""><?php echo __("location_info.district_placeholder", [], "profile"); ?></option>
+                            <?php foreach ($districts as $district): ?>
+                                <option value="<?php echo htmlspecialchars($district['name']); ?>" 
+                                    <?php echo ($provider['district'] ?? '') == $district['name'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($district['name']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="form-text"><?php echo __("location_info.district_help", [], "profile"); ?></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label"><?php echo __("location_info.sector", [], "profile"); ?></label>
+                        <input type="text" name="sector" class="form-control" value="<?php echo htmlspecialchars($provider['sector'] ?? ''); ?>" placeholder="<?php echo __("location_info.sector_placeholder", [], "profile"); ?>">
+                        <div class="form-text"><?php echo __("location_info.sector_help", [], "profile"); ?></div>
+                    </div>
+                </div>
+                
+                <!-- Section Save Button -->
+                <div class="mt-4 pt-3 border-top">
+                    <button type="button" class="btn btn-success" onclick="saveSection('location_info', this)">
+                        <i class="fas fa-save me-2"></i> <?php echo __("actions.save", [], "profile"); ?>
+                    </button>
+                    <small class="text-muted d-block mt-2">Saving in real-time</small>
+                </div>
+            </div>
+
+                <!-- Services Section -->
+            <?php endif; ?>
+
+            <!-- Services Section -->
+            <?php if ($section === 'services'): ?>
+            <div class="profile-section-content active">
+            <!-- Services/Categories -->
+            <div class="card">
+                <h2><i class="fas fa-briefcase"></i> <?php echo __("services_section.title", [], "profile"); ?> <span class="required">*</span></h2>
+                <p class="text-muted mb-3"><?php echo __("services_section.description", [], "profile"); ?></p>
+                
+                <div class="categories-grid">
+                    <?php foreach ($all_categories as $category): ?>
+                        <?php
+                            $catIsPremium = !empty($category['is_premium']) ? 1 : 0;
+                            $provIsPremium = !empty($provider['is_premium']) ? 1 : 0;
+                            $checked = in_array($category['id'], $provider_category_ids) ? 'checked' : '';
+                            $disabled = ($catIsPremium && !$provIsPremium) ? 'disabled' : '';
+                            $labelMuted = ($catIsPremium && !$provIsPremium) ? 'text-muted' : '';
+                        ?>
+                        <div class="category-checkbox">
+                            <input type="checkbox"
+                                   name="categories[]"
+                                   value="<?php echo $category['id']; ?>"
+                                   id="cat_<?php echo $category['id']; ?>"
+                                   <?php echo $checked; ?>
+                                   <?php echo $disabled; ?>>
+                            <label for="cat_<?php echo $category['id']; ?>" class="category-label <?php echo $labelMuted; ?>">
+                                <i class="fas <?php echo $category['icon'] ?? 'fa-cog'; ?>"></i>
+                                <div>
+                                    <?php echo htmlspecialchars($category['name']); ?>
+                                    <?php if ($catIsPremium): ?>
+                                        <span class="premium-badge">PREMIUM</span>
+                                    <?php endif; ?>
+                                </div>
+                            </label>
+                            <?php if ($catIsPremium): ?>
+                                <div class="form-text small mt-1">
+                                    <?php if (!$provIsPremium): ?>
+                                        <i class="fas fa-crown text-warning"></i> <?php echo __('services_section.premium_feature', [], 'profile'); ?>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                
+                <?php if (empty($all_categories)): ?>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <?php echo __('services_section.no_categories', [], 'profile'); ?>
+                    </div>
+                <?php endif; ?>
+                
+                <!-- Section Save Button -->
+                <div class="mt-4 pt-3 border-top">
+                    <button type="button" class="btn btn-success" onclick="saveSection('services', this)">
+                        <i class="fas fa-save me-2"></i> <?php echo __('services_section.save_button', [], 'profile'); ?>
+                    </button>
+                    <small class="text-muted d-block mt-2"><?php echo __('services_section.save_note', [], 'profile'); ?></small>
+                </div>
+            </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Portfolio Section -->
+            <?php if ($section === 'portfolio'): ?>
+            <div class="profile-section-content active">
+            <!-- Portfolio/Work Samples -->
+            <div class="card">
+                <h2><i class="fas fa-images"></i> <?php echo __("portfolio_section.title", [], "profile"); ?></h2>
+                <p class="text-muted mb-3"><?php echo __("portfolio_section.description", [], "profile"); ?></p>
+                
+                <?php if (!$portfolio_enabled): ?>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <?php echo __("portfolio_section.description", [], "profile"); ?>
+                    </div>
+                <?php else: ?>
+                    <!-- Current Portfolio Video -->
+                    <?php if ($has_portfolio_video): ?>
+                        <div class="mb-4 p-3 border border-success rounded" style="background: #f0fff4;">
+                            <h5 class="mb-3"><i class="fas fa-video text-success me-2"></i> <?php echo __("portfolio_section.videos.title", [], "profile"); ?></h5>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <video width="100%" height="200" controls style="border-radius: 8px; background: #000;">
+                                        <source src="../uploads/portfolio/<?php echo htmlspecialchars($portfolio_video['video_path']); ?>" type="video/mp4">
+                                        Your browser does not support the video tag.
+                                    </video>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-2">
+                                        <label class="form-label"><strong><?php echo __('portfolio_section.videos.video_title', [], 'profile'); ?>:</strong></label>
+                                        <p><?php echo htmlspecialchars($portfolio_video['title'] ?? __('portfolio_section.videos.title', [], 'profile')); ?></p>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label"><strong><?php echo __('portfolio_section.videos.video_description', [], 'profile'); ?>:</strong></label>
+                                        <p><?php echo htmlspecialchars($portfolio_video['description'] ?? __('portfolio_section.images.no_images', [], 'profile')); ?></p>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="if(confirm('<?php echo __('portfolio_section.videos.delete_confirm', [], 'profile'); ?>?')) { document.getElementById('deleteVideoCheckbox').checked = true; document.querySelector('form').submit(); }">
+                                        <i class="fas fa-trash me-1"></i> <?php echo __('portfolio_section.videos.replace_remove', [], 'profile'); ?>
+                                    </button>
+                                    <input type="hidden" id="deleteVideoCheckbox" name="delete_portfolio_video" value="0">
+                                </div>
+                            </div>
+                            <hr>
+                            <p class="text-muted small mb-0"><?php echo __('portfolio_section.videos.uploaded_on', [], 'profile'); ?> <?php echo date('M d, Y', strtotime($portfolio_video['uploaded_at'])); ?></p>
+                        </div>
+                    <?php endif; ?>
+                    
+                    <!-- Existing Portfolio Images -->
+                    <div id="existingPortfolio" class="mb-4">
+                        <h4 class="h6 mb-3"><?php echo __("portfolio_section.images.title", [], "profile"); ?> (<?php echo $portfolio_count; ?>/<?php echo $max_portfolio_images; ?>)</h4>
+                        
+                        <?php if (empty($portfolio_images)): ?>
+                            <div class="alert alert-secondary">
+                                <i class="fas fa-image me-2"></i>
+                                <?php echo __('portfolio_section.images.no_images', [], 'profile'); ?>
+                            </div>
+                        <?php else: ?>
+                            <div class="row" id="portfolioImagesContainer">
+                                <?php foreach ($portfolio_images as $index => $image): ?>
+                                    <div class="col-md-4 mb-3 portfolio-item" data-id="<?php echo $image['id']; ?>">
+                                        <div class="card h-100">
+                                            <img src="../uploads/portfolio/<?php echo htmlspecialchars($image['image_path']); ?>" 
+                                                 class="card-img-top portfolio-image" 
+                                                 alt="<?php echo htmlspecialchars($image['title'] ?: 'Portfolio Image'); ?>"
+                                                 style="height: 200px; object-fit: cover;"
+                                                 onerror="this.src='https://via.placeholder.com/300x200?text=Image+Not+Found'">
+                                            <div class="card-body">
+                                                <input type="hidden" name="existing_portfolio_ids[]" value="<?php echo $image['id']; ?>">
+                                                
+                                                <div class="mb-2">
+                                                    <label class="form-label small"><?php echo __('portfolio_section.images.image_title', [], 'profile'); ?></label>
+                                                    <input type="text" 
+                                                           name="existing_portfolio_titles[]" 
+                                                           class="form-control form-control-sm" 
+                                                           value="<?php echo htmlspecialchars($image['title'] ?? ''); ?>" 
+                                                           placeholder="<?php echo __('portfolio_section.images.placeholder_title', [], 'profile'); ?>">
+                                                </div>
+                                                
+                                                <div class="mb-2">
+                                                    <label class="form-label small"><?php echo __('portfolio_section.images.image_description', [], 'profile'); ?></label>
+                                                    <textarea name="existing_portfolio_descriptions[]" 
+                                                              class="form-control form-control-sm" 
+                                                              rows="2" 
+                                                              placeholder="<?php echo __('portfolio_section.images.placeholder_description', [], 'profile'); ?>"><?php echo htmlspecialchars($image['description'] ?? ''); ?></textarea>
+                                                </div>
+                                                
+                                                <button type="button" class="btn btn-sm btn-outline-danger w-100 delete-portfolio-btn" onclick="removePortfolioImage(this, <?php echo $image['id']; ?>)">
+                                                    <i class="fas fa-trash me-1"></i> <?php echo __('portfolio_section.images.delete_confirm', [], 'profile'); ?>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                    
+                    <!-- New Portfolio Upload Section -->
+                    <div id="newPortfolioSection" class="mt-4">
+                        <div class="nav nav-tabs mb-3" role="tablist">
+                            <button class="nav-link active" id="imageTab" data-bs-toggle="tab" data-bs-target="#imageUploadTab" type="button" role="tab">
+                                <i class="fas fa-image me-2"></i> <?php echo __('portfolio_section.images_tab', [], 'profile'); ?>
+                            </button>
+                            <button class="nav-link" id="videoTab" data-bs-toggle="tab" data-bs-target="#videoUploadTab" type="button" role="tab">
+                                <i class="fas fa-video me-2"></i> <?php echo __('portfolio_section.videos.tab_name', [], 'profile'); ?>
+                            </button>
+                        </div>
+                        
+                        <div class="tab-content">
+                            <!-- Image Upload Tab -->
+                            <div class="tab-pane fade show active" id="imageUploadTab" role="tabpanel">
+                                <h4 class="h6 mb-3"><?php echo __('portfolio_section.add_new_images', [], 'profile'); ?></h4>
+                                <div id="portfolioImageUploadContainer">
+                                    <!-- New image upload slots will be added here -->
+                                </div>
+                                
+                                <div class="d-flex justify-content-between align-items-center mt-3">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="addPortfolioUploadField('image')" 
+                                            <?php echo ($portfolio_count >= $max_portfolio_images) ? 'disabled' : ''; ?>>
+                                        <i class="fas fa-plus me-1"></i> <?php echo __('portfolio_section.images.add_another', [], 'profile'); ?>
+                                    </button>
+                                    <small class="text-muted">
+                                        <span id="currentImageUploadCount">0</span>/<?php echo $max_portfolio_images - $portfolio_count; ?> <?php echo __('portfolio_section.images.remaining', [], 'profile'); ?>
+                                    </small>
+                                </div>
+                                
+                                <div class="form-text mt-2">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    <?php echo str_replace(':max', $max_portfolio_images, str_replace(':size', getMaxFileSize(), __('portfolio_section.images.max_info', [], 'profile'))); ?>
+                                </div>
+                            </div>
+                            
+                            <!-- Video Upload Tab -->
+                            <div class="tab-pane fade" id="videoUploadTab" role="tabpanel">
+                                <h4 class="h6 mb-3"><?php echo __('portfolio_section.videos.upload_label', [], 'profile'); ?></h4>
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    <?php echo __('portfolio_section.videos.info', [], 'profile'); ?>
+                                </div>
+                                <div id="portfolioVideoUploadContainer">
+                                    <!-- Video upload slot will be added here -->
+                                </div>
+                                
+                                <div class="form-text mt-2">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    <?php echo str_replace(':size', getMaxFileSize() * 2, __('portfolio_section.videos.max_info', [], 'profile')); ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <input type="hidden" name="deleted_portfolio[]" id="deletedPortfolioIds" value="">
+                    
+                    <!-- Section Save Button -->
+                    <div class="mt-4 pt-3 border-top">
+                        <button type="button" class="btn btn-success" onclick="savePortfolioSection(this)">
+                            <i class="fas fa-save me-2"></i> <?php echo __('portfolio_section.save_button', [], 'profile'); ?>
+                        </button>
+                        <small class="text-muted d-block mt-2"><?php echo __('portfolio_section.save_note', [], 'profile'); ?></small>
+                    </div>
+                <?php endif; ?>
+            </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Social Media Section -->
+            <?php if ($section === 'social'): ?>
+            <div class="profile-section-content active">
+            <!-- Social Media Links -->
+            <div class="card">
+                <h2><i class="fas fa-share-alt"></i> <?php echo __("social_media.title", [], "profile"); ?></h2>
+                <p class="text-muted mb-3"><?php echo __("social_media.description", [], "profile"); ?></p>
+                
+                <div class="form-grid">
+                    <!-- Website -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="fas fa-globe text-primary me-2"></i><?php echo __("social_media.website", [], "profile"); ?>
+                        </label>
+                        <input type="url" name="website" class="form-control" 
+                               value="<?php echo htmlspecialchars($social_platforms['website']); ?>" 
+                               placeholder="<?php echo __("social_media.website_placeholder", [], "profile"); ?>"
+                               onblur="validateSocialURL(this)">
+                        <div class="form-text"><?php echo __("social_media.website_placeholder", [], "profile"); ?></div>
+                    </div>
+
+                    <!-- Facebook -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="fab fa-facebook text-primary me-2"></i><?php echo __("social_media.facebook", [], "profile"); ?>
+                        </label>
+                        <input type="url" name="facebook" class="form-control" 
+                               value="<?php echo htmlspecialchars($social_platforms['facebook']); ?>" 
+                               placeholder="<?php echo __("social_media.facebook_placeholder", [], "profile"); ?>"
+                               onblur="validateSocialURL(this)">
+                        <div class="form-text"><?php echo __('social_media.facebook', [], 'profile'); ?></div>
+                    </div>
+
+                    <!-- Instagram -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="fab fa-instagram text-danger me-2"></i><?php echo __("social_media.instagram", [], "profile"); ?>
+                        </label>
+                        <input type="url" name="instagram" class="form-control" 
+                               value="<?php echo htmlspecialchars($social_platforms['instagram']); ?>" 
+                               placeholder="<?php echo __("social_media.instagram_placeholder", [], "profile"); ?>"
+                               onblur="validateSocialURL(this)">
+                        <div class="form-text"><?php echo __('social_media.instagram', [], 'profile'); ?></div>
+                    </div>
+
+                    <!-- Twitter -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="fab fa-twitter text-info me-2"></i><?php echo __("social_media.twitter", [], "profile"); ?>
+                        </label>
+                        <input type="url" name="twitter" class="form-control" 
+                               value="<?php echo htmlspecialchars($social_platforms['twitter']); ?>" 
+                               placeholder="<?php echo __("social_media.twitter_placeholder", [], "profile"); ?>"
+                               onblur="validateSocialURL(this)">
+                        <div class="form-text"><?php echo __('social_media.twitter', [], 'profile'); ?></div>
+                    </div>
+
+                    <!-- LinkedIn -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="fab fa-linkedin text-primary me-2"></i><?php echo __("social_media.linkedin", [], "profile"); ?>
+                        </label>
+                        <input type="url" name="linkedin" class="form-control" 
+                               value="<?php echo htmlspecialchars($social_platforms['linkedin']); ?>" 
+                               placeholder="<?php echo __("social_media.linkedin_placeholder", [], "profile"); ?>"
+                               onblur="validateSocialURL(this)">
+                        <div class="form-text"><?php echo __('social_media.linkedin', [], 'profile'); ?></div>
+                    </div>
+
+                    <!-- YouTube -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="fab fa-youtube text-danger me-2"></i><?php echo __("social_media.youtube", [], "profile"); ?>
+                        </label>
+                        <input type="url" name="youtube" class="form-control" 
+                               value="<?php echo htmlspecialchars($social_platforms['youtube']); ?>" 
+                               placeholder="<?php echo __("social_media.youtube_placeholder", [], "profile"); ?>"
+                               onblur="validateSocialURL(this)">
+                        <div class="form-text"><?php echo __('social_media.youtube', [], 'profile'); ?></div>
+                    </div>
+
+                    <!-- WhatsApp -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="fab fa-whatsapp text-success me-2"></i><?php echo __('social_media.whatsapp', [], 'profile'); ?>
+                        </label>
+                        <input type="text" name="whatsapp" class="form-control" 
+                               value="<?php echo htmlspecialchars($social_platforms['whatsapp']); ?>" 
+                               placeholder="<?php echo __('social_media.whatsapp_placeholder', [], 'profile'); ?>"
+                               onblur="validateSocialURL(this)">
+                        <div class="form-text"><?php echo __('social_media.whatsapp_help', [], 'profile'); ?></div>
+                    </div>
+
+                    <!-- TikTok -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="fab fa-tiktok me-2"></i><?php echo __('social_media.tiktok', [], 'profile'); ?>
+                        </label>
+                        <input type="url" name="tiktok" class="form-control" 
+                               value="<?php echo htmlspecialchars($social_platforms['tiktok']); ?>" 
+                               placeholder="<?php echo __('social_media.tiktok_placeholder', [], 'profile'); ?>"
+                               onblur="validateSocialURL(this)">
+                        <div class="form-text"><?php echo __('social_media.tiktok', [], 'profile'); ?></div>
+                    </div>
+                </div>
+
+                <!-- Other Social Media -->
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label"><?php echo __('social_media.other_social', [], 'profile'); ?></label>
+                            <input type="url" name="other_social" class="form-control" 
+                                   value="<?php echo htmlspecialchars($social_platforms['other_social']); ?>" 
+                                   placeholder="<?php echo __('social_media.other_social_placeholder', [], 'profile'); ?>"
+                                   onblur="validateSocialURL(this)">
+                            <div class="form-text"><?php echo __('social_media.other_social_help', [], 'profile'); ?></div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label"><?php echo __('social_media.other_social_label', [], 'profile'); ?></label>
+                            <input type="text" name="other_social_label" class="form-control" 
+                                   value="<?php echo htmlspecialchars($social_platforms['other_social_label']); ?>" 
+                                   placeholder="<?php echo __('social_media.platform_name_placeholder', [], 'profile'); ?>">
+                            <div class="form-text"><?php echo __('social_media.platform_name_help', [], 'profile'); ?></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Social Links Preview -->
+                <div class="mt-4">
+                    <h5 class="mb-2"><?php echo __('social_media.preview_heading', [], 'profile'); ?></h5>
+                    <div id="socialPreview" class="social-preview">
+                        <!-- Social links will appear here as you type -->
+                    </div>
+                </div>
+
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <?php echo __('social_media.info_message', [], 'profile'); ?>
+                </div>
+                
+                <!-- Section Save Button -->
+                <div class="mt-4 pt-3 border-top">
+                    <button type="button" class="btn btn-success" onclick="saveSection('social_media', this)">
+                        <i class="fas fa-save me-2"></i> <?php echo __('social_media.save_button', [], 'profile'); ?>
+                    </button>
+                    <small class="text-muted d-block mt-2"><?php echo __('social_media.save_note', [], 'profile'); ?></small>
+                </div>
+            </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Save Button -->
+            <div class="text-center mt-4">
+                <button type="submit" name="update_profile" class="btn-save">
+                    <i class="fas fa-save me-2"></i> Save All Changes
+                </button>
+                <a href="dashboard.php" class="btn btn-secondary ms-2">
+                    <i class="fas fa-times me-2"></i> Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Mobile sidebar toggle
+        const mobileToggle = document.getElementById('mobileToggle');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('overlay');
+        
+        if (mobileToggle && sidebar && overlay) {
+            mobileToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('mobile-open');
+                overlay.classList.toggle('active');
+            });
+            
+            overlay.addEventListener('click', () => {
+                sidebar.classList.remove('mobile-open');
+                overlay.classList.remove('active');
+            });
+        }
+        
+        // Preview image before upload
+        function previewImage(input) {
+            const preview = document.getElementById('imagePreview');
+            const fileName = document.getElementById('fileName');
+            
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                const reader = new FileReader();
+                
+                // Check file size
+                const maxSize = <?php echo getMaxFileSize() * 1024 * 1024; ?>;
+                if (file.size > maxSize) {
+                    alert('File size exceeds maximum allowed size of <?php echo getMaxFileSize(); ?>MB');
+                    input.value = '';
+                    return;
+                }
+                
+                reader.onload = function(e) {
+                    preview.innerHTML = '<img src="' + e.target.result + '" alt="Preview">';
+                }
+                
+                reader.readAsDataURL(file);
+                fileName.innerHTML = '<?php echo __('validation.selected', [], 'profile'); ?>: ' + file.name + '<br><?php echo __('validation.maximum_file_size', [], 'profile'); ?>: <?php echo getMaxFileSize(); ?>MB<br><?php echo __('validation.allowed_formats', [], 'profile'); ?>: JPG, PNG, GIF';
+            }
+        }
+
+        // Auto-dismiss alerts
+        setTimeout(() => {
+            const alerts = document.querySelectorAll('.alert');
+            alerts.forEach(alert => {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            });
+        }, 5000);
+
+        // Form validation
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const categories = document.querySelectorAll('input[name="categories[]"]:checked');
+            if (categories.length === 0) {
+                e.preventDefault();
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-warning alert-dismissible fade show';
+                alertDiv.innerHTML = `
+                    <i class="fas fa-exclamation-triangle me-2"></i> Please select at least one service category
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.querySelector('.main-content').insertBefore(alertDiv, document.querySelector('form'));
+                
+                // Scroll to categories section
+                document.querySelector('.categories-grid').scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                });
+                
+                return false;
+            }
+            
+            // Validate phone number
+            const phoneInput = document.querySelector('input[name="phone"]');
+            const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/;
+            if (!phoneRegex.test(phoneInput.value.trim())) {
+                e.preventDefault();
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-warning alert-dismissible fade show';
+                alertDiv.innerHTML = `
+                    <i class="fas fa-exclamation-triangle me-2"></i> Please enter a valid phone number
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.querySelector('.main-content').insertBefore(alertDiv, document.querySelector('form'));
+                phoneInput.focus();
+                return false;
+            }
+            
+            // Validate social media URLs
+            let hasInvalidSocialURL = false;
+            document.querySelectorAll('input[name="website"], input[name="facebook"], input[name="twitter"], input[name="instagram"], input[name="linkedin"], input[name="youtube"], input[name="whatsapp"], input[name="tiktok"], input[name="other_social"]').forEach(input => {
+                if (!validateSocialURL(input)) {
+                    hasInvalidSocialURL = true;
+                }
+            });
+            
+            if (hasInvalidSocialURL) {
+                e.preventDefault();
+                alert('<?php echo __('validation.correct_invalid_urls', [], 'profile'); ?>');
+                return false;
+            }
+        });
+
+        // Portfolio functionality
+        let portfolioImageUploadCount = 0;
+        let portfolioVideoUploadCount = 0;
+        const maxPortfolioItems = <?php echo $max_portfolio_images; ?>;
+        const currentPortfolioCount = <?php echo $portfolio_count; ?>;
+        const deletedPortfolioIds = [];
+        
+        // Supported video formats and sizes
+        const videoFormats = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv', 'ogv'];
+        const maxVideoSize = <?php echo getMaxFileSize() * 2 * 1024 * 1024; ?>; // 2x the image size
+        
+        // Initialize portfolio upload count displays
+        if (document.getElementById('currentImageUploadCount')) {
+            document.getElementById('currentImageUploadCount').textContent = portfolioImageUploadCount;
+        }
+        if (document.getElementById('currentVideoUploadCount')) {
+            document.getElementById('currentVideoUploadCount').textContent = portfolioVideoUploadCount;
+        }
+        
+        function addPortfolioUploadField(type = 'image') {
+            const totalUploads = portfolioImageUploadCount + portfolioVideoUploadCount;
+            if (totalUploads + currentPortfolioCount >= maxPortfolioItems) {
+                alert('<?php $msg = __('validation.max_portfolio_items', [], 'profile'); echo str_replace(':max', '" + maxPortfolioItems + "', $msg); ?>');
+                return;
+            }
+            
+            const container = type === 'image' ? 
+                document.getElementById('portfolioImageUploadContainer') : 
+                document.getElementById('portfolioVideoUploadContainer');
+            const index = type === 'image' ? portfolioImageUploadCount : portfolioVideoUploadCount;
+            
+            const uploadSlot = document.createElement('div');
+            uploadSlot.className = 'portfolio-upload-slot';
+            
+            if (type === 'image') {
+                uploadSlot.innerHTML = `
+                    <button type="button" class="remove-btn" onclick="removePortfolioUploadSlot(this)">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <div class="image-upload-btn">
+                                <label>
+                                    <i class="fas fa-cloud-upload-alt me-2"></i> Choose Image
+                                    <input type="file" name="portfolio_images[]" accept="image/jpeg,image/png,image/gif,image/webp" 
+                                           onchange="previewPortfolioImage(this, ${index})" required>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <img id="portfolioImagePreview${index}" class="portfolio-image-preview" alt="Preview">
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-2">
+                        <div class="col-md-6 mb-2">
+                            <input type="text" name="portfolio_titles[]" class="form-control form-control-sm" 
+                                   placeholder="Image title (optional)" maxlength="100">
+                        </div>
+                        <div class="col-md-6">
+                            <textarea name="portfolio_descriptions[]" class="form-control form-control-sm" 
+                                      placeholder="Brief description (optional)" maxlength="500" rows="2"></textarea>
+                        </div>
+                    </div>
+                `;
+            } else {
+                uploadSlot.innerHTML = `
+                    <button type="button" class="remove-btn" onclick="removePortfolioUploadSlot(this)">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <div class="video-upload-btn">
+                                <label>
+                                    <i class="fas fa-cloud-upload-alt me-2"></i> Choose Video
+                                    <input type="file" name="portfolio_videos[]" accept="video/mp4,video/webm,video/quicktime,video/x-msvideo,video/x-matroska" 
+                                           onchange="previewPortfolioVideo(this, ${index})" required>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <video id="portfolioVideoPreview${index}" class="portfolio-video-preview" controls></video>
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-2">
+                        <div class="col-md-6 mb-2">
+                            <input type="text" name="portfolio_video_titles[]" class="form-control form-control-sm" 
+                                   placeholder="Video title (optional)" maxlength="100">
+                        </div>
+                        <div class="col-md-6">
+                            <textarea name="portfolio_video_descriptions[]" class="form-control form-control-sm" 
+                                      placeholder="Brief description (optional)" maxlength="500" rows="2"></textarea>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            container.appendChild(uploadSlot);
+            
+            if (type === 'image') {
+                portfolioImageUploadCount++;
+                document.getElementById('currentImageUploadCount').textContent = portfolioImageUploadCount;
+            } else {
+                portfolioVideoUploadCount++;
+                document.getElementById('currentVideoUploadCount').textContent = portfolioVideoUploadCount;
+            }
+            
+            // Disable add buttons if max reached
+            const newTotal = portfolioImageUploadCount + portfolioVideoUploadCount;
+            if (newTotal + currentPortfolioCount >= maxPortfolioItems) {
+                document.querySelectorAll('#newPortfolioSection button[onclick*="addPortfolioUploadField"]').forEach(btn => {
+                    btn.disabled = true;
+                });
+            }
+        }
+        
+        function removePortfolioUploadSlot(button) {
+            const slot = button.closest('.portfolio-upload-slot');
+            const isImage = slot.querySelector('input[name="portfolio_images[]"]') !== null;
+            
+            slot.remove();
+            
+            if (isImage) {
+                portfolioImageUploadCount--;
+                document.getElementById('currentImageUploadCount').textContent = portfolioImageUploadCount;
+            } else {
+                portfolioVideoUploadCount--;
+                document.getElementById('currentVideoUploadCount').textContent = portfolioVideoUploadCount;
+            }
+            
+            // Re-enable add buttons if under limit
+            const totalUploads = portfolioImageUploadCount + portfolioVideoUploadCount;
+            if (totalUploads + currentPortfolioCount < maxPortfolioItems) {
+                document.querySelectorAll('#newPortfolioSection button[onclick*="addPortfolioUploadField"]').forEach(btn => {
+                    btn.disabled = false;
+                });
+            }
+        }
+        
+        function previewPortfolioImage(input, index) {
+            const preview = document.getElementById(`portfolioImagePreview${index}`);
+            const file = input.files[0];
+            
+            if (file) {
+                // Check file size
+                const maxSize = <?php echo getMaxFileSize() * 1024 * 1024; ?>;
+                if (file.size > maxSize) {
+                    alert('<?php $msg = __('validation.file_size_exceeds', [], 'profile'); echo str_replace(':size', getMaxFileSize(), $msg); ?>');
+                    input.value = '';
+                    preview.style.display = 'none';
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    preview.src = e.target.result;
+                    preview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        function previewPortfolioVideo(input, index) {
+            const preview = document.getElementById(`portfolioVideoPreview${index}`);
+            const file = input.files[0];
+            
+            if (file) {
+                // Check file extension
+                const fileName = file.name.toLowerCase();
+                const fileExt = fileName.split('.').pop();
+                
+                if (!videoFormats.includes(fileExt)) {
+                    alert('<?php $msg = __('validation.invalid_video_format', [], 'profile'); echo str_replace(':formats', '" + videoFormats.join(", ") + "', $msg); ?>');
+                    input.value = '';
+                    preview.style.display = 'none';
+                    return;
+                }
+                
+                // Check file size
+                if (file.size > maxVideoSize) {
+                    alert('<?php $msg = __('validation.file_size_exceeds', [], 'profile'); echo str_replace(':size', '" + Math.round(maxVideoSize / 1024 / 1024) + "', $msg); ?>');
+                    input.value = '';
+                    preview.style.display = 'none';
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    preview.src = e.target.result;
+                    preview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        function removePortfolioImage(button, imageId) {
+            if (confirm('<?php echo __('validation.confirm_delete_portfolio', [], 'profile'); ?>')) {
+                const portfolioItem = button.closest('.portfolio-item');
+                portfolioItem.style.display = 'none';
+                
+                // Add to deleted IDs array
+                deletedPortfolioIds.push(imageId);
+                document.getElementById('deletedPortfolioIds').value = deletedPortfolioIds.join(',');
+                
+                // Update remaining count
+                const totalUploads = portfolioImageUploadCount + portfolioVideoUploadCount;
+                const remainingSlots = maxPortfolioItems - (currentPortfolioCount - deletedPortfolioIds.length);
+                if (totalUploads < remainingSlots) {
+                    document.querySelectorAll('#newPortfolioSection button[onclick*="addPortfolioUploadField"]').forEach(btn => {
+                        btn.disabled = false;
+                    });
+                }
+            }
+        }
+        
+        // Social media URL validation
+        function validateSocialURL(input) {
+            const value = input.value.trim();
+            const platform = input.name;
+            
+            if (!value) {
+                // Remove any existing validation message
+                const validationDiv = input.parentNode.querySelector('.social-validation');
+                if (validationDiv) {
+                    validationDiv.remove();
+                }
+                return true; // Empty is okay
+            }
+            
+            let isValid = false;
+            let pattern = '';
+            
+            switch(platform) {
+                case 'website':
+                case 'facebook':
+                case 'twitter':
+                case 'instagram':
+                case 'linkedin':
+                case 'youtube':
+                case 'tiktok':
+                case 'other_social':
+                    pattern = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/;
+                    isValid = pattern.test(value);
+                    break;
+                case 'whatsapp':
+                    // Accept both phone numbers and wa.me links
+                    pattern = /^(https?:\/\/)?(wa\.me\/|whatsapp\.com\/)?(\+\d{10,15}|\d{10,15})$/;
+                    isValid = pattern.test(value);
+                    break;
+                default:
+                    isValid = true;
+            }
+            
+            // Remove existing validation
+            const existingValidation = input.parentNode.querySelector('.social-validation');
+            if (existingValidation) {
+                existingValidation.remove();
+            }
+            
+            // Add new validation message
+            const newValidation = document.createElement('div');
+            newValidation.className = `social-validation ${isValid ? 'valid' : 'invalid'}`;
+            newValidation.innerHTML = isValid ? 
+                '<i class="fas fa-check-circle me-1"></i> Valid URL' : 
+                '<i class="fas fa-exclamation-circle me-1"></i> Please enter a valid URL';
+            
+            input.parentNode.appendChild(newValidation);
+            
+            updateSocialPreview();
+            return isValid;
+        }
+        
+        // Preview social links
+        function updateSocialPreview() {
+            const previewContainer = document.getElementById('socialPreview');
+            if (!previewContainer) return;
+            
+            let previewHTML = '';
+            const platforms = {
+                'website': { icon: 'fas fa-globe', label: 'Website', class: 'website' },
+                'facebook': { icon: 'fab fa-facebook', label: 'Facebook', class: 'facebook' },
+                'instagram': { icon: 'fab fa-instagram', label: 'Instagram', class: 'instagram' },
+                'twitter': { icon: 'fab fa-twitter', label: 'Twitter', class: 'twitter' },
+                'linkedin': { icon: 'fab fa-linkedin', label: 'LinkedIn', class: 'linkedin' },
+                'youtube': { icon: 'fab fa-youtube', label: 'YouTube', class: 'youtube' },
+                'whatsapp': { icon: 'fab fa-whatsapp', label: 'WhatsApp', class: 'whatsapp' },
+                'tiktok': { icon: 'fab fa-tiktok', label: 'TikTok', class: 'tiktok' }
+            };
+            
+            for (const [platform, info] of Object.entries(platforms)) {
+                const input = document.querySelector(`input[name="${platform}"]`);
+                if (input && input.value.trim()) {
+                    const url = input.value.trim();
+                    previewHTML += `
+                        <a href="${url}" target="_blank" class="social-link-preview ${info.class}">
+                            <i class="${info.icon}"></i>
+                            <span>${info.label}</span>
+                        </a>
+                    `;
+                }
+            }
+            
+            // Check for custom social media
+            const otherSocial = document.querySelector('input[name="other_social"]');
+            const otherLabel = document.querySelector('input[name="other_social_label"]');
+            if (otherSocial && otherSocial.value.trim() && otherLabel && otherLabel.value.trim()) {
+                previewHTML += `
+                    <a href="${otherSocial.value.trim()}" target="_blank" class="social-link-preview">
+                        <i class="fas fa-link"></i>
+                        <span>${otherLabel.value.trim()}</span>
+                    </a>
+                `;
+            }
+            
+            if (previewHTML) {
+                previewContainer.innerHTML = previewHTML;
+                previewContainer.style.display = 'flex';
+            } else {
+                previewContainer.innerHTML = '<div class="text-muted">No social links added yet</div>';
+            }
+        }
+        
+        // Add event listeners for social media inputs
+        document.querySelectorAll('input[name="website"], input[name="facebook"], input[name="instagram"], input[name="twitter"], input[name="linkedin"], input[name="youtube"], input[name="whatsapp"], input[name="tiktok"], input[name="other_social"], input[name="other_social_label"]').forEach(input => {
+            input.addEventListener('input', updateSocialPreview);
+        });
+        
+        // ===== REAL-TIME SECTION SAVING =====
+        async function saveSection(section, button) {
+            const form = document.querySelector('form');
+            const formData = new FormData(form);
+            formData.append('ajax_section', section);
+            
+            // Disable button and show loading state
+            const originalContent = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Saving...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch(window.location.href, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                const card = button.closest('.card');
+                
+                // Remove old alert if exists
+                const oldAlert = card.querySelector('.section-alert');
+                if (oldAlert) oldAlert.remove();
+                
+                // Create alert
+                const alertDiv = document.createElement('div');
+                alertDiv.className = `alert ${data.success ? 'alert-success' : 'alert-danger'} alert-dismissible fade show section-alert`;
+                alertDiv.innerHTML = `
+                    <i class="fas ${data.success ? 'fa-check-circle' : 'fa-exclamation-circle'} me-2"></i>
+                    <strong>${data.success ? 'Success!' : 'Error!'}</strong>
+                    <p class="mb-0 mt-1">${data.message}</p>
+                    ${data.errors.length > 0 ? '<ul class="mb-0 mt-2"><li>' + data.errors.join('</li><li>') + '</li></ul>' : ''}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                `;
+                
+                // Insert alert at top of card
+                card.insertBefore(alertDiv, card.firstChild);
+                
+                // Auto-remove alert after 5 seconds
+                setTimeout(() => {
+                    const bsAlert = new bootstrap.Alert(alertDiv);
+                    bsAlert.close();
+                }, 5000);
+                
+            } catch (error) {
+                console.error('Save error:', error);
+                const card = button.closest('.card');
+                const oldAlert = card.querySelector('.section-alert');
+                if (oldAlert) oldAlert.remove();
+                
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-danger alert-dismissible fade show section-alert';
+                alertDiv.innerHTML = `
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    <strong>Error!</strong>
+                    <p class="mb-0 mt-1">Network error. Please check your connection and try again.</p>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                `;
+                
+                card.insertBefore(alertDiv, card.firstChild);
+                
+                setTimeout(() => {
+                    const bsAlert = new bootstrap.Alert(alertDiv);
+                    bsAlert.close();
+                }, 5000);
+            } finally {
+                // Restore button state
+                button.innerHTML = originalContent;
+                button.disabled = false;
+            }
+        }
+        
+        // Portfolio section save handler
+        async function savePortfolioSection(button) {
+            const card = button.closest('.card');
+            const form = document.querySelector('form');
+            const formData = new FormData(form);
+            formData.append('ajax_section', 'portfolio');
+            
+            // Show loading state
+            const originalContent = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Saving...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch(window.location.href, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                // Remove old alert if exists
+                const oldAlert = card.querySelector('.section-alert');
+                if (oldAlert) oldAlert.remove();
+                
+                // Create alert based on response
+                const alertDiv = document.createElement('div');
+                alertDiv.className = `alert ${data.success ? 'alert-success' : 'alert-danger'} alert-dismissible fade show section-alert`;
+                alertDiv.innerHTML = `
+                    <i class="fas ${data.success ? 'fa-check-circle' : 'fa-exclamation-circle'} me-2"></i>
+                    <strong>${data.success ? 'Success!' : 'Error!'}</strong>
+                    <p class="mb-0 mt-1">${data.message}</p>
+                    ${data.errors.length > 0 ? '<ul class="mb-0 mt-2"><li>' + data.errors.join('</li><li>') + '</li></ul>' : ''}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                `;
+                
+                card.insertBefore(alertDiv, card.firstChild);
+                
+                // Auto-remove alert after 5 seconds
+                setTimeout(() => {
+                    const bsAlert = new bootstrap.Alert(alertDiv);
+                    bsAlert.close();
+                }, 5000);
+                
+            } catch (error) {
+                console.error('Portfolio save error:', error);
+                
+                // Remove old alert if exists
+                const oldAlert = card.querySelector('.section-alert');
+                if (oldAlert) oldAlert.remove();
+                
+                // Show error alert
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-danger alert-dismissible fade show section-alert';
+                alertDiv.innerHTML = `
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    <strong>Error!</strong>
+                    <p class="mb-0 mt-1">Network error. Please check your connection and try again.</p>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                `;
+                
+                card.insertBefore(alertDiv, card.firstChild);
+                
+                setTimeout(() => {
+                    const bsAlert = new bootstrap.Alert(alertDiv);
+                    bsAlert.close();
+                }, 5000);
+            } finally {
+                // Restore button state
+                button.innerHTML = originalContent;
+                button.disabled = false;
+            }
+        }
+        
+        
+        // Initialize professional titles mapping from PHP
+        const professionTitlesData = <?php echo json_encode(array_reduce(getProfessionCategories(), function($carry, $prof) {
+            $carry[$prof] = getProfessionalTitles($prof);
+            return $carry;
+        }, [])); ?>;
+
+        // Handle profession dropdown change
+        const professionSelect = document.getElementById('professionSelect');
+        const titleSelect = document.getElementById('titleSelect');
+
+        if (professionSelect && titleSelect) {
+            professionSelect.addEventListener('change', function() {
+                const selectedProfession = this.value;
+                titleSelect.innerHTML = '<option value="">-- Select First --</option>';
+                
+                if (selectedProfession && professionTitlesData[selectedProfession]) {
+                    professionTitlesData[selectedProfession].forEach(title => {
+                        const option = document.createElement('option');
+                        option.value = title;
+                        option.textContent = title;
+                        titleSelect.appendChild(option);
+                    });
+                    titleSelect.disabled = false;
+                } else {
+                    titleSelect.disabled = true;
+                }
+                
+                // Reset title selection
+                titleSelect.value = '';
+            });
+        }
+        
+        // Initialize preview on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateSocialPreview();
+            <?php if ($portfolio_count < $max_portfolio_images && $portfolio_enabled): ?>
+            addPortfolioUploadField('image');
+            <?php endif; ?>
+            // Check if video upload slot exists and add if needed
+            const videoContainer = document.getElementById('portfolioVideoUploadContainer');
+            if (videoContainer && videoContainer.children.length === 0) {
+                addPortfolioUploadField('video');
+            }
+        });
+    </script>
+</body>
+</html>

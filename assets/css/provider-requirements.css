@@ -1,0 +1,612 @@
+/* Provider Requirements Checklist Styles */
+
+.provider-requirements-checklist {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+    margin-bottom: 2rem;
+}
+
+.checklist-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.checklist-title {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.checklist-title i {
+    font-size: 1.5rem;
+    color: #007bff;
+}
+
+.checklist-title h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #212529;
+}
+
+.checklist-progress-info {
+    text-align: right;
+}
+
+.progress-number {
+    display: block;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #212529;
+}
+
+.checklist-progress-bar {
+    height: 8px;
+    background: #e9ecef;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #007bff, #0056b3);
+    border-radius: 10px;
+    transition: width 0.3s ease;
+}
+
+.checklist-items {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.checklist-item {
+    display: flex;
+    gap: 1rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #dee2e6;
+    transition: all 0.3s ease;
+}
+
+.checklist-item.completed {
+    background: #f0f8ff;
+    border-left-color: #28a745;
+}
+
+.checklist-item.incomplete {
+    background: #fff8f0;
+    border-left-color: #ffc107;
+}
+
+.checklist-item:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.item-check {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+}
+
+.item-check i {
+    transition: transform 0.3s ease;
+}
+
+.checklist-item.completed .item-check i {
+    animation: scaleIn 0.3s ease;
+}
+
+@keyframes scaleIn {
+    from {
+        transform: scale(0.5);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.item-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.item-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #212529;
+    font-size: 1rem;
+}
+
+.item-title i {
+    font-size: 1rem;
+}
+
+.item-title .badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    margin-left: auto;
+}
+
+.item-description {
+    margin-bottom: 0.5rem;
+    color: #495057;
+    font-size: 0.95rem;
+}
+
+.item-help {
+    margin: 0.5rem 0;
+    padding: 0.75rem;
+    background: #e7f3ff;
+    border-left: 3px solid #0066cc;
+    border-radius: 4px;
+    color: #004085;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.item-help:before {
+    content: '💡 ';
+}
+
+.item-status {
+    margin-top: 0.5rem;
+}
+
+.item-status small {
+    font-size: 0.85rem;
+}
+
+/* Completion message */
+.provider-requirements-checklist .alert-success {
+    border: none;
+    background: #d4edda;
+    color: #155724;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.provider-requirements-checklist .alert-success i {
+    font-size: 1.25rem;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .provider-requirements-checklist {
+        padding: 1rem;
+    }
+
+    .checklist-header {
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .checklist-progress-info {
+        text-align: left;
+    }
+
+    .item-title {
+        flex-wrap: wrap;
+    }
+
+    .item-title .badge {
+        margin-left: 0;
+        margin-top: 0.5rem;
+        width: 100%;
+    }
+}
+
+/* Quick status badge for provider listings */
+.profile-completion-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: #f8f9fa;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.profile-completion-badge i {
+    font-size: 1rem;
+}
+
+.profile-completion-badge.complete {
+    background: #d4edda;
+    color: #155724;
+}
+
+.profile-completion-badge.partial {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.profile-completion-badge.incomplete {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+/* Mini checklist (compact version) */
+.checklist-mini {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 1rem;
+    border-left: 4px solid #007bff;
+}
+
+.checklist-mini-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.checklist-mini-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.checklist-mini-item i {
+    font-size: 1rem;
+}
+
+.checklist-mini-item.complete i {
+    color: #28a745;
+}
+
+.checklist-mini-item.incomplete i {
+    color: #dc3545;
+}
+
+/* Checklist sidebar widget */
+.checklist-sidebar {
+    position: sticky;
+    top: 20px;
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.checklist-sidebar-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.checklist-sidebar-progress {
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.sidebar-progress-number {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #007bff;
+    display: block;
+}
+
+.sidebar-progress-text {
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+.checklist-sidebar-items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+    padding: 0.5rem;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.sidebar-item:hover {
+    background: #f8f9fa;
+}
+
+.sidebar-item i {
+    font-size: 1rem;
+    min-width: 20px;
+}
+
+.sidebar-item.complete {
+    color: #28a745;
+}
+
+.sidebar-item.incomplete {
+    color: #dc3545;
+}
+
+/* Provider Directory Listing Styles */
+
+.provider-card-with-requirements {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    border: 1px solid #e9ecef;
+    transition: all 0.3s ease;
+}
+
+.provider-card-with-requirements:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: #007bff;
+}
+
+.provider-card-header {
+    margin-bottom: 1rem;
+}
+
+.provider-card-header h3 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #212529;
+}
+
+.provider-card-header .profession {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #6c757d;
+}
+
+.provider-card-checklist {
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+}
+
+.provider-card-badge {
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* Provider Row for Tables/Lists */
+
+.provider-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.provider-row:last-child {
+    border-bottom: none;
+}
+
+.row-name {
+    flex: 1;
+    min-width: 200px;
+}
+
+.row-name strong {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: #212529;
+}
+
+.row-name small {
+    display: block;
+}
+
+.row-completion {
+    flex: 0 0 auto;
+    margin: 0 1rem;
+    text-align: center;
+}
+
+.completion-badge {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background: #e7f3ff;
+    color: #004085;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.row-badge {
+    flex: 0 0 auto;
+}
+
+/* Provider Directory List */
+
+.provider-directory-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.directory-item {
+    background: white;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1rem;
+    transition: all 0.3s ease;
+}
+
+.directory-item:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border-color: #007bff;
+}
+
+.item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+}
+
+.item-name h4 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #212529;
+}
+
+.item-name p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #6c757d;
+}
+
+.item-status {
+    flex-shrink: 0;
+}
+
+.item-details {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #f0f0f0;
+}
+
+/* Requirement Tooltip */
+
+.requirement-tooltip {
+    padding: 0.75rem;
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+}
+
+.requirement-tooltip strong {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #212529;
+}
+
+.requirement-tooltip ul {
+    list-style-position: inside;
+    color: #495057;
+}
+
+.requirement-tooltip li {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Mobile responsive */
+
+@media (max-width: 768px) {
+    .provider-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+
+    .row-completion {
+        margin: 0;
+        width: 100%;
+        text-align: left;
+    }
+
+    .row-badge {
+        width: 100%;
+    }
+
+    .item-header {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .item-status {
+        width: 100%;
+    }
+
+    .provider-directory-list .profile-completion-badge {
+        width: 100%;
+        justify-content: flex-start;
+    }
+}
+
+/* Integration with existing provider cards */
+
+.provider-card .requirements-section {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #f0f0f0;
+}
+
+.provider-card .requirements-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #6c757d;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+/* Mini checklist inline display */
+
+.checklist-mini-inline {
+    display: inline-flex;
+    gap: 0.25rem;
+}
+
+.checklist-mini-inline .checklist-mini-item {
+    padding: 0;
+    font-size: 1rem;
+}
+
+/* Status indicator for provider availability */
+
+.provider-availability-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: #f0f0f0;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.provider-availability-status.complete {
+    background: #d4edda;
+    color: #155724;
+}
+
+.provider-availability-status.partial {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.provider-availability-status.incomplete {
+    background: #f8d7da;
+    color: #721c24;
+}
+

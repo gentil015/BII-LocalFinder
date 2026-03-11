@@ -1,0 +1,2489 @@
+<?php
+session_start();
+
+// Enable gzip compression if available
+if (!headers_sent()) {
+    ob_start('ob_gzhandler');
+}
+
+require_once 'config/database.php';
+require_once 'includes/functions.php';
+
+// Release session lock early for better performance
+session_write_close();
+
+$db = Database::getInstance()->getConnection();
+
+// -- helper: check if column exists to avoid SQL errors on different schemas
+function hasColumn(PDO $db, string $table, string $column): bool {
+    $stmt = $db->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?");
+    $stmt->execute([DB_NAME, $table, $column]);
+    return (bool) $stmt->fetchColumn();
+}
+
+$hasIsActive   = hasColumn($db, 'service_providers', 'is_active');
+$hasIsBanned   = hasColumn($db, 'service_providers', 'is_banned');
+$hasIsFeatured = hasColumn($db, 'service_providers', 'is_featured');
+
+// Cache system implementation
+$cacheDir = __DIR__ . '/cache';
+if (!is_dir($cacheDir)) {
+    mkdir($cacheDir, 0755, true);
+}
+
+function cache_get($key, $ttl = 60) {
+    global $cacheDir;
+    $file = $cacheDir . DIRECTORY_SEPARATOR . hash('sha256', $key) . '.cache';
+
+    if (!is_file($file)) {
+        return false;
+    }
+
+    $mtime = @filemtime($file);
+    if ($mtime === false) {
+        if (is_file($file)) {
+            @unlink($file);
+        }
+        return false;
+    }
+
+    if ($mtime + $ttl < time()) {
+        if (is_file($file)) {
+            @unlink($file);
+        }
+        return false;
+    }
+
+    $data = @file_get_contents($file);
+    if ($data === false) return false;
+    $value = @unserialize($data);
+    return $value;
+}
+
+function cache_set($key, $value) {
+    global $cacheDir;
+    $file = $cacheDir . DIRECTORY_SEPARATOR . hash('sha256', $key) . '.cache';
+
+    $tmp = $file . '.' . bin2hex(random_bytes(8)) . '.tmp';
+    if (@file_put_contents($tmp, serialize($value), LOCK_EX) === false) {
+        @unlink($tmp);
+        return false;
+    }
+
+    @rename($tmp, $file);
+    @chmod($file, 0644);
+    return true;
+}
+
+// Load platform settings from database
+function getPlatformSetting($key, $default = '') {
+    global $db;
+    static $settings = null;
+    
+    if ($settings === null) {
+        $stmt = $db->query("SELECT setting_key, setting_value FROM system_settings");
+        $settings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+    }
+    
+    return $settings[$key] ?? $default;
+}
+
+// Check maintenance mode
+$maintenance_mode = getPlatformSetting('maintenance_mode', '0');
+if ($maintenance_mode && !(isset($_SESSION['user_id']) && isAdmin())) {
+    header('Location: maintenance.php');
+    exit;
+}
+
+// Fetch categories (cached for 5 minutes)
+$categories = cache_get('categories', 300);
+if ($categories === false) {
+    $stmt = $db->query("SELECT id, name, description, icon, is_premium, monthly_fee FROM categories WHERE is_active = 1 ORDER BY name");
+    $categories = $stmt->fetchAll();
+    cache_set('categories', $categories);
+}
+
+// Fetch category statistics (provider count per category)
+$category_stats = cache_get('category_stats', 300);
+if ($categories === false) {
+    $stmt = $db->query("SELECT id, name, description, icon, is_premium, monthly_fee FROM categories WHERE is_active = 1 ORDER BY name");
+    $categories = $stmt->fetchAll();
+    cache_set('categories', $categories);
+}
+
+// Category provider counts removed to avoid displaying platform data
+
+// Fetch featured providers (cached for 2 minutes)
+$featured_providers = cache_get('featured_providers', 120);
+if ($featured_providers === false) {
+    $providerWhere = ["u.is_verified = 1", "sp.availability = 'available'"];
+    if ($hasIsActive) {
+        $providerWhere[] = "sp.is_active = 1";
+    }
+    if ($hasIsBanned) {
+        $providerWhere[] = "sp.is_banned = 0";
+    }
+    $providerWhereSql = implode(' AND ', $providerWhere);
+
+    if ($hasIsFeatured) {
+        $orderBy = "sp.is_featured DESC, sp.verification_level DESC, sp.average_rating DESC";
+        $featuredCondition = "(sp.is_featured = 1 OR sp.verification_level IN ('verified', 'gold', 'premium'))";
+    } else {
+        $orderBy = "sp.verification_level DESC, sp.average_rating DESC";
+        $featuredCondition = "sp.verification_level IN ('verified', 'gold', 'premium')";
+    }
+
+    $idsStmt = $db->prepare("
+        SELECT sp.id
+        FROM service_providers sp
+        JOIN users u ON u.id = sp.user_id
+        WHERE {$providerWhereSql} AND {$featuredCondition}
+        ORDER BY {$orderBy}
+        LIMIT 8
+    ");
+    $idsStmt->execute();
+    $ids = $idsStmt->fetchAll(PDO::FETCH_COLUMN);
+    
+    if (!empty($ids)) {
+        $in = implode(',', array_map('intval', $ids));
+
+        $selectFallbacks = [];
+        $selectFallbacks[] = $hasIsFeatured ? "sp.is_featured" : "0 as is_featured";
+        $selectFallbacks[] = $hasIsFeatured ? "sp.featured_until" : "NULL as featured_until";
+        $selectFallbacks[] = $hasIsBanned ? "sp.is_banned" : "0 as is_banned";
+
+        $selectExtras = implode(', ', $selectFallbacks);
+
+        $stmt = $db->query("
+            SELECT 
+                u.id as user_id,
+                u.full_name,
+                u.email,
+                u.phone,
+                u.profile_image,
+                u.is_verified as user_verified,
+                sp.id as provider_id,
+                sp.profession,
+                sp.bio,
+                sp.location,
+                sp.district,
+                sp.sector,
+                sp.experience_years,
+                sp.hourly_rate,
+                sp.average_rating,
+                sp.total_reviews,
+                sp.verification_level,
+                {$selectExtras},
+                c.name as category_name,
+                c.icon as category_icon
+            FROM service_providers sp
+            JOIN users u ON u.id = sp.user_id
+            LEFT JOIN provider_services ps ON sp.id = ps.provider_id
+            LEFT JOIN categories c ON ps.category_id = c.id
+            WHERE sp.id IN ($in)
+            GROUP BY sp.id
+            ORDER BY {$orderBy}
+        ");
+        $featured_providers = $stmt->fetchAll();
+    } else {
+        $featured_providers = [];
+    }
+    cache_set('featured_providers', $featured_providers);
+}
+
+// Fetch providers by location (nearby providers)
+$nearby_providers = cache_get('nearby_providers', 180);
+if ($nearby_providers === false) {
+    $providerWhere = ["u.is_verified = 1", "sp.availability = 'available'"];
+    if ($hasIsActive) $providerWhere[] = "sp.is_active = 1";
+    if ($hasIsBanned) $providerWhere[] = "sp.is_banned = 0";
+    $providerWhereSql = implode(' AND ', $providerWhere);
+    
+    $selectFallbacks = [];
+    $selectFallbacks[] = $hasIsFeatured ? "sp.is_featured" : "0 as is_featured";
+    $selectExtras = implode(', ', $selectFallbacks);
+    
+    $stmt = $db->query("
+        SELECT sp.district, COUNT(DISTINCT sp.id) as provider_count
+        FROM service_providers sp
+        JOIN users u ON u.id = sp.user_id
+        WHERE {$providerWhereSql}
+        GROUP BY sp.district
+        ORDER BY provider_count DESC
+        LIMIT 6
+    ");
+    $nearby_providers = $stmt->fetchAll();
+    cache_set('nearby_providers', $nearby_providers);
+}
+
+// Fetch recently joined providers
+$recent_providers = cache_get('recent_providers', 120);
+if ($recent_providers === false) {
+    $providerWhere = ["u.is_verified = 1"];
+    if ($hasIsActive) $providerWhere[] = "sp.is_active = 1";
+    if ($hasIsBanned) $providerWhere[] = "sp.is_banned = 0";
+    $providerWhereSql = implode(' AND ', $providerWhere);
+    
+    $selectFallbacks = [];
+    $selectFallbacks[] = $hasIsFeatured ? "sp.is_featured" : "0 as is_featured";
+    $selectExtras = implode(', ', $selectFallbacks);
+    
+    $stmt = $db->query("
+        SELECT 
+            u.id as user_id,
+            u.full_name,
+            u.profile_image,
+            sp.id as provider_id,
+            sp.profession,
+            sp.location,
+            sp.district,
+            sp.average_rating,
+            sp.total_reviews,
+            sp.verification_level,
+            sp.created_at,
+            {$selectExtras},
+            c.name as category_name,
+            c.icon as category_icon
+        FROM service_providers sp
+        JOIN users u ON u.id = sp.user_id
+        LEFT JOIN provider_services ps ON sp.id = ps.provider_id
+        LEFT JOIN categories c ON ps.category_id = c.id
+        WHERE {$providerWhereSql}
+        GROUP BY sp.id
+        ORDER BY sp.created_at DESC
+        LIMIT 4
+    ");
+    $recent_providers = $stmt->fetchAll();
+    cache_set('recent_providers', $recent_providers);
+}
+
+
+
+// Fetch districts
+$districts = cache_get('districts', 600);
+if ($districts === false) {
+    $stmt = $db->query("SELECT name, code FROM districts ORDER BY name");
+    $districts = $stmt->fetchAll();
+    cache_set('districts', $districts);
+}
+
+// Get platform settings for display
+$platform_name = getPlatformSetting('platform_name', 'BII LocalFinder');
+$contact_email = getPlatformSetting('contact_email', 'support@biilocalfinder.com');
+$contact_phone = getPlatformSetting('contact_phone', '+250 788 123 456');
+$platform_description = getPlatformSetting('platform_description', 'Connecting clients with trusted local service providers');
+$copyright_text = getPlatformSetting('copyright_text', '© 2024 BII LocalFinder. All rights reserved.');
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><?php echo htmlspecialchars($platform_name); ?> - Find Local Service Providers in Rwanda</title>
+    <meta name="description" content="<?php echo htmlspecialchars($platform_description); ?>">
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1e40af;
+            --secondary: #64748b;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --light: #f8fafc;
+            --dark: #0f172a;
+            --border: #e2e8f0;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: var(--dark);
+            background: #ffffff;
+        }
+        
+        /* Navigation */
+        .navbar {
+            background: rgba(255, 255, 255, 0.98) !important;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+        }
+        
+        .navbar-brand {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        /* Hero Section */
+        .hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-image: url('assets/images/world-map.jpg');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            position: relative;
+            overflow: hidden;
+            padding: 100px 0 80px;
+        }
+        
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+                rgba(102, 126, 234, 0.85);
+            animation: float 20s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+        
+        .hero-content {
+            position: relative;
+            z-index: 2;
+        }
+        
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            line-height: 1.2;
+            margin-bottom: 1.5rem;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .hero p {
+            font-size: 1.25rem;
+            opacity: 0.95;
+        }
+        
+        /* Search Box */
+        .search-box {
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+            padding: 2rem;
+            transition: transform 0.3s ease;
+        }
+        
+        .search-box:hover {
+            transform: translateY(-2px);
+        }
+        
+        .search-input-group {
+            position: relative;
+        }
+        
+        .search-input-group .form-control,
+        .search-input-group .form-select {
+            border: 2px solid var(--border);
+            padding: 0.875rem 1rem 0.875rem 3rem;
+            border-radius: 12px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .search-input-group .form-control:focus,
+        .search-input-group .form-select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+        }
+        
+        .search-icon {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--secondary);
+            z-index: 10;
+        }
+        
+        .btn-search {
+            padding: 0.875rem 2rem;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+        
+        .btn-search:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+        }
+        
+        /* Quick Filters */
+        .quick-filters {
+            margin-top: 1.5rem;
+        }
+        
+        .filter-chip {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 25px;
+            color: white;
+            text-decoration: none;
+            margin: 0.25rem;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        
+        .filter-chip:hover {
+            background: white;
+            color: var(--primary);
+            transform: translateY(-2px);
+        }
+        
+        /* Stats Section */
+        .stats-section {
+            background: var(--light);
+            padding: 3rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .stat-card {
+            text-align: center;
+            padding: 1.5rem;
+        }
+        
+        .stat-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem;
+            color: white;
+            font-size: 1.5rem;
+        }
+        
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-label {
+            color: var(--secondary);
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        
+        /* Section Headers */
+        .section-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            color: var(--dark);
+        }
+        
+        .section-subtitle {
+            font-size: 1.125rem;
+            color: var(--secondary);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        /* Category Cards */
+        .category-card {
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 16px;
+            padding: 2rem 1.5rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            height: 100%;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        
+        .category-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-8px);
+            box-shadow: 0 12px 24px rgba(37, 99, 235, 0.15);
+        }
+        
+        .category-icon {
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(30, 64, 175, 0.1));
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.25rem;
+            font-size: 2rem;
+            color: var(--primary);
+            transition: all 0.3s ease;
+        }
+        
+        .category-card:hover .category-icon {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            transform: scale(1.1);
+        }
+        
+        .category-name {
+            font-size: 1.125rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: var(--dark);
+        }
+        
+        .category-description {
+            font-size: 0.9rem;
+            color: var(--secondary);
+            margin-bottom: 0.75rem;
+        }
+        
+        .category-count {
+            font-size: 0.875rem;
+            color: var(--primary);
+            font-weight: 600;
+        }
+        
+        /* Provider Cards */
+        .provider-card {
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            height: 100%;
+        }
+        
+        .provider-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-8px);
+            box-shadow: 0 12px 24px rgba(37, 99, 235, 0.15);
+        }
+        
+        .provider-image {
+            position: relative;
+            height: 240px;
+            overflow: hidden;
+            background: linear-gradient(135deg, var(--secondary), #475569);
+        }
+        
+        .provider-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.5s ease;
+        }
+
+        /* avatar letter fallback when no profile image uploaded */
+        .avatar-letter {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3.25rem;
+            font-weight: 800;
+            color: #fff;
+            text-transform: uppercase;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            user-select: none;
+        }
+
+        .provider-card:hover .provider-image img {
+            transform: scale(1.1);
+        }
+        
+        .provider-badge {
+            position: absolute;
+            top: 1rem;
+            padding: 0.4rem 0.8rem;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            backdrop-filter: blur(10px);
+        }
+        
+        .badge-featured {
+            left: 1rem;
+            background: rgba(239, 68, 68, 0.95);
+            color: white;
+        }
+        
+        .badge-available {
+            right: 1rem;
+            background: rgba(16, 185, 129, 0.95);
+            color: white;
+        }
+        
+        .badge-new {
+            left: 1rem;
+            background: rgba(245, 158, 11, 0.95);
+            color: white;
+        }
+        
+        .provider-content {
+            padding: 1.5rem;
+        }
+        
+        .provider-name {
+            font-size: 1.125rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: var(--dark);
+        }
+        
+        .verification-badge {
+            display: inline-flex;
+            align-items: center;
+            font-size: 0.7rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 8px;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+        
+        .badge-verified {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .badge-gold {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
+        .badge-premium {
+            background: #e0e7ff;
+            color: #3730a3;
+        }
+        
+        .provider-profession {
+            color: var(--secondary);
+            font-size: 0.95rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+        }
+        
+        .provider-location {
+            color: var(--secondary);
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+        }
+        
+        .provider-rating {
+            margin-bottom: 1rem;
+        }
+        
+        .rating-stars {
+            color: #fbbf24;
+            font-size: 0.9rem;
+        }
+        
+        .rating-count {
+            color: var(--secondary);
+            font-size: 0.875rem;
+            margin-left: 0.5rem;
+        }
+        
+        .provider-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+        }
+        
+        .provider-rate {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--success);
+        }
+        
+        .btn-view-profile {
+            padding: 0.5rem 1.25rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            transition: all 0.3s ease;
+        }
+        
+        /* Location Cards */
+        .location-card {
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        
+        .location-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(37, 99, 235, 0.15);
+        }
+        
+        .location-icon {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(30, 64, 175, 0.1));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem;
+            font-size: 1.5rem;
+            color: var(--primary);
+        }
+        
+        .location-name {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: var(--dark);
+        }
+        
+        .location-count {
+            font-size: 0.875rem;
+            color: var(--secondary);
+        }
+        
+        /* How It Works */
+        .step-card {
+            position: relative;
+            text-align: center;
+            padding: 2rem 1.5rem;
+        }
+        
+        .step-number {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            color: white;
+            font-size: 1.5rem;
+            font-weight: 700;
+            box-shadow: 0 8px 16px rgba(37, 99, 235, 0.3);
+        }
+        
+        .step-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            color: var(--dark);
+        }
+        
+        .step-description {
+            color: var(--secondary);
+            font-size: 0.95rem;
+        }
+        
+        /* CTA Section */
+        .cta-section {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            padding: 5rem 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .cta-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+        }
+        
+        .cta-content {
+            position: relative;
+            z-index: 2;
+        }
+        
+        .cta-title {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+        }
+        
+        .cta-subtitle {
+            font-size: 1.25rem;
+            opacity: 0.95;
+            margin-bottom: 2rem;
+        }
+        
+        .btn-cta {
+            padding: 1rem 2.5rem;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 1.125rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+        }
+        
+        .btn-cta:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Footer */
+        .footer {
+            background: var(--dark);
+            padding: 4rem 0 2rem;
+        }
+        
+        .footer-title {
+            font-size: 1.125rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            color: white;
+        }
+        
+        .footer-link {
+            color: var(--secondary);
+            text-decoration: none;
+            transition: color 0.3s ease;
+            display: block;
+            margin-bottom: 0.75rem;
+        }
+        
+        .footer-link:hover {
+            color: var(--primary);
+        }
+        
+        .social-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            color: white;
+            margin-right: 0.75rem;
+            transition: all 0.3s ease;
+        }
+        
+        .social-link:hover {
+            background: var(--primary);
+            transform: translateY(-3px);
+        }
+        
+        .footer-bottom {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 2rem;
+            margin-top: 3rem;
+            text-align: center;
+            color: var(--secondary);
+        }
+
+
+    /* Popular Services Styles */
+.service-card-popular {
+    background: white;
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    padding: 1.5rem;
+    position: relative;
+    height: 100%;
+    transition: all 0.3s ease;
+    overflow: hidden;
+}
+
+.service-card-popular:hover {
+    border-color: var(--primary);
+    transform: translateY(-8px);
+    box-shadow: 0 15px 40px rgba(37, 99, 235, 0.15);
+}
+
+.service-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.service-icon-popular {
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(30, 64, 175, 0.1));
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary);
+    font-size: 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.service-card-popular:hover .service-icon-popular {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: white;
+    transform: scale(1.1);
+}
+
+.service-badge-popular .badge {
+    font-size: 0.7rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 20px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.service-card-body {
+    margin-bottom: 1.5rem;
+}
+
+.service-title-popular {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--dark);
+    margin-bottom: 0.75rem;
+    line-height: 1.3;
+}
+
+.service-description-popular {
+    font-size: 0.9rem;
+    color: var(--secondary);
+    line-height: 1.5;
+    margin-bottom: 0;
+}
+
+.service-card-footer {
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+    margin-bottom: 1rem;
+}
+
+.service-price-popular {
+    margin-bottom: 0.75rem;
+}
+
+.price-amount {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--success);
+    display: block;
+    line-height: 1;
+}
+
+.price-unit {
+    font-size: 0.85rem;
+    color: var(--secondary);
+    font-weight: 500;
+}
+
+.service-availability {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.provider-count-popular {
+    font-size: 0.85rem;
+    color: var(--success);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+}
+
+.service-rating-popular {
+    font-size: 0.85rem;
+    color: var(--warning);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+}
+
+.service-view-link {
+    display: inline-flex;
+    align-items: center;
+    color: var(--primary);
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.service-view-link:hover {
+    color: var(--primary-dark);
+    text-decoration: underline;
+}
+
+/* Ensure the link covers the entire card */
+.service-card-popular {
+    position: relative;
+}
+
+.service-card-popular > *:not(.service-view-link) {
+    position: relative;
+    z-index: 1;
+}
+
+.service-view-link {
+    position: absolute;
+    bottom: 1.5rem;
+    left: 1.5rem;
+    z-index: 2;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .service-card-popular {
+        padding: 1.25rem;
+    }
+    
+    .service-icon-popular {
+        width: 50px;
+        height: 50px;
+        font-size: 1.25rem;
+    }
+    
+    .service-title-popular {
+        font-size: 1rem;
+    }
+    
+    .price-amount {
+        font-size: 1.25rem;
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .service-demand-card {
+        padding: 1.25rem;
+    }
+    
+    .service-icon {
+        width: 50px;
+        height: 50px;
+        font-size: 1.25rem;
+    }
+}
+        
+/* Add to existing styles */
+.icon-wrapper {
+    transition: transform 0.3s ease, background-color 0.3s ease;
+}
+
+.card:hover .icon-wrapper {
+    transform: scale(1.1);
+    background-color: rgba(37, 99, 235, 0.15);
+}  
+
+
+/* FAQ Section Styles */
+.accordion-button {
+    font-weight: 600;
+    color: var(--dark);
+    padding: 1rem 1.25rem;
+    box-shadow: none !important;
+    border: 2px solid transparent !important;
+    transition: all 0.3s ease;
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: var(--light) !important;
+    color: var(--primary);
+    border-color: var(--primary) !important;
+}
+
+.accordion-button:focus {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.25) !important;
+}
+
+.accordion-button::after {
+    background-size: 1rem;
+    transition: transform 0.3s ease;
+}
+
+.accordion-button:not(.collapsed)::after {
+    transform: rotate(-180deg);
+}
+
+.accordion-body {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    color: var(--secondary);
+}
+
+/* FAQ specific improvements */
+.bg-opacity-10 {
+    --bs-bg-opacity: 0.1;
+}
+
+.border-opacity-25 {
+    --bs-border-opacity: 0.25;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .accordion-button {
+        padding: 0.875rem 1rem;
+        font-size: 0.95rem;
+    }
+    
+    .accordion-body {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+}
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+            
+            .section-title {
+                font-size: 2rem;
+            }
+            
+            .search-box {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light sticky-top">
+        <div class="container">
+            <a class="navbar-brand d-flex align-items-center" href="index.php">
+                <i class="fas fa-map-marked-alt me-2"></i>
+                <?php echo htmlspecialchars($platform_name); ?>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link fw-semibold" href="index.php">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="services.php">Services</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="providers.php">Find Providers</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="about.php">About</a>
+                    </li>
+                    <?php if (isLoggedIn()): ?>
+                        <li class="nav-item">
+                            <a class="nav-link" href="<?php echo isProvider() ? 'provider/dashboard.php' : 'client/dashboard.php'; ?>">
+                                <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="logout.php">Logout</a>
+                        </li>
+                    <?php else: ?>
+                        <li class="nav-item">
+                            <a class="nav-link" href="login.php">Login</a>
+                        </li>
+                        <li class="nav-item ms-2">
+                            <a class="btn btn-primary px-4" href="register.php">Get Started</a>
+                        </li>
+                    <?php endif; ?>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section with Enhanced Search -->
+    <section class="hero">
+        <div class="container hero-content">
+            <div class="row justify-content-center">
+                <div class="col-lg-10 text-center">
+                    <h1 class="text-white mb-4">Find Verified Local Professionals Near You</h1>
+                    <p class="text-white mb-5"><?php echo htmlspecialchars($platform_description); ?></p>
+                    
+                    <div class="search-box">
+                        <form action="providers.php" method="GET" id="advancedSearchForm">
+                            <div class="row g-3">
+                                <!-- Service Search -->
+                                <div class="col-md-4">
+                                    <div class="search-input-group">
+                                        <i class="fas fa-search search-icon"></i>
+                                        <input type="text" name="query" class="form-control" 
+                                               placeholder="What service do you need?" 
+                                               id="serviceSearch">
+                                    </div>
+                                </div>
+                                
+                                <!-- Location Filter -->
+                                <div class="col-md-4">
+                                    <div class="search-input-group">
+                                        <i class="fas fa-map-marker-alt search-icon"></i>
+                                        <select name="district" class="form-select" id="districtFilter">
+                                            <option value="">All Districts</option>
+                                            <?php foreach ($districts as $district): ?>
+                                                <option value="<?php echo htmlspecialchars($district['code']); ?>">
+                                                    <?php echo htmlspecialchars($district['name']); ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <!-- Category Filter -->
+                                <div class="col-md-4">
+                                    <div class="search-input-group">
+                                        <i class="fas fa-th-large search-icon"></i>
+                                        <select name="category" class="form-select" id="categoryFilter">
+                                            <option value="">All Categories</option>
+                                            <?php foreach ($categories as $category): ?>
+                                                <option value="<?php echo $category['id']; ?>">
+                                                    <?php echo htmlspecialchars($category['name']); ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Advanced Filters (Collapsible) -->
+                            <div class="collapse mt-3" id="advancedFilters">
+                                <div class="row g-3">
+                                    <!-- Rating Filter -->
+                                    <div class="col-md-3">
+                                        <select name="min_rating" class="form-select">
+                                            <option value="">Any Rating</option>
+                                            <option value="4.5">4.5+ Stars</option>
+                                            <option value="4.0">4.0+ Stars</option>
+                                            <option value="3.5">3.5+ Stars</option>
+                                            <option value="3.0">3.0+ Stars</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <!-- Price Range Filter -->
+                                    <div class="col-md-3">
+                                        <select name="price_range" class="form-select">
+                                            <option value="">Any Price</option>
+                                            <option value="0-5000">Under 5,000 RWF/hr</option>
+                                            <option value="5000-10000">5,000 - 10,000 RWF/hr</option>
+                                            <option value="10000-20000">10,000 - 20,000 RWF/hr</option>
+                                            <option value="20000+">20,000+ RWF/hr</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <!-- Experience Filter -->
+                                    <div class="col-md-3">
+                                        <select name="experience" class="form-select">
+                                            <option value="">Any Experience</option>
+                                            <option value="5+">5+ Years</option>
+                                            <option value="3+">3+ Years</option>
+                                            <option value="1+">1+ Years</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <!-- Verification Filter -->
+                                    <div class="col-md-3">
+                                        <select name="verification" class="form-select">
+                                            <option value="">Any Verification</option>
+                                            <option value="premium">Premium</option>
+                                            <option value="gold">Gold</option>
+                                            <option value="verified">Verified</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row mt-3">
+                                <div class="col-12 d-flex justify-content-center gap-2">
+                                    <button type="submit" class="btn btn-primary btn-search">
+                                        <i class="fas fa-search me-2"></i>Search Providers
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#advancedFilters">
+                                        <i class="fas fa-sliders-h me-2"></i>Advanced Filters
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                        
+                        <!-- Quick Filter Chips -->
+                        <div class="quick-filters text-center mt-3">
+                            <small class="text-muted d-block mb-2">Popular searches:</small>
+                            <a href="providers.php?category=1" class="filter-chip">
+                                <i class="fas fa-wrench me-1"></i>Plumbers
+                            </a>
+                            <a href="providers.php?category=2" class="filter-chip">
+                                <i class="fas fa-bolt me-1"></i>Electricians
+                            </a>
+                            <a href="providers.php?category=3" class="filter-chip">
+                                <i class="fas fa-paint-roller me-1"></i>Painters
+                            </a>
+                            <a href="providers.php?verification=premium" class="filter-chip">
+                                <i class="fas fa-star me-1"></i>Premium Only
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Browse by Category -->
+    <section class="py-5">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Browse by Category</h2>
+                <p class="section-subtitle">Find the right professional for your needs</p>
+            </div>
+            <div class="row g-4">
+                <?php foreach (array_slice($categories, 0, 8) as $category): ?>
+                <div class="col-6 col-md-4 col-lg-3">
+                    <a href="providers.php?category=<?php echo $category['id']; ?>" class="category-card">
+                        <div class="category-icon">
+                            <i class="fas <?php echo $category['icon']; ?>"></i>
+                        </div>
+                        <h5 class="category-name"><?php echo htmlspecialchars($category['name']); ?></h5>
+                        <p class="category-description"><?php echo htmlspecialchars(substr($category['description'], 0, 60)); ?><?php echo strlen($category['description']) > 60 ? '...' : ''; ?></p>
+                        <?php if ($category['is_premium']): ?>
+                            <span class="badge bg-warning text-dark mt-2">Premium</span>
+                        <?php endif; ?>
+                    </a>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php if (count($categories) > 8): ?>
+            <div class="text-center mt-4">
+                <a href="services.php#service-categories" class="btn btn-outline-primary btn-lg">
+                    View All Categories <i class="fas fa-arrow-right ms-2"></i>
+                </a>
+            </div>
+            <?php endif; ?>
+        </div>
+    </section>
+
+    <!-- Featured Providers -->
+    <section class="py-5 bg-light">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Featured Service Providers</h2>
+                <p class="section-subtitle">Top-rated professionals ready to help you</p>
+            </div>
+            <?php if (empty($featured_providers)): ?>
+                <div class="text-center py-5">
+                    <i class="fas fa-users fa-4x text-muted mb-4"></i>
+                    <h4 class="text-muted">No featured providers available</h4>
+                    <p class="text-muted">Check back later for featured service providers</p>
+                </div>
+            <?php else: ?>
+                <div class="row g-4">
+                    <?php foreach ($featured_providers as $provider): ?>
+                    <div class="col-sm-6 col-lg-3">
+                        <div class="provider-card">
+                            <div class="provider-image">
+                                <?php
+                                    // determine profile image URL (fallback to default)
+                                    $profileImage = $provider['profile_image'] ?? '';
+                                    $path1 = 'uploads/profiles/' . $profileImage;
+                                    $path2 = 'uploads/' . $profileImage;
+                                    if ($profileImage && file_exists(__DIR__ . '/' . $path1)) {
+                                        $imgUrl = $path1;
+                                    } elseif ($profileImage && file_exists(__DIR__ . '/' . $path2)) {
+                                        $imgUrl = $path2;
+                                    } else {
+                                        $imgUrl = false; // render initial instead
+                                    }
+                                ?>
+                            <?php if ($imgUrl): ?>
+                                <img src="<?php echo htmlspecialchars($imgUrl); ?>" alt="<?php echo htmlspecialchars($provider['full_name']); ?>" loading="lazy">
+                            <?php else: ?>
+                                <?php $initial = strtoupper(mb_substr(trim($provider['full_name'] ?? ''), 0, 1)); ?>
+                                <div class="avatar-letter" aria-hidden="true"><?php echo htmlspecialchars($initial ?: 'U'); ?></div>
+                            <?php endif; ?>
+                            <span class="provider-badge badge-featured">
+                                <i class="fas fa-star me-1"></i>Featured
+                            </span>
+                            <span class="provider-badge badge-available">
+                                <i class="fas fa-check me-1"></i>Available
+                            </span>
+                            </div>
+                            <div class="provider-content">
+                                <h5 class="provider-name">
+                                    <?php echo htmlspecialchars($provider['full_name']); ?>
+                                    <?php if ($provider['verification_level'] && $provider['verification_level'] !== 'none'): ?>
+                                        <span class="verification-badge badge-<?php echo $provider['verification_level']; ?>">
+                                            <i class="fas fa-shield-alt me-1"></i><?php echo ucfirst($provider['verification_level']); ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </h5>
+                                <div class="provider-profession">
+                                    <i class="fas fa-briefcase me-2"></i>
+                                    <?php echo htmlspecialchars($provider['profession']); ?>
+                                </div>
+                                <div class="provider-location">
+                                    <i class="fas fa-map-marker-alt me-2"></i>
+                                    <?php echo htmlspecialchars($provider['location']); ?>
+                                    <?php if ($provider['district']): ?>, <?php echo htmlspecialchars($provider['district']); ?><?php endif; ?>
+                                </div>
+                                <div class="provider-rating">
+                                    <span class="rating-stars">
+                                        <?php 
+                                        $rating = $provider['average_rating'] ?? 0;
+                                        for ($i = 1; $i <= 5; $i++): 
+                                            echo $i <= $rating ? '<i class="fas fa-star"></i>' : '<i class="far fa-star"></i>';
+                                        endfor; ?>
+                                    </span>
+                                    <span class="rating-count">(<?php echo $provider['total_reviews'] ?? 0; ?>)</span>
+                                </div>
+                                <div class="provider-footer">
+                                    <span class="provider-rate">
+                                        <?php echo number_format($provider['hourly_rate'] ?? 0); ?> RWF/hr
+                                    </span>
+                                    <a href="provider-profile.php?id=<?php echo $provider['provider_id']; ?>" 
+                                       class="btn btn-outline-primary btn-view-profile"> Hire Now </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <div class="text-center mt-5">
+                    <a href="providers.php" class="btn btn-primary btn-lg px-5">
+                        View All Providers <i class="fas fa-arrow-right ms-2"></i>
+                    </a>
+                </div>
+            <?php endif; ?>
+        </div>
+    </section>
+
+
+        <!-- Why Choose BII LocalFinder - Trust Section -->
+    <section class="py-5">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Why Choose BII LocalFinder</h2>
+                <p class="section-subtitle">Trust, quality, and transparency - your reliable local service marketplace</p>
+            </div>
+            <div class="row g-4">
+                <div class="col-md-6 col-lg-3">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center p-4">
+                            <div class="mb-4">
+                                <div class="icon-wrapper rounded-circle bg-primary bg-opacity-10 d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                                    <i class="fas fa-shield-check fa-2x text-primary"></i>
+                                </div>
+                            </div>
+                            <h5 class="card-title fw-bold mb-3">Verified Providers</h5>
+                            <p class="card-text text-muted">Every provider is thoroughly reviewed and verified before appearing on our platform.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center p-4">
+                            <div class="mb-4">
+                                <div class="icon-wrapper rounded-circle bg-success bg-opacity-10 d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                                    <i class="fas fa-star fa-2x text-success"></i>
+                                </div>
+                            </div>
+                            <h5 class="card-title fw-bold mb-3">Real Ratings & Reviews</h5>
+                            <p class="card-text text-muted">Authentic feedback from real customers to help you make informed decisions.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center p-4">
+                            <div class="mb-4">
+                                <div class="icon-wrapper rounded-circle bg-warning bg-opacity-10 d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                                    <i class="fas fa-map-marker-alt fa-2x text-warning"></i>
+                                </div>
+                            </div>
+                            <h5 class="card-title fw-bold mb-3">Local Professionals Near You</h5>
+                            <p class="card-text text-muted">Find trusted service providers in your neighborhood for quick and reliable service.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center p-4">
+                            <div class="mb-4">
+                                <div class="icon-wrapper rounded-circle bg-info bg-opacity-10 d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                                    <i class="fas fa-lock fa-2x text-info"></i>
+                                </div>
+                            </div>
+                            <h5 class="card-title fw-bold mb-3">Secure & Transparent Platform</h5>
+                            <p class="card-text text-muted">Your safety is our priority with secure payments and clear service terms.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row mt-5">
+                <div class="col-12">
+                    <div class="bg-light rounded-3 p-4 p-md-5">
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <h4 class="mb-3">Better than WhatsApp or Asking Friends</h4>
+                                <p class="mb-0 text-muted">
+                                    Unlike random WhatsApp recommendations or friends' suggestions, we provide verified professionals with documented experience, real customer reviews, and clear pricing. No more uncertainty about quality, reliability, or fair pricing.
+                                </p>
+                            </div>
+                            <div class="col-md-4 text-center text-md-end">
+                                <div class="d-inline-flex align-items-center bg-white px-4 py-3 rounded-3 shadow-sm">
+                                    <i class="fas fa-check-circle text-success fa-2x me-3"></i>
+                                    <div class="text-start">
+                                        <div class="h3 mb-0 fw-bold">100%</div>
+                                        <small class="text-muted">Verified Trust</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Browse by Location -->
+    <?php if (!empty($nearby_providers)): ?>
+    <section class="py-5">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Find Providers Near You</h2>
+                <p class="section-subtitle">Browse professionals in popular locations</p>
+            </div>
+            <div class="row g-4">
+                <?php foreach ($nearby_providers as $location): ?>
+                <div class="col-6 col-md-4 col-lg-2">
+                    <a href="providers.php?district=<?php echo urlencode($location['district']); ?>" class="location-card">
+                        <div class="location-icon">
+                            <i class="fas fa-map-pin"></i>
+                        </div>
+                        <h6 class="location-name"><?php echo htmlspecialchars($location['district']); ?></h6>
+                        <p class="location-count"><?php echo $location['provider_count']; ?> providers</p>
+                    </a>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </section>
+    <?php endif; ?>
+
+
+        <!-- Popular Services Near You (Demand-Based Section) -->
+    <section class="py-5 bg-light">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Popular Services Near You</h2>
+                <p class="section-subtitle">Most requested services in your area</p>
+            </div>
+            
+            <?php
+            // Fetch popular individual services (not just categories)
+            $popular_services_data = cache_get('popular_individual_services', 300);
+            if ($popular_services_data === false) {
+                $providerWhere = ["u.is_verified = 1", "sp.availability = 'available'", "ps.is_available = 1"];
+                if ($hasIsActive) $providerWhere[] = "sp.is_active = 1";
+                if ($hasIsBanned) $providerWhere[] = "sp.is_banned = 0";
+                $providerWhereSql = implode(' AND ', $providerWhere);
+                
+                // Get most popular individual services based on bookings or provider count
+                $stmt = $db->prepare("
+                    SELECT 
+                        ps.id as service_id,
+                        ps.name as service_name,
+                        ps.description as service_description,
+                        ps.price as service_price,
+                        ps.payment_type,
+                        ps.duration,
+                        c.name as category_name,
+                        c.icon as category_icon,
+                        COUNT(DISTINCT sp.id) as provider_count,
+                        COUNT(DISTINCT b.id) as booking_count,
+                        AVG(sp.average_rating) as avg_rating
+                    FROM provider_services ps
+                    JOIN service_providers sp ON ps.provider_id = sp.id
+                    JOIN users u ON sp.user_id = u.id
+                    JOIN categories c ON ps.category_id = c.id
+                    LEFT JOIN bookings b ON ps.id = b.service_id AND b.status = 'completed'
+                    WHERE {$providerWhereSql}
+                    AND c.is_active = 1
+                    GROUP BY ps.id, ps.name, ps.description, ps.price, ps.payment_type
+                    HAVING provider_count > 0
+                    ORDER BY booking_count DESC, provider_count DESC
+                    LIMIT 8
+                ");
+                $stmt->execute();
+                $popular_services_data = $stmt->fetchAll();
+                cache_set('popular_individual_services', $popular_services_data);
+            }
+            
+            // If no data from actual services, show default services
+            if (empty($popular_services_data)) {
+                $default_services = [
+                    [
+                        'service_name' => 'Plumbing Repair', 
+                        'service_description' => 'Fix leaks, install pipes, unclog drains',
+                        'service_price' => 15000, 
+                        'payment_type' => 'per_service',
+                        'category_icon' => 'fa-wrench',
+                        'provider_count' => 23
+                    ],
+                    [
+                        'service_name' => 'Electrical Wiring', 
+                        'service_description' => 'Install outlets, fix circuits, lighting',
+                        'service_price' => 12000, 
+                        'payment_type' => 'per_hour',
+                        'category_icon' => 'fa-bolt',
+                        'provider_count' => 18
+                    ],
+                    [
+                        'service_name' => 'Phone Screen Repair', 
+                        'service_description' => 'Fix cracked screens, replace batteries',
+                        'service_price' => 25000, 
+                        'payment_type' => 'per_service',
+                        'category_icon' => 'fa-mobile-alt',
+                        'provider_count' => 15
+                    ],
+                    [
+                        'service_name' => 'House Cleaning', 
+                        'service_description' => 'Deep cleaning, regular maintenance',
+                        'service_price' => 8000, 
+                        'payment_type' => 'per_hour',
+                        'category_icon' => 'fa-broom',
+                        'provider_count' => 27
+                    ],
+                    [
+                        'service_name' => 'Car Maintenance', 
+                        'service_description' => 'Oil change, brake repair, diagnostics',
+                        'service_price' => 20000, 
+                        'payment_type' => 'per_service',
+                        'category_icon' => 'fa-car',
+                        'provider_count' => 12
+                    ],
+                    [
+                        'service_name' => 'Interior Painting', 
+                        'service_description' => 'Wall painting, color consultation',
+                        'service_price' => 10000, 
+                        'payment_type' => 'per_day',
+                        'category_icon' => 'fa-paint-roller',
+                        'provider_count' => 14
+                    ],
+                    [
+                        'service_name' => 'Furniture Making', 
+                        'service_description' => 'Custom furniture, repairs, installations',
+                        'service_price' => 18000, 
+                        'payment_type' => 'per_service',
+                        'category_icon' => 'fa-hammer',
+                        'provider_count' => 11
+                    ],
+                    [
+                        'service_name' => 'Garden Maintenance', 
+                        'service_description' => 'Lawn care, planting, landscaping',
+                        'service_price' => 7000, 
+                        'payment_type' => 'per_hour',
+                        'category_icon' => 'fa-leaf',
+                        'provider_count' => 9
+                    ]
+                ];
+                $popular_services_data = $default_services;
+            }
+            ?>
+            
+            <div class="row g-4">
+                <?php foreach ($popular_services_data as $service): 
+                    // Format payment type for display
+                    $payment_types = [
+                        'per_hour' => 'Per Hour',
+                        'per_service' => 'Per Service', 
+                        'per_day' => 'Per Day'
+                    ];
+                    $payment_type_display = $payment_types[$service['payment_type']] ?? 'Per Service';
+                    
+                    // Shorten description if too long
+                    $short_description = strlen($service['service_description']) > 70 ? 
+                        substr($service['service_description'], 0, 70) . '...' : 
+                        $service['service_description'];
+                ?>
+                <div class="col-12 col-md-6 col-lg-3">
+                    <div class="service-card-popular">
+                        <div class="service-card-header">
+                            <div class="service-icon-popular">
+                                <i class="fas <?php echo $service['category_icon'] ?? 'fa-tools'; ?>"></i>
+                            </div>
+                            <div class="service-badge-popular">
+                                <span class="badge bg-primary"><?php echo $payment_type_display; ?></span>
+                            </div>
+                        </div>
+                        
+                        <div class="service-card-body">
+                            <h5 class="service-title-popular">
+                                <?php echo htmlspecialchars($service['service_name']); ?>
+                            </h5>
+                            <p class="service-description-popular">
+                                <?php echo htmlspecialchars($short_description); ?>
+                            </p>
+                        </div>
+                        
+                        <div class="service-card-footer">
+                            <div class="service-price-popular">
+                                <span class="price-amount">
+                                    RWF <?php echo number_format($service['service_price']); ?>
+                                </span>
+                                <small class="price-unit">
+                                    <?php 
+                                        echo strtolower(str_replace('Per ', '', $payment_type_display));
+                                        if (isset($service['duration'])) {
+                                            echo ' • ' . $service['duration'] . ' mins';
+                                        }
+                                    ?>
+                                </small>
+                            </div>
+                            <div class="service-availability">
+                                <span class="provider-count-popular">
+                                    <i class="fas fa-users me-1"></i>
+                                    <?php echo $service['provider_count']; ?> available
+                                </span>
+                                <?php if (isset($service['avg_rating']) && $service['avg_rating'] > 0): ?>
+                                <span class="service-rating-popular">
+                                    <i class="fas fa-star text-warning me-1"></i>
+                                    <?php echo number_format($service['avg_rating'], 1); ?>
+                                </span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        
+                        <a href="providers.php?service_id=<?php echo isset($service['service_id']) ? intval($service['service_id']) : 0; ?>&query=<?php echo urlencode($service['service_name']); ?>" 
+                           class="stretched-link service-view-link">
+                            Find Providers <i class="fas fa-arrow-right ms-1"></i>
+                        </a>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            
+            <?php if (count($popular_services_data) >= 8): ?>
+            <div class="text-center mt-4">
+                <a href="services.php" class="btn btn-outline-primary btn-lg">
+                    Browse All Services <i class="fas fa-arrow-right ms-2"></i>
+                </a>
+            </div>
+            <?php endif; ?>
+        </div>
+    </section>
+
+
+
+    <!-- Recently Joined Providers -->
+    <?php if (!empty($recent_providers)): ?>
+    <section class="py-5 bg-light">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">New to <?php echo htmlspecialchars($platform_name); ?></h2>
+                <p class="section-subtitle">Recently joined service providers</p>
+            </div>
+            <div class="row g-4">
+                <?php foreach ($recent_providers as $provider): ?>
+                <div class="col-sm-6 col-lg-3">
+                    <div class="provider-card">
+                        <div class="provider-image">
+                            <?php
+                                // determine profile image URL (fallback to default)
+                                $profileImage = $provider['profile_image'] ?? '';
+                                $path1 = 'uploads/profiles/' . $profileImage;
+                                $path2 = 'uploads/' . $profileImage;
+                                if ($profileImage && file_exists(__DIR__ . '/' . $path1)) {
+                                    $imgUrl = $path1;
+                                } elseif ($profileImage && file_exists(__DIR__ . '/' . $path2)) {
+                                    $imgUrl = $path2;
+                                } else {
+                                    $imgUrl = false; // render initial instead
+                                }
+                            ?>
+                            <?php if ($imgUrl): ?>
+                                <img src="<?php echo htmlspecialchars($imgUrl); ?>" alt="<?php echo htmlspecialchars($provider['full_name']); ?>" loading="lazy">
+                            <?php else: ?>
+                                <?php $initial = strtoupper(mb_substr(trim($provider['full_name'] ?? ''), 0, 1)); ?>
+                                <div class="avatar-letter" aria-hidden="true"><?php echo htmlspecialchars($initial ?: 'U'); ?></div>
+                            <?php endif; ?>
+                            <span class="provider-badge badge-new">
+                                <i class="fas fa-certificate me-1"></i>New
+                            </span>
+                        </div>
+                        <div class="provider-content">
+                            <h5 class="provider-name">
+                                <?php echo htmlspecialchars($provider['full_name']); ?>
+                                <?php if ($provider['verification_level'] && $provider['verification_level'] !== 'none'): ?>
+                                    <span class="verification-badge badge-<?php echo $provider['verification_level']; ?>">
+                                        <i class="fas fa-shield-alt me-1"></i><?php echo ucfirst($provider['verification_level']); ?>
+                                    </span>
+                                <?php endif; ?>
+                            </h5>
+                            <div class="provider-profession">
+                                <i class="fas fa-briefcase me-2"></i>
+                                <?php echo htmlspecialchars($provider['profession']); ?>
+                            </div>
+                            <div class="provider-location">
+                                <i class="fas fa-map-marker-alt me-2"></i>
+                                <?php echo htmlspecialchars($provider['location']); ?>
+                                <?php if ($provider['district']): ?>, <?php echo htmlspecialchars($provider['district']); ?><?php endif; ?>
+                            </div>
+                            <div class="provider-rating">
+                                <span class="rating-stars">
+                                    <?php 
+                                    $rating = $provider['average_rating'] ?? 0;
+                                    for ($i = 1; $i <= 5; $i++): 
+                                        echo $i <= $rating ? '<i class="fas fa-star"></i>' : '<i class="far fa-star"></i>';
+                                    endfor; ?>
+                                </span>
+                                <span class="rating-count">(<?php echo $provider['total_reviews'] ?? 0; ?>)</span>
+                            </div>
+                            <div class="provider-footer mt-3">
+                                <a href="provider-profile.php?id=<?php echo $provider['provider_id']; ?>" 
+                                   class="btn btn-outline-primary btn-view-profile w-100">
+                                    View Profile
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </section>
+    <?php endif; ?>
+
+    <!-- How It Works -->
+    <section class="py-5">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">How It Works</h2>
+                <p class="section-subtitle">Find and hire professionals in 4 easy steps</p>
+            </div>
+            <div class="row g-4">
+                <div class="col-md-6 col-lg-3">
+                    <div class="step-card">
+                        <div class="step-number">1</div>
+                        <h5 class="step-title">Search Services</h5>
+                        <p class="step-description">Browse or search for the service you need in your location</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <div class="step-card">
+                        <div class="step-number">2</div>
+                        <h5 class="step-title">Compare Providers</h5>
+                        <p class="step-description">View profiles, ratings, and reviews to find the right professional</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <div class="step-card">
+                        <div class="step-number">3</div>
+                        <h5 class="step-title">Book Service</h5>
+                        <p class="step-description">Contact the provider and schedule your service</p>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <div class="step-card">
+                        <div class="step-number">4</div>
+                        <h5 class="step-title">Leave Review</h5>
+                        <p class="step-description">Rate and review the service to help others</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+        <!-- Frequently Asked Questions (Trust & Clarity Section) -->
+    <section class="py-5">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Frequently Asked Questions</h2>
+                <p class="section-subtitle">Clear answers to common questions about our platform</p>
+            </div>
+            
+            <div class="row">
+                <div class="col-lg-6">
+                    <!-- Client Questions -->
+                    <div class="mb-5">
+                        <h3 class="h4 mb-4 text-primary">
+                            <i class="fas fa-users me-2"></i> For Clients
+                        </h3>
+                        <div class="accordion" id="clientFAQ">
+                            <!-- Q1: Is it free to use? -->
+                            <div class="accordion-item border-0 mb-3">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button bg-light rounded-3" type="button" 
+                                            data-bs-toggle="collapse" data-bs-target="#faq1" 
+                                            aria-expanded="true" aria-controls="faq1">
+                                        <strong>Is it free to use BII LocalFinder?</strong>
+                                    </button>
+                                </h2>
+                                <div id="faq1" class="accordion-collapse collapse show" 
+                                     data-bs-parent="#clientFAQ">
+                                    <div class="accordion-body pt-3">
+                                        <div class="d-flex mb-2">
+                                            <div class="me-3">
+                                                <div class="bg-success bg-opacity-10 rounded-circle p-2">
+                                                    <i class="fas fa-check-circle text-success fa-lg"></i>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <p class="mb-0 fw-semibold text-success">Yes, completely free for clients.</p>
+                                            </div>
+                                        </div>
+                                        <p class="mb-0 ps-4">
+                                            Browsing services, searching providers, and contacting professionals is completely free for clients. 
+                                            You only pay the service provider directly for the work done.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Q2: How do I contact a provider? -->
+                            <div class="accordion-item border-0 mb-3">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button bg-light rounded-3 collapsed" type="button" 
+                                            data-bs-toggle="collapse" data-bs-target="#faq2">
+                                        <strong>How do I contact a service provider?</strong>
+                                    </button>
+                                </h2>
+                                <div id="faq2" class="accordion-collapse collapse" 
+                                     data-bs-parent="#clientFAQ">
+                                    <div class="accordion-body pt-3">
+                                        <p class="mb-3">You can contact providers directly in two ways:</p>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <div class="bg-light rounded-3 p-3 mb-3">
+                                                    <div class="d-flex align-items-center mb-2">
+                                                        <div class="bg-primary bg-opacity-10 rounded-circle p-2 me-3">
+                                                            <i class="fas fa-phone text-primary"></i>
+                                                        </div>
+                                                        <strong>Direct Phone Call</strong>
+                                                    </div>
+                                                    <p class="small mb-0">View provider's phone number on their profile</p>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="bg-light rounded-3 p-3 mb-3">
+                                                    <div class="d-flex align-items-center mb-2">
+                                                        <div class="bg-success bg-opacity-10 rounded-circle p-2 me-3">
+                                                            <i class="fab fa-whatsapp text-success"></i>
+                                                        </div>
+                                                        <strong>WhatsApp (if available)</strong>
+                                                    </div>
+                                                    <p class="small mb-0">Many providers use WhatsApp for quick communication</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <p class="mb-0 fw-semibold">No registration needed to contact providers. No middleman.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Q3: Are providers verified? -->
+                            <div class="accordion-item border-0 mb-3">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button bg-light rounded-3 collapsed" type="button" 
+                                            data-bs-toggle="collapse" data-bs-target="#faq3">
+                                        <strong>Are providers on BII LocalFinder verified?</strong>
+                                    </button>
+                                </h2>
+                                <div id="faq3" class="accordion-collapse collapse" 
+                                     data-bs-parent="#clientFAQ">
+                                    <div class="accordion-body pt-3">
+                                        <div class="mb-3">
+                                            <div class="d-flex align-items-center mb-3">
+                                                <div class="me-3">
+                                                    <div class="bg-success bg-opacity-10 rounded-circle p-2">
+                                                        <i class="fas fa-shield-check text-success fa-lg"></i>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <p class="mb-0 fw-semibold">Yes, all providers go through verification.</p>
+                                                </div>
+                                            </div>
+                                            <p>
+                                                Providers go through an identity and profile review process before appearing on the platform. 
+                                                Verified providers are clearly marked on their profiles.
+                                            </p>
+                                        </div>
+                                        
+                                        <div class="bg-light rounded-3 p-3">
+                                            <h6 class="mb-2">Verification Levels:</h6>
+                                            <div class="row g-2">
+                                                <div class="col-12">
+                                                    <div class="d-flex align-items-center p-2 bg-white rounded-2">
+                                                        <span class="badge bg-success me-3">✓ Verified</span>
+                                                        <small>Identity confirmed, basic profile review</small>
+                                                    </div>
+                                                </div>
+                                                <div class="col-12">
+                                                    <div class="d-flex align-items-center p-2 bg-white rounded-2">
+                                                        <span class="badge bg-warning text-dark me-3">⭐ Gold</span>
+                                                        <small>High ratings, verified experience</small>
+                                                    </div>
+                                                </div>
+                                                <div class="col-12">
+                                                    <div class="d-flex align-items-center p-2 bg-white rounded-2">
+                                                        <span class="badge bg-primary me-3">💎 Premium</span>
+                                                        <small>Top-rated professionals, premium service</small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Q4: Ratings & Reviews -->
+                            <div class="accordion-item border-0 mb-3">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button bg-light rounded-3 collapsed" type="button" 
+                                            data-bs-toggle="collapse" data-bs-target="#faq4">
+                                        <strong>How do ratings and reviews work?</strong>
+                                    </button>
+                                </h2>
+                                <div id="faq4" class="accordion-collapse collapse" 
+                                     data-bs-parent="#clientFAQ">
+                                    <div class="accordion-body pt-3">
+                                        <div class="d-flex mb-3">
+                                            <div class="me-3">
+                                                <div class="bg-warning bg-opacity-10 rounded-circle p-2">
+                                                    <i class="fas fa-star text-warning fa-lg"></i>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <p class="mb-0 fw-semibold">Real reviews from real clients.</p>
+                                            </div>
+                                        </div>
+                                        <p>
+                                            After a service is completed, clients can leave a rating and review based on their actual experience. 
+                                            These reviews help others choose trusted professionals.
+                                        </p>
+                                        
+                                        <div class="bg-light rounded-3 p-3 mt-3">
+                                            <div class="d-flex align-items-start">
+                                                <i class="fas fa-info-circle text-primary mt-1 me-2"></i>
+                                                <div>
+                                                    <small class="text-muted">
+                                                        Reviews are only accepted from clients who have actually booked and completed services. 
+                                                        This ensures authenticity and helps build trust in our community.
+                                                    </small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Q5: Payment handling -->
+                            <div class="accordion-item border-0 mb-3">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button bg-light rounded-3 collapsed" type="button" 
+                                            data-bs-toggle="collapse" data-bs-target="#faq5">
+                                        <strong>Is payment handled on the platform?</strong>
+                                    </button>
+                                </h2>
+                                <div id="faq5" class="accordion-collapse collapse" 
+                                     data-bs-parent="#clientFAQ">
+                                    <div class="accordion-body pt-3">
+                                        <div class="d-flex align-items-center mb-3">
+                                            <div class="me-3">
+                                                <div class="bg-info bg-opacity-10 rounded-circle p-2">
+                                                    <i class="fas fa-money-bill-wave text-info fa-lg"></i>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <p class="mb-0 fw-semibold">Direct payments to providers.</p>
+                                            </div>
+                                        </div>
+                                        <p class="mb-3">
+                                            Currently, payments are made directly between you and the service provider. 
+                                            We focus on connecting you with trusted professionals and ensuring a smooth service experience.
+                                        </p>
+                                        <div class="alert alert-info mb-0">
+                                            <div class="d-flex align-items-center">
+                                                <i class="fas fa-rocket me-2"></i>
+                                                <div>
+                                                    <strong>Coming Soon:</strong> Secure online payment options will be introduced in future updates.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-6">
+                    <!-- Provider Questions -->
+                    <div class="mb-5">
+                        <h3 class="h4 mb-4 text-success">
+                            <i class="fas fa-briefcase me-2"></i> For Service Providers
+                        </h3>
+                        <div class="accordion" id="providerFAQ">
+                            <!-- Q6: How to become a provider -->
+                            <div class="accordion-item border-0 mb-3">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button bg-light rounded-3" type="button" 
+                                            data-bs-toggle="collapse" data-bs-target="#faq6" 
+                                            aria-expanded="true">
+                                        <strong>How can I become a service provider?</strong>
+                                    </button>
+                                </h2>
+                                <div id="faq6" class="accordion-collapse collapse show" 
+                                     data-bs-parent="#providerFAQ">
+                                    <div class="accordion-body pt-3">
+                                        <div class="d-flex align-items-center mb-3">
+                                            <div class="me-3">
+                                                <div class="bg-success bg-opacity-10 rounded-circle p-2">
+                                                    <i class="fas fa-user-plus text-success fa-lg"></i>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <p class="mb-0 fw-semibold">Simple registration process.</p>
+                                            </div>
+                                        </div>
+                                        <p class="mb-3">
+                                            You can register as a service provider by clicking "Register as Provider" and completing your profile. 
+                                            Once your profile is reviewed and approved, it becomes visible to clients in your area.
+                                        </p>
+                                        <div class="text-center">
+                                            <a href="register.php?type=provider" class="btn btn-success btn-sm">
+                                                <i class="fas fa-user-plus me-2"></i> Register as Provider
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Q7: Is provider registration free? -->
+                            <div class="accordion-item border-0 mb-3">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button bg-light rounded-3 collapsed" type="button" 
+                                            data-bs-toggle="collapse" data-bs-target="#faq7">
+                                        <strong>Is provider registration free?</strong>
+                                    </button>
+                                </h2>
+                                <div id="faq7" class="accordion-collapse collapse" 
+                                     data-bs-parent="#providerFAQ">
+                                    <div class="accordion-body pt-3">
+                                        <div class="d-flex align-items-center mb-3">
+                                            <div class="me-3">
+                                                <div class="bg-success bg-opacity-10 rounded-circle p-2">
+                                                    <i class="fas fa-check-circle text-success fa-lg"></i>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <p class="mb-0 fw-semibold">Yes, basic registration is completely free.</p>
+                                            </div>
+                                        </div>
+                                        <p>
+                                            There are no hidden fees. You can create your profile, list your services, and start getting clients without any cost.
+                                        </p>
+                                        <div class="bg-light rounded-3 p-3">
+                                            <small class="text-muted">
+                                                <i class="fas fa-info-circle me-1"></i>
+                                                Optional premium features may be introduced in the future to help increase your visibility, 
+                                                but basic access will always remain free.
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Q8: How to get more clients -->
+                            <div class="accordion-item border-0 mb-3">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button bg-light rounded-3 collapsed" type="button" 
+                                            data-bs-toggle="collapse" data-bs-target="#faq8">
+                                        <strong>How do I get more clients?</strong>
+                                    </button>
+                                </h2>
+                                <div id="faq8" class="accordion-collapse collapse" 
+                                     data-bs-parent="#providerFAQ">
+                                    <div class="accordion-body pt-3">
+                                        <div class="d-flex align-items-center mb-3">
+                                            <div class="me-3">
+                                                <div class="bg-primary bg-opacity-10 rounded-circle p-2">
+                                                    <i class="fas fa-chart-line text-primary fa-lg"></i>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <p class="mb-0 fw-semibold">Complete profile = More clients</p>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="row g-2 mb-3">
+                                            <div class="col-md-6">
+                                                <div class="bg-white border rounded-2 p-3">
+                                                    <div class="d-flex align-items-center mb-2">
+                                                        <div class="bg-success bg-opacity-10 rounded-circle p-1 me-2">
+                                                            <i class="fas fa-user-check text-success"></i>
+                                                        </div>
+                                                        <small class="fw-semibold">Complete Profile</small>
+                                                    </div>
+                                                    <small class="text-muted">100% profile completion</small>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="bg-white border rounded-2 p-3">
+                                                    <div class="d-flex align-items-center mb-2">
+                                                        <div class="bg-warning bg-opacity-10 rounded-circle p-1 me-2">
+                                                            <i class="fas fa-star text-warning"></i>
+                                                        </div>
+                                                        <small class="fw-semibold">Good Ratings</small>
+                                                    </div>
+                                                    <small class="text-muted">Positive client reviews</small>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="bg-white border rounded-2 p-3">
+                                                    <div class="d-flex align-items-center mb-2">
+                                                        <div class="bg-info bg-opacity-10 rounded-circle p-1 me-2">
+                                                            <i class="fas fa-clock text-info"></i>
+                                                        </div>
+                                                        <small class="fw-semibold">Fast Response</small>
+                                                    </div>
+                                                    <small class="text-muted">Quick reply to inquiries</small>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="bg-white border rounded-2 p-3">
+                                                    <div class="d-flex align-items-center mb-2">
+                                                        <div class="bg-primary bg-opacity-10 rounded-circle p-1 me-2">
+                                                            <i class="fas fa-images text-primary"></i>
+                                                        </div>
+                                                        <small class="fw-semibold">Portfolio Photos</small>
+                                                    </div>
+                                                    <small class="text-muted">Show your previous work</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <p class="mb-0 small text-muted">
+                                            Providers with complete profiles, good ratings, and fast response times are 
+                                            more likely to get contacted by clients.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Q9: Edit profile -->
+                            <div class="accordion-item border-0">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button bg-light rounded-3 collapsed" type="button" 
+                                            data-bs-toggle="collapse" data-bs-target="#faq9">
+                                        <strong>Can I edit my profile later?</strong>
+                                    </button>
+                                </h2>
+                                <div id="faq9" class="accordion-collapse collapse" 
+                                     data-bs-parent="#providerFAQ">
+                                    <div class="accordion-body pt-3">
+                                        <div class="d-flex align-items-center mb-3">
+                                            <div class="me-3">
+                                                <div class="bg-primary bg-opacity-10 rounded-circle p-2">
+                                                    <i class="fas fa-edit text-primary fa-lg"></i>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <p class="mb-0 fw-semibold">Yes, full control at any time.</p>
+                                            </div>
+                                        </div>
+                                        <p>
+                                            Providers can update their profile information, service offerings, availability, 
+                                            and pricing at any time from their dashboard. Your changes appear immediately.
+                                        </p>
+                                        <div class="bg-light rounded-3 p-3">
+                                            <div class="d-flex">
+                                                <i class="fas fa-sync-alt text-primary mt-1 me-2"></i>
+                                                <div>
+                                                    <small class="text-muted">
+                                                        Regular updates to your profile, services, and portfolio can help attract more clients 
+                                                        and keep your business growing.
+                                                    </small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Still have questions? -->
+                    <div class="bg-primary bg-opacity-5 rounded-3 p-4 border border-primary border-opacity-25">
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="me-3">
+                                <div class="bg-primary rounded-circle p-2">
+                                    <i class="fas fa-question-circle fa-lg text-white"></i>
+                                </div>
+                            </div>
+                            <div>
+                                <h5 class="mb-0">Still have questions?</h5>
+                            </div>
+                        </div>
+                        <p class="mb-3">We're here to help you get the most out of BII LocalFinder.</p>
+                        <div class="d-flex gap-2">
+                            <a href="contact.php" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-envelope me-2"></i> Contact Support
+                            </a>
+                            <a href="faq.php" class="btn btn-primary btn-sm">
+                                <i class="fas fa-list-alt me-2"></i> View Full FAQ
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section text-white">
+        <div class="container cta-content text-center">
+            <h2 class="cta-title">Are You a Service Provider?</h2>
+            <p class="cta-subtitle">Join <?php echo htmlspecialchars($platform_name); ?> and connect with thousands of potential clients</p>
+            <?php if (getPlatformSetting('provider_registration', '1')): ?>
+                <a href="register.php?type=provider" class="btn btn-light btn-cta">
+                    <i class="fas fa-user-plus me-2"></i>Register as Provider
+                </a>
+            <?php else: ?>
+                <button class="btn btn-light btn-cta" disabled>
+                    <i class="fas fa-pause me-2"></i>Provider Registration Temporarily Closed
+                </button>
+            <?php endif; ?>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="row g-4">
+                <div class="col-md-6 col-lg-3">
+                    <h5 class="footer-title"><?php echo htmlspecialchars($platform_name); ?></h5>
+                    <p class="text-secondary"><?php echo htmlspecialchars($platform_description); ?></p>
+                    <div class="social-links mt-4">
+                        <a href="#" class="social-link"><i class="fab fa-facebook"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-twitter"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-instagram"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-linkedin"></i></a>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <h5 class="footer-title">Quick Links</h5>
+                    <a href="about.php" class="footer-link">About Us</a>
+                    <a href="services.php" class="footer-link">Services</a>
+                    <a href="providers.php" class="footer-link">Find Providers</a>
+                    <a href="contact.php" class="footer-link">Contact</a>
+                    <a href="faq.php" class="footer-link">FAQ</a>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <h5 class="footer-title">For Providers</h5>
+                    <a href="register.php?type=provider" class="footer-link">Register</a>
+                    <a href="login.php" class="footer-link">Login</a>
+                    <a href="how-it-works.php" class="footer-link">How It Works</a>
+                    <a href="pricing.php" class="footer-link">Pricing</a>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <h5 class="footer-title">Contact Us</h5>
+                    <p class="text-secondary mb-2">
+                        <i class="fas fa-envelope me-2"></i><?php echo htmlspecialchars($contact_email); ?>
+                    </p>
+                    <p class="text-secondary">
+                        <i class="fas fa-phone me-2"></i><?php echo htmlspecialchars($contact_phone); ?>
+                    </p>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p class="mb-0"><?php echo htmlspecialchars($copyright_text); ?></p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Animated stats counter
+        document.addEventListener('DOMContentLoaded', function() {
+            const counters = document.querySelectorAll('.stat-number');
+            const speed = 200;
+            
+            const animateCounter = (counter) => {
+                const target = parseInt(counter.textContent.replace(/,/g, ''));
+                const increment = target / speed;
+                let current = 0;
+                
+                const updateCounter = () => {
+                    current += increment;
+                    if (current < target) {
+                        counter.textContent = Math.ceil(current).toLocaleString();
+                        requestAnimationFrame(updateCounter);
+                    } else {
+                        counter.textContent = target.toLocaleString();
+                    }
+                };
+                
+                updateCounter();
+            };
+            
+            // Intersection Observer for scroll animation
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        animateCounter(entry.target);
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, { threshold: 0.5 });
+            
+            counters.forEach(counter => observer.observe(counter));
+        });
+        
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

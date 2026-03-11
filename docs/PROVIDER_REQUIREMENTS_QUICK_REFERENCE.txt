@@ -1,0 +1,223 @@
+# Provider Requirements - Quick Reference
+
+## 5 Core Requirements
+1. 🆔 **National ID / Passport** - Verified document upload
+2. 📸 **Profile Photo** - Real face image
+3. ✍️ **Bio & Experience** - Professional description + years
+4. 💼 **Service with Price** - At least 1 service with pricing
+5. 🕐 **Working Hours** - Availability schedule set
+
+---
+
+## Quick Snippets
+
+### Show Full Checklist (Profile/Settings Page)
+```php
+<?php require_once '../includes/provider_requirements.php'; 
+$req = new ProviderRequirements($db, $provider_id);
+echo $req->renderChecklist(true); // true = show help text
+?>
+```
+
+### Show Mini Checklist (Directory/Cards)
+```php
+<?php require_once '../includes/provider_requirements.php'; 
+$req = new ProviderRequirements($db, $provider_id);
+echo $req->renderMiniChecklist(false); // false = no percentage
+?>
+```
+
+### Show Status Badge
+```php
+<?php require_once '../includes/provider_requirements.php'; 
+$req = new ProviderRequirements($db, $provider_id);
+echo $req->renderCompletionBadge();
+?>
+```
+
+### Check Completion Percentage
+```php
+<?php require_once '../includes/provider_requirements.php'; 
+$req = new ProviderRequirements($db, $provider_id);
+$pct = $req->getCompletionPercentage(); // 0-100
+$count = $req->getCompletedCount(); // ['completed' => 4, 'total' => 5]
+?>
+```
+
+### Check if Ready for Bookings
+```php
+<?php require_once '../includes/provider_directory_helpers.php';
+if (isProviderReadyForBookings($provider, $db, 80)) {
+    echo "Can receive bookings";
+}
+?>
+```
+
+### Get Remaining Requirements
+```php
+<?php require_once '../includes/provider_directory_helpers.php';
+$remaining = getRemainingRequirements($db, $provider_id);
+foreach ($remaining as $req) {
+    echo $req['name'] . ": " . $req['help_text'];
+}
+?>
+```
+
+### Render Full Directory List
+```php
+<?php require_once '../includes/provider_directory_helpers.php';
+$providers = $db->query("SELECT * FROM service_providers WHERE is_active = 1")->fetchAll();
+echo renderProviderDirectoryList($providers, $db, true);
+?>
+```
+
+### Add Data Attributes to Cards
+```php
+<div class="provider-card" <?php echo getProviderRequirementsDataAttrs($provider, $db); ?>>
+    <!-- Shows: data-completion="80" data-complete="true" data-count="4/5" -->
+</div>
+```
+
+---
+
+## CSS Classes
+
+### Status Classes
+- `.profile-completion-badge.complete` - All done (green)
+- `.profile-completion-badge.partial` - 60%+ done (yellow)
+- `.profile-completion-badge.incomplete` - Less than 60% (red)
+
+### Component Classes
+- `.provider-requirements-checklist` - Full checklist
+- `.checklist-mini` - Mini checklist
+- `.provider-card-with-requirements` - Card with checklist
+- `.provider-directory-list` - Directory listing
+- `.directory-item` - Single directory item
+
+---
+
+## Database Fields Checked
+
+| Requirement | Table | Field(s) | Condition |
+|---|---|---|---|
+| National ID | verification_documents | document_type IN ('national_id', 'passport') | status = 'approved' |
+| Profile Photo | users | profile_image | NOT NULL, NOT empty |
+| Bio | service_providers | bio | NOT NULL, length >= 10 |
+| Experience | service_providers | experience_years | > 0 |
+| Service Price | provider_services | price | > 0, is_available = 1 |
+| Working Days | service_providers | working_days | NOT empty |
+| Working Hours | service_providers | working_hours_start, working_hours_end | NOT NULL, != '00:00:00' |
+
+---
+
+## Files
+
+### Core Files
+- `/includes/provider_requirements.php` - Main class
+- `/includes/provider_directory_helpers.php` - Helper functions
+- `/assets/css/provider-requirements.css` - All styling
+
+### Documentation
+- `/docs/PROVIDER_REQUIREMENTS_GUIDE.md` - Full guide
+- This file - Quick reference
+
+### Already Integrated
+- `/provider/profile.php` - Shows full checklist
+- `/provider/settings.php` - Shows full checklist
+- `/client/provider-profile.php` - Shows badge
+
+---
+
+## Examples by Use Case
+
+### Use Case: Show in Admin Provider List
+```php
+<?php 
+require_once '../includes/provider_directory_helpers.php';
+echo renderProviderDirectoryList($providers, $db, true);
+?>
+```
+
+### Use Case: Show in Client Search Results
+```php
+<?php require_once '../includes/provider_requirements.php'; 
+foreach ($providers as $p) {
+    $req = new ProviderRequirements($db, $p['id']);
+    echo $req->renderMiniChecklist(false);
+    echo $req->renderCompletionBadge();
+}
+?>
+```
+
+### Use Case: Notification When Complete
+```php
+<?php require_once '../includes/provider_requirements.php'; 
+$req = new ProviderRequirements($db, $provider_id);
+if ($req->isComplete()) {
+    sendEmail("Congratulations! Your profile is complete.");
+}
+?>
+```
+
+### Use Case: Restrict Bookings Until Complete
+```php
+<?php require_once '../includes/provider_directory_helpers.php';
+if (!isProviderReadyForBookings($provider, $db, 100)) {
+    echo "Please complete your profile before receiving bookings";
+}
+?>
+```
+
+---
+
+## Styling Customization
+
+### Change Colors
+Edit `/assets/css/provider-requirements.css`:
+```css
+.profile-completion-badge.complete {
+    background: #your-color;
+    color: #text-color;
+}
+```
+
+### Change Progress Bar Gradient
+```css
+.progress-bar-fill {
+    background: linear-gradient(90deg, #your-color-1, #your-color-2);
+}
+```
+
+### Make Checklist Wider
+```css
+.provider-requirements-checklist {
+    max-width: 100%; /* Remove max-width */
+}
+```
+
+---
+
+## Testing Checklist
+
+- [ ] Full checklist renders on `/provider/profile.php`
+- [ ] Mini checklist renders on provider cards
+- [ ] Badge shows correct completion percentage
+- [ ] CSS loads correctly (colors, spacing visible)
+- [ ] Helper functions return correct data
+- [ ] Completion badge color changes based on percentage
+- [ ] Works on mobile (responsive)
+- [ ] Database queries execute without errors
+- [ ] No JavaScript console errors
+
+---
+
+## Support
+
+For detailed documentation, see: `/docs/PROVIDER_REQUIREMENTS_GUIDE.md`
+
+For issues:
+1. Check database has verification_documents table
+2. Ensure profile_image path is correct
+3. Verify bio field is populated with 10+ characters
+4. Check services have prices > 0
+5. Verify working_hours_start/end are set

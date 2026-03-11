@@ -1,0 +1,196 @@
+<?php
+/**
+ * Backup of Kinyarwanda translations (rw.php) - created by assistant
+ */
+
+return [
+    // Dashboard Section
+    'dashboard' => [
+        'title' => 'Dashibodi y\'Utanga Serivisi',
+        'welcome' => [
+            'title' => 'Murakaza neza, :name!',
+            'subtitle' => 'Aha ni ho mubona incamake y\'ibikorwa byanyu byose.',
+            'maintenance' => 'Sisitemu iri mu bikorwa byo kuyivugurura. Serivisi zimwe zishobora kudakora by\'igihe gito.',
+        ],
+        'today' => 'Uyu munsi',
+        'this_week' => 'Iki cyumweru',
+        'this_month' => 'Uku kwezi',
+
+        // Statistics
+        'statistics' => [
+            'total_bookings' => 'Ibyifuzo byose',
+            'pending_bookings' => 'Ibyifuzo bitegereje',
+            'today_bookings' => 'Ibyifuzo by\'uyu munsi',
+            'upcoming_bookings' => 'Ibyifuzo biri imbere',
+            'total_earnings' => 'Amafaranga yose winjije',
+            'average_rating' => 'Impuzandengo y\'amanota',
+            'total_reviews' => 'Umubare w\'ibitekerezo',
+        ],
+
+        // Availability Status
+        'availability' => [
+            'title' => 'Imiterere y\'akazi',
+            'status' => 'Uko uhagaze',
+            'available' => 'Uraboneka',
+            'busy' => 'Uri mu kazi',
+            'unavailable' => 'Ntuboneka',
+            'working_hours' => 'Amasaha y\'akazi',
+            'update_status' => 'Hindura imiterere',
+            'status_updated' => 'Imiterere yavuguruwe neza!',
+        ],
+
+        // Schedule
+        'schedule' => [
+            'title' => 'Imigambi y\'ubwenge bwa Gahunda',
+            'subtitle' => 'Simbuza uburenganzira bwacu, ibigomba, n\'umwanya wo guhumeka',
+            'working_days' => 'Amasaha atakazi',
+            'working_hours' => 'Amasaha atakazi',
+            'break_time' => 'Umwanya wo guhumeka',
+            'buffer_time' => 'Umwanya wabahaye hagati ya Ibigomba (iminota)',
+            'max_daily' => 'Igipimo cyigikire c\'ubigomba buri munsi',
+            'today_summary' => 'Inzuranubwisamo y\'ine',
+            'is_working_day' => 'Urakazi mu gibanza iki',
+            'is_not_working_day' => 'Ntaba kazi mu gibanza iki',
+            'maintenance_mode' => 'Imigambi y\'isesenzi ikorwa',
+            'maintenance_message' => 'Inyamitala imuye mu isesezi. Ibiranga bitahagire bifite ubwiyunge.',
+            
+            // Statistics
+            'upcoming_bookings' => 'Ibigomba bikareranya',
+            'pending_approvals' => 'Iyemezo irihagaze',
+            'confirmed_bookings' => 'Iyemezo isohotse',
+            'next_available' => 'Ikareranya riramburamuva',
+            
+            // Tabs
+            'tab_calendar' => 'Igikanguriro cy\'igihingira',
+            'tab_settings' => 'Amasaha atakazi',
+            'tab_availability' => 'Uburenganzira',
+            'tab_timeoff' => 'Umwanya wo guhumeka',
+            'tab_bookings' => 'Ibigomba bikareranya',
+            'tab_integrations' => 'Ubuhinga bw\'itambare',
+            
+            // Calendar
+            'calendar_overview' => 'Igikirangiro cy\'igihingira',
+            'calendar_booked' => 'Hagombwe',
+            'calendar_available' => 'Harirenganzira',
+            'calendar_time_off' => 'Umwanya wo guhumeka',
+            'calendar_break' => 'Umwanya wo guhumeka',
+            
+            // Working Hours Settings
+            'settings_title' => 'Amasaha atakazi n\'Ibiyumviro',
+            'start_time' => 'Umwanya wambere',
+            'end_time' => 'Umwanya w\'impera',
+            'break_start' => 'Umwanya wo guhumeka (Ntakibogimbogimbo)',
+            'break_end' => 'Impera y\'umwanya wo guhumeka (Ntakibogimbogimbo)',
+            'save_working_hours' => 'Kubika Amasaha atakazi',
+            'working_hours_updated' => 'Amasaha atakazi yahamuzibikorwa neza!',
+            'working_hours_failed' => 'Ntacyo kuzamura amasaha atakazi: ',
+            
+            // Availability
+            'availability_title' => 'Uburenganzira bw\'umunsi utandukanye',
+            'date' => 'Umunsi',
+            'notes' => 'Inyandiko (Ntakibogimbogimbo)',
+            'notes_placeholder' => 'Kureka, Mu gitondo gakanya, Ibisohoka byheje',
+            'available' => 'Harirenganzira',
+            'update_day_availability' => 'Kurasura Uburenganzira bw\'Umunsi',
+            'availability_updated' => 'Uburenganzira bw\'umunsi bwahamuzibikorwa neza!',
+            'availability_failed' => 'Ntacyo kurasura uburenganzira: ',
+            
+            // Bulk Update
+            'bulk_update_title' => 'Kurasura Uburenganzira mu Bubasha',
+            'start_date' => 'Umunsi wambere',
+            'end_date' => 'Umunsi w\'impera',
+            'time_slot' => 'Umwanya w\'amasaha (Ntakibogimbogimbo)',
+            'time_slot_to' => 'kugeza',
+            'days_of_week' => 'Amasaha n\'ubwingirere',
+            'set_as_available' => 'Kubika nk\'ibirenganzira',
+            'apply_bulk_update' => 'Kwiteka Kurasura mu Bubasha',
+            'bulk_availability_updated' => 'Uburenganzira buhamuzibikorwa neza mu bubasha!',
+            'bulk_availability_failed' => 'Ntacyo kurasura uburenganzira mu bubasha: ',
+            
+            // Availability Exceptions
+            'upcoming_exceptions' => 'Iburenganzira bitandukanye bikareranya',
+            'no_exceptions' => 'Nta burenganzira bitandukanye bivugurutiwe.',
+            'exception_date' => 'Umunsi',
+            'exception_status' => 'Imiterere',
+            'exception_time_slot' => 'Umwanya w\'amasaha',
+            'exception_all_day' => 'Ubwinteko bwose',
+            'exception_actions' => 'Ibikorwa',
+            'exception_delete' => 'Urashaka kunanirwa iburenganzira bitandukanye?',
+            'exception_deleted' => 'Iburenganzira bitandukanye byahaniriwe neza!',
+            
+            // Time Off
+            'timeoff_title' => 'Ibisohoka by\'umwanya wo guhumeka',
+            'timeoff_reason' => 'Impamvu',
+            'timeoff_placeholder' => 'Kureka, Ubwiyunge, Indwara',
+            'add_timeoff' => 'Koneza',
+            'timeoff_added' => 'Isohoka ry\'umwanya wo guhumeka yakonzwe neza!',
+            'timeoff_failed' => 'Ntacyo koneza isohoka ry\'umwanya: ',
+            'scheduled_timeoff' => 'Ibisohoka by\'umwanya wo guhumeka bivugurutiwe',
+            'no_timeoff' => 'Nta bisohoka by\'umwanya wo guhumeka bivugurutiwe.',
+            'timeoff_delete_confirm' => 'Urashaka kunanirwa isohoka ry\'umwanya wo guhumeka?',
+            'timeoff_deleted' => 'Isohoka ry\'umwanya byahaniriwe neza!',
+            'timeoff_dates' => 'Amasaha',
+            
+            // Upcoming Bookings
+            'bookings_title' => 'Ibigomba bikareranya',
+            'no_bookings' => 'Nta bigomba bikareranya',
+            
+            // Integrations
+            'integrations_title' => 'Ubuhinga bw\'itambare',
+            'google_calendar_title' => 'Google Ihingira',
+            'google_calendar_desc' => 'Simbuza imigambi yacu na Google Ihingira',
+            'google_connected' => 'Hubikiranye',
+            'google_authenticated_at' => 'Iyemezo yakorwaye: ',
+            'google_disconnect' => 'Kugabanya Google Ihingira',
+            'google_disconnect_confirm' => 'Urashaka kugabanya Google Ihingira?',
+            'google_disconnected' => 'Google Ihingira yagabanyariwe neza!',
+            'google_disconnect_failed' => 'Ntacyo kugabanya Google Ihingira. Gerageza noneho.',
+            'google_disconnect_error' => 'Ikosa mu kugabanya Google Ihingira: ',
+            'google_connect' => 'Hubikanya Google Ihingira',
+            'google_connect_info' => 'Hubikanya konti yacu ya Google kugirango ibikorwa bisimbuze mu nkogeko yacu y\'itambare.',
+            'google_first_time' => 'Inzira yambere? Uzaremongereza kuri Google kugirango emere iyinjira.',
+            
+            // iCal / Outlook
+            'ical_title' => 'iCal / Outlook',
+            'ical_desc' => 'Gutengeka imigambi yacu nk\'igikorwa ry\'iCal',
+            'export_ical' => 'Gutengeka iCal',
+            'export_outlook' => 'Outlook',
+            'calendar_url' => 'Aderesi yacu yo mu mbuga y\'itambare: ',
+            
+            // Sync Settings
+            'sync_settings_title' => 'Ibiyumviro by\'Ubuhinga',
+            'sync_bookings' => 'Simbuza ibigomba bishya mu gihe kizima',
+            'sync_cancellations' => 'Simbuza iyatanzwe',
+            'sync_timeoff' => 'Simbuza ibisohoka by\'umwanya wo guhumeka',
+            'sync_frequency' => 'Inzira y\'ubuhinga',
+            'sync_every_15' => 'Buri munota 15',
+            'sync_every_30' => 'Buri munota 30',
+            'sync_every_60' => 'Buri saha',
+            'sync_manual' => 'Gusa cyane',
+            'save_sync_settings' => 'Kubika Ibiyumviro by\'Ubuhinga',
+            
+            // Day Names
+            'day_monday' => 'Kuwa mbere',
+            'day_tuesday' => 'Kuwa kabiri',
+            'day_wednesday' => 'Kuwa gatatu',
+            'day_thursday' => 'Kuwa kane',
+            'day_friday' => 'Kuwa gatanu',
+            'day_saturday' => 'Kuwa gatandatu',
+            'day_sunday' => 'Igande',
+            
+            // Validation Messages
+            'dates_required' => 'Tanga umunsi wambere na w\'impera',
+            'date_invalid' => 'Umunsi w\'impera ntarashoboka gushyiraho mbere ya wambere',
+            'date_select' => 'Hitamo umunsi',
+            'reason_required' => 'Tanga impamvu y\'umwanya wo guhumeka',
+            'delete_availability_confirm' => 'Urashaka kunanirwa iburenganzira bitandukanye?',
+            'time_off_validate_error' => 'Umunsi w\'impera ntarashoboka gushyiraho mbere ya wambere',
+            'provide_dates_error' => 'Tanga umunsi wambere na w\'impera',
+            'select_date_error' => 'Hitamo umunsi',
+            'provide_reason_error' => 'Tanga impamvu y\'umwanya wo guhumeka',
+        ],
+
+        // Recent Bookings
+        'bookings' => [ /* truncated for brevity in backup */ ],
+    ],
+];

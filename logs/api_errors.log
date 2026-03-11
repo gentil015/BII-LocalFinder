@@ -1,0 +1,73 @@
+[03-Dec-2025 07:20:06 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 07:20:45 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 07:21:06 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 07:23:47 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 07:29:03 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 07:29:26 Europe/Berlin] AI Booking creation error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'user_id' in 'field list'
+[03-Dec-2025 07:31:40 Europe/Berlin] AI Booking creation error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'user_id' in 'field list'
+[03-Dec-2025 07:33:09 Europe/Berlin] Activity logging error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'action' in 'field list'
+[03-Dec-2025 07:35:49 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 07:38:19 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 07:39:12 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 07:39:48 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 08:05:09 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 08:12:48 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 08:13:37 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 08:26:08 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 08:43:47 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 08:45:24 Europe/Berlin] AI Booking creation error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'user_id' in 'field list'
+[03-Dec-2025 08:47:41 Europe/Berlin] Activity logging error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'action' in 'field list'
+[03-Dec-2025 10:28:02 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 10:31:20 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 10:31:54 Europe/Berlin] Activity logging error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'action' in 'field list'
+[03-Dec-2025 10:33:40 Europe/Berlin] Hugging Face API error: HTTP 410 - {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[03-Dec-2025 12:20:41 Europe/Berlin] Activity logging error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'action' in 'field list'
+[04-Dec-2025 19:49:08 Europe/Berlin] Activity logging error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'action' in 'field list'
+[05-Dec-2025 10:30:17 Europe/Berlin] Activity logging error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'action' in 'field list'
+[05-Dec-2025 10:33:13 Europe/Berlin] PHP Fatal error:  Uncaught Error: Call to undefined method AIBookingHandler::callHuggingFace() in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php:274
+Stack trace:
+#0 C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php(50): AIBookingHandler->extractService('I need capenter...')
+#1 C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php(27): AIBookingHandler->extractBookingInfo('I need capenter...')
+#2 C:\xampp\htdocs\Bii_localFinder\api\ai_booking.php(55): AIBookingHandler->processBookingRequest('I need capenter...', 31)
+#3 {main}
+  thrown in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php on line 274
+[05-Dec-2025 10:33:22 Europe/Berlin] PHP Fatal error:  Uncaught Error: Call to undefined method AIBookingHandler::callHuggingFace() in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php:274
+Stack trace:
+#0 C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php(50): AIBookingHandler->extractService('I need capenter...')
+#1 C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php(27): AIBookingHandler->extractBookingInfo('I need capenter...')
+#2 C:\xampp\htdocs\Bii_localFinder\api\ai_booking.php(55): AIBookingHandler->processBookingRequest('I need capenter...', 31)
+#3 {main}
+  thrown in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php on line 274
+[05-Dec-2025 10:40:26 Europe/Berlin] PHP Fatal error:  Uncaught Error: Call to undefined method AIBookingHandler::callHuggingFace() in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php:279
+Stack trace:
+#0 C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php(55): AIBookingHandler->extractService('I need someone ...')
+#1 C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php(28): AIBookingHandler->extractBookingInfo('I need someone ...')
+#2 C:\xampp\htdocs\Bii_localFinder\api\ai_booking.php(55): AIBookingHandler->processBookingRequest('I need someone ...', 31)
+#3 {main}
+  thrown in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php on line 279
+[05-Dec-2025 10:40:34 Europe/Berlin] PHP Fatal error:  Uncaught Error: Call to undefined method AIBookingHandler::callHuggingFace() in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php:279
+Stack trace:
+#0 C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php(55): AIBookingHandler->extractService('I need someone ...')
+#1 C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php(28): AIBookingHandler->extractBookingInfo('I need someone ...')
+#2 C:\xampp\htdocs\Bii_localFinder\api\ai_booking.php(55): AIBookingHandler->processBookingRequest('I need someone ...', 31)
+#3 {main}
+  thrown in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php on line 279
+[05-Dec-2025 10:48:24 Europe/Berlin] Hugging Face API error (HTTP 410): {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[05-Dec-2025 11:14:25 Europe/Berlin] PHP Warning:  Undefined variable $requestedPayment in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php on line 1012
+[05-Dec-2025 11:14:46 Europe/Berlin] PHP Warning:  Undefined variable $requestedPayment in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php on line 1012
+[05-Dec-2025 11:15:22 Europe/Berlin] PHP Warning:  Undefined variable $requestedPayment in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php on line 1012
+[05-Dec-2025 11:15:53 Europe/Berlin] Activity logging error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'action' in 'field list'
+[05-Dec-2025 11:28:22 Europe/Berlin] PHP Warning:  Undefined variable $requestedPayment in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php on line 1012
+[05-Dec-2025 11:28:56 Europe/Berlin] PHP Warning:  Undefined variable $requestedPayment in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php on line 1012
+[08-Dec-2025 16:20:19 Europe/Berlin] PHP Warning:  Undefined variable $requestedPayment in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php on line 1012
+[08-Dec-2025 16:21:09 Europe/Berlin] PHP Warning:  Undefined variable $requestedPayment in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php on line 1012
+[08-Dec-2025 16:22:12 Europe/Berlin] Hugging Face API error (HTTP 410): {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+[08-Dec-2025 21:14:17 Europe/Berlin] Find related services error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'ps.is_active' in 'where clause'
+[08-Dec-2025 21:17:21 Europe/Berlin] Find related services error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'ps.is_active' in 'where clause'
+[08-Dec-2025 21:18:15 Europe/Berlin] Find related services error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'ps.is_active' in 'where clause'
+[08-Dec-2025 21:18:39 Europe/Berlin] Find related services error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'ps.is_active' in 'where clause'
+[08-Dec-2025 21:29:11 Europe/Berlin] PHP Fatal error:  Cannot redeclare AIBookingHandler::extractLocation() in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php on line 1272
+[08-Dec-2025 21:35:11 Europe/Berlin] PHP Fatal error:  Cannot redeclare AIBookingHandler::extractBookingInfo() in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php on line 1282
+[08-Dec-2025 21:51:02 Europe/Berlin] PHP Fatal error:  Cannot redeclare AIBookingHandler::extractBookingInfo() in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php on line 1282
+[08-Dec-2025 22:10:48 Europe/Berlin] PHP Fatal error:  Cannot redeclare AIBookingHandler::extractBookingInfo() in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php on line 1282
+[13-Dec-2025 18:43:30 Europe/Berlin] PHP Fatal error:  Cannot redeclare AIBookingHandler::extractBookingInfo() in C:\xampp\htdocs\Bii_localFinder\includes\ai_booking.php on line 1282

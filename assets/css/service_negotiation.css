@@ -1,0 +1,594 @@
+/* Service Negotiation System Styles */
+
+.negotiation-section {
+    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+    border: 2px solid #e9ecef;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.negotiation-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    color: #2c3e50;
+}
+
+.negotiation-header h4 {
+    margin: 0;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.negotiation-header i {
+    font-size: 1.3rem;
+    color: #0d6efd;
+}
+
+/* Price Range Settings */
+.price-range-inputs {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.price-input-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.price-input-group label {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 0.5rem;
+    font-size: 0.95rem;
+}
+
+.price-input-group input {
+    padding: 0.75rem;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: all 0.3s;
+}
+
+.price-input-group input:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.1);
+}
+
+.price-input-group .form-text {
+    color: #6c757d;
+    font-size: 0.85rem;
+    margin-top: 0.25rem;
+}
+
+/* Negotiable Checkbox */
+.negotiable-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-bottom: 1rem;
+}
+
+.negotiable-checkbox input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    margin: 0;
+}
+
+.negotiable-checkbox label {
+    margin: 0;
+    cursor: pointer;
+    font-weight: 500;
+    flex: 1;
+}
+
+.negotiable-checkbox .form-text {
+    color: #6c757d;
+    font-size: 0.85rem;
+    margin-top: 0;
+}
+
+.negotiable-checkbox input[type="checkbox"]:checked ~ .negotiable-info {
+    display: block;
+}
+
+/* Negotiable Info */
+.negotiable-info {
+    display: none;
+    background: #e7f3ff;
+    border-left: 4px solid #0d6efd;
+    padding: 1rem;
+    border-radius: 4px;
+    margin-top: 1rem;
+    font-size: 0.9rem;
+    color: #004085;
+}
+
+.negotiable-info ul {
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.negotiable-info li {
+    margin-bottom: 0.5rem;
+}
+
+/* Offer Cards */
+.offer-card {
+    background: white;
+    border: 2px solid #e9ecef;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    transition: all 0.3s;
+}
+
+.offer-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.offer-card.active {
+    border-color: #0d6efd;
+    background: #f8f9ff;
+}
+
+.offer-card.expired {
+    opacity: 0.6;
+    background: #f8f9fa;
+}
+
+.offer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.offer-title {
+    font-weight: 600;
+    color: #2c3e50;
+    margin: 0;
+}
+
+.offer-status {
+    padding: 0.35rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.offer-status.pending {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.offer-status.accepted {
+    background: #d4edda;
+    color: #155724;
+}
+
+.offer-status.rejected {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.offer-status.expired {
+    background: #e2e3e5;
+    color: #383d41;
+}
+
+.offer-content {
+    margin: 1rem 0;
+}
+
+.offer-price {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #198754;
+    margin: 0.5rem 0;
+}
+
+.offer-meta {
+    display: flex;
+    gap: 2rem;
+    margin: 1rem 0;
+    flex-wrap: wrap;
+}
+
+.offer-meta-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.offer-meta-item .label {
+    font-size: 0.85rem;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.offer-meta-item .value {
+    font-size: 1rem;
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.offer-timer {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #dc3545;
+    font-weight: 500;
+}
+
+.offer-timer i {
+    font-size: 1.2rem;
+}
+
+.offer-notes {
+    background: #f8f9fa;
+    padding: 0.75rem;
+    border-radius: 6px;
+    margin: 1rem 0;
+    font-style: italic;
+    color: #495057;
+}
+
+.offer-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 1.5rem;
+}
+
+.offer-actions .btn {
+    flex: 1;
+    min-width: 140px;
+    padding: 0.6rem 1.2rem;
+    font-weight: 500;
+    border-radius: 8px;
+    transition: all 0.3s;
+    border: none;
+}
+
+.offer-actions .btn-primary {
+    background: #0d6efd;
+    color: white;
+}
+
+.offer-actions .btn-primary:hover {
+    background: #0b5ed7;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(13, 110, 253, 0.3);
+}
+
+.offer-actions .btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.offer-actions .btn-secondary:hover {
+    background: #5c636a;
+}
+
+.offer-actions .btn-outline {
+    background: transparent;
+    border: 2px solid #e9ecef;
+    color: #495057;
+}
+
+.offer-actions .btn-outline:hover {
+    background: #f8f9fa;
+    border-color: #0d6efd;
+    color: #0d6efd;
+}
+
+/* Counteroffer Section */
+.counteroffer-container {
+    background: #f0f4ff;
+    border: 2px dashed #0d6efd;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+}
+
+.counteroffer-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    color: #0d6efd;
+}
+
+.counteroffer-header h5 {
+    margin: 0;
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+/* Negotiation History */
+.negotiation-timeline {
+    position: relative;
+    padding: 1rem 0;
+}
+
+.timeline-item {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    position: relative;
+}
+
+.timeline-item::before {
+    content: '';
+    position: absolute;
+    left: 12px;
+    top: 32px;
+    bottom: -32px;
+    width: 2px;
+    background: #e9ecef;
+}
+
+.timeline-item:last-child::before {
+    display: none;
+}
+
+.timeline-dot {
+    width: 28px;
+    height: 28px;
+    background: #0d6efd;
+    border: 3px solid white;
+    border-radius: 50%;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+}
+
+.timeline-dot.accepted {
+    background: #198754;
+}
+
+.timeline-dot.rejected {
+    background: #dc3545;
+}
+
+.timeline-dot.pending {
+    background: #ffc107;
+}
+
+.timeline-content {
+    flex: 1;
+    padding-top: 0.25rem;
+}
+
+.timeline-action {
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 0.25rem;
+}
+
+.timeline-details {
+    font-size: 0.9rem;
+    color: #6c757d;
+}
+
+.timeline-price {
+    font-size: 1.1rem;
+    color: #198754;
+    font-weight: 600;
+    margin-top: 0.5rem;
+}
+
+.timeline-time {
+    font-size: 0.8rem;
+    color: #adb5bd;
+    margin-top: 0.5rem;
+}
+
+/* Form Styles for Offer Submission */
+.offer-form {
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.offer-form h5 {
+    margin-bottom: 1.5rem;
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.offer-form-group {
+    margin-bottom: 1.5rem;
+}
+
+.offer-form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #495057;
+}
+
+.offer-form-group input,
+.offer-form-group textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-family: inherit;
+    transition: all 0.3s;
+    box-sizing: border-box;
+}
+
+.offer-form-group input:focus,
+.offer-form-group textarea:focus {
+    border-color: #0d6efd;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.1);
+}
+
+.offer-form-group textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+.offer-form-submit {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.offer-form-submit .btn {
+    flex: 1;
+    padding: 0.75rem;
+    font-weight: 600;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.offer-form-submit .btn-primary {
+    background: #0d6efd;
+    color: white;
+}
+
+.offer-form-submit .btn-primary:hover {
+    background: #0b5ed7;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(13, 110, 253, 0.3);
+}
+
+.offer-form-submit .btn-secondary {
+    background: #e9ecef;
+    color: #495057;
+}
+
+.offer-form-submit .btn-secondary:hover {
+    background: #dee2e6;
+}
+
+/* Alert Messages */
+.negotiation-alert {
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.negotiation-alert.info {
+    background: #e7f3ff;
+    color: #004085;
+    border-left: 4px solid #0d6efd;
+}
+
+.negotiation-alert.success {
+    background: #d4edda;
+    color: #155724;
+    border-left: 4px solid #198754;
+}
+
+.negotiation-alert.warning {
+    background: #fff3cd;
+    color: #856404;
+    border-left: 4px solid #ffc107;
+}
+
+.negotiation-alert.error {
+    background: #f8d7da;
+    color: #721c24;
+    border-left: 4px solid #dc3545;
+}
+
+.negotiation-alert i {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .price-range-inputs {
+        grid-template-columns: 1fr;
+    }
+    
+    .offer-meta {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .offer-actions {
+        flex-direction: column;
+    }
+    
+    .offer-actions .btn {
+        width: 100%;
+        min-width: auto;
+    }
+    
+    .timeline-item {
+        gap: 1rem;
+    }
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.offer-card {
+    animation: fadeIn 0.3s ease-out;
+}
+
+.counteroffer-container {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Utility Classes */
+.text-success {
+    color: #198754;
+}
+
+.text-danger {
+    color: #dc3545;
+}
+
+.text-warning {
+    color: #ffc107;
+}
+
+.text-muted {
+    color: #6c757d;
+}
+
+.mt-3 {
+    margin-top: 1.5rem;
+}
+
+.mb-3 {
+    margin-bottom: 1.5rem;
+}
+
+.py-2 {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}
