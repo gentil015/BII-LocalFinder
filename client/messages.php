@@ -11,8 +11,12 @@ if (isset($_GET['action']) && $_GET['action'] === 'poll') {
     $with = isset($_GET['with']) ? intval($_GET['with']) : 0;
     if ($me && $with) {
         $messages = getConversationMessages($me, $with);
+        $bookingTimelineData = [];
+        if (isset($_GET['booking_id']) && intval($_GET['booking_id']) > 0) {
+            $bookingTimelineData = getBookingTimeline(intval($_GET['booking_id']));
+        }
         header('Content-Type: application/json');
-        echo json_encode(['success' => true, 'messages' => $messages]);
+        echo json_encode(['success' => true, 'messages' => $messages, 'booking_timeline' => $bookingTimelineData]);
     } else {
         header('Content-Type: application/json');
         echo json_encode(['success' => false, 'message' => 'Invalid conversation']);
@@ -32,16 +36,68 @@ if (isProvider()) {
 $me = $_SESSION['user_id'];
 $db = Database::getInstance()->getConnection();
 
+function saveChatAttachment(array $file): ?string
+{
+    if (empty($file['name']) || $file['error'] !== UPLOAD_ERR_OK) {
+        return null;
+    }
+
+    $allowedExtensions = ['jpg','jpeg','png','gif','pdf','doc','docx','xls','xlsx','txt','webm'];
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, $allowedExtensions, true)) {
+        return null;
+    }
+
+    $allowedMimeTypes = [
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/plain',
+        'audio/webm'
+    ];
+
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mimeType = finfo_file($finfo, $file['tmp_name']);
+    finfo_close($finfo);
+    if (!in_array($mimeType, $allowedMimeTypes, true)) {
+        return null;
+    }
+
+    $uploadDir = __DIR__ . '/../uploads/chat/';
+    if (!is_dir($uploadDir)) {
+        mkdir($uploadDir, 0755, true);
+    }
+
+    $filename = uniqid('chat_', true) . '.' . $ext;
+    $target = $uploadDir . $filename;
+
+    if (move_uploaded_file($file['tmp_name'], $target)) {
+        return 'uploads/chat/' . $filename;
+    }
+
+    return null;
+}
+
 // handle new message form
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['receiver_id'], $_POST['message'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['receiver_id']) && (isset($_POST['message']) || !empty($_FILES['attachment']['name']))) {
     $receiver_id = intval($_POST['receiver_id']);
     $msg = sanitize($_POST['message']);
     $booking_id = isset($_POST['booking_id']) ? intval($_POST['booking_id']) : 0;
     $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || (isset($_POST['ajax']) && $_POST['ajax'] == '1');
 
+    $attachmentPath = null;
+    if (!empty($_FILES['attachment']['name'])) {
+        $attachmentPath = saveChatAttachment($_FILES['attachment']);
+    }
+
     $result = false;
-    if ($msg !== '') {
-        $result = sendMessage($me, $receiver_id, $msg);
+    if ($msg !== '' || $attachmentPath !== null) {
+        $result = sendMessage($me, $receiver_id, $msg, $attachmentPath);
 
         // optionally notify provider via email/push/sms
         if (Mailer::isProviderNotificationEnabled($receiver_id, 'chat_message_email')) {
@@ -84,7 +140,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['receiver_id'], $_POST
         header('Content-Type: application/json');
         echo json_encode([
             'success' => $result,
-            'message' => $result ? ['sender_id' => $me, 'receiver_id' => $receiver_id, 'message' => $msg, 'created_at' => date('Y-m-d H:i:s')] : null
+            'message' => $result ? ['sender_id' => $me, 'receiver_id' => $receiver_id, 'message' => $msg, 'attachment_path' => $attachmentPath, 'created_at' => date('Y-m-d H:i:s')] : null
         ]);
         exit;
     }
@@ -100,6 +156,7 @@ $booking_id = isset($_GET['booking_id']) ? intval($_GET['booking_id']) : 0;
 $convs = getConversationList($me);
 $messages = [];
 $otherUser = null;
+$bookingTimeline = [];
 if ($with) {
     // fetch other user info
     $stmt = $db->prepare("SELECT id, full_name FROM users WHERE id = ?");
@@ -110,6 +167,9 @@ if ($with) {
         markMessagesRead($with, $me);
         // load conversation
         $messages = getConversationMessages($me, $with);
+        if ($booking_id) {
+            $bookingTimeline = getBookingTimeline($booking_id);
+        }
     } else {
         $with = 0; // invalid user
     }
@@ -131,6 +191,17 @@ if ($with) {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             background: #f5f5f5;
             overflow: hidden;
+        }
+
+        .main-content {
+            margin-left: 80px;
+            transition: margin-left 0.3s ease;
+            min-height: 100vh;
+        }
+
+        .sidebar:not(.collapsed) + .main-content,
+        .sidebar:not(.collapsed) ~ .main-content {
+            margin-left: 260px;
         }
 
         .chat-container {
@@ -398,6 +469,59 @@ if ($with) {
             font-size: 18px;
         }
 
+        .booking-timeline {
+            padding: 12px 20px;
+            border: 1px solid #d7e8ff;
+            background: #f2f8ff;
+            margin: 0 0 8px 0;
+            border-radius: 10px;
+        }
+
+        .timeline-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .timeline-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-top: 6px;
+            background: #0a58ca;
+            flex-shrink: 0;
+        }
+
+        .timeline-content {
+            flex: 1;
+        }
+
+        .timeline-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #0a58ca;
+        }
+
+        .timeline-time {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .attachment-link {
+            margin-top: 8px;
+            font-size: 13px;
+        }
+
+        .attachment-link a {
+            color: #0a58ca;
+            text-decoration: none;
+        }
+
+        .attachment-link a:hover {
+            text-decoration: underline;
+        }
+
         .booking-info a {
             color: #0a58ca;
             text-decoration: none;
@@ -584,8 +708,13 @@ if ($with) {
     </style>
 </head>
 <body>
-<div class="chat-container">
-    <!-- Conversations Panel -->
+    <!-- Sidebar -->
+    <?php include __DIR__ . '/includes/sidebar.php'; ?>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="chat-container">
+            <!-- Conversations Panel -->
     <div class="conversations-panel" id="conversationsPanel">
         <div class="conversations-header">
             <h2>Messages</h2>
@@ -658,6 +787,23 @@ if ($with) {
                 </div>
             <?php endif; ?>
 
+            <!-- Booking Timeline -->
+            <?php if (!empty($bookingTimeline)): ?>
+                <div class="booking-timeline" id="bookingTimeline">
+                    <?php foreach ($bookingTimeline as $item): ?>
+                        <div class="timeline-item timeline-<?php echo htmlspecialchars($item['status']); ?>">
+                            <div class="timeline-dot"></div>
+                            <div class="timeline-content">
+                                <div class="timeline-title"><?php echo htmlspecialchars($item['label']); ?></div>
+                                <?php if (!empty($item['time'])): ?>
+                                    <div class="timeline-time"><?php echo date('d M Y H:i', strtotime($item['time'])); ?></div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+
             <!-- Messages Area -->
             <div class="messages-area" id="messagesArea">
                 <?php if (empty($messages)): ?>
@@ -669,7 +815,29 @@ if ($with) {
                     <?php foreach ($messages as $m): ?>
                         <div class="message-group">
                             <div class="message <?php echo $m['sender_id'] == $me ? 'sent' : 'received'; ?>">
-                                <div class="message-bubble"><?php echo nl2br(htmlspecialchars($m['message'])); ?></div>
+                                <div class="message-bubble">
+                                <?php echo nl2br(htmlspecialchars($m['message'])); ?>
+                                <?php if (!empty($m['attachment_path'])): ?>
+                                    <?php $ext = strtolower(pathinfo($m['attachment_path'], PATHINFO_EXTENSION)); ?>
+                                    <?php if (in_array($ext, ['jpg','jpeg','png','gif'], true)): ?>
+                                        <div class="attachment-preview">
+                                            <img src="../<?php echo htmlspecialchars($m['attachment_path']); ?>" alt="Attachment preview" style="max-width: 180px; max-height: 180px; border-radius: 8px; margin-top: 6px;" />
+                                        </div>
+                                    <?php elseif (in_array($ext, ['webm','ogg','mp3','wav'], true)): ?>
+                                        <div class="attachment-preview" style="margin-top: 6px;">
+                                            <audio controls style="width: 100%; max-width: 250px;">
+                                                <source src="../<?php echo htmlspecialchars($m['attachment_path']); ?>" type="audio/<?php echo htmlspecialchars($ext === 'webm' ? 'webm' : ($ext === 'ogg' ? 'ogg' : ($ext === 'mp3' ? 'mpeg' : 'wav'))); ?>">
+                                                Your browser does not support the audio element.
+                                            </audio>
+                                        </div>
+                                    <?php endif; ?>
+                                    <div class="attachment-link">
+                                        <a href="../<?php echo htmlspecialchars($m['attachment_path']); ?>" target="_blank" rel="noopener noreferrer">
+                                            📎 View attachment
+                                        </a>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
                             </div>
                             <div class="message-time"><?php echo date('H:i', strtotime($m['created_at'])); ?></div>
                         </div>
@@ -682,11 +850,14 @@ if ($with) {
                 <i class="fas fa-ellipsis-h fa-fw"></i> Typing...
             </div>
             <div class="message-input-area">
-                <form method="POST" class="input-form" id="messageForm">
+                <form method="POST" class="input-form" id="messageForm" enctype="multipart/form-data">
                     <input type="hidden" name="receiver_id" value="<?php echo $with; ?>">
                     <input type="hidden" name="booking_id" value="<?php echo $booking_id; ?>">
                     <input type="hidden" name="ajax" value="1">
-                    <input type="text" name="message" placeholder="Aa" required autocomplete="off" id="messageTextField">
+                    <input type="text" name="message" placeholder="Aa" autocomplete="off" id="messageTextField">
+                    <button type="button" id="recordButton" class="header-btn" title="Hold to record">🎤</button>
+                    <span id="recordStatus" style="font-size: 12px; color: #0a58ca; margin-left: 6px;">Hold to record</span>
+                    <input type="file" name="attachment" id="attachmentInput" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.webm" style="margin-left:8px;" title="Attach file">
                     <button type="submit" class="send-btn" title="Send"><i class="fas fa-paper-plane"></i></button>
                 </form>
             </div>
@@ -739,6 +910,119 @@ if (messageTextField) {
     });
 }
 
+// Voice recording (hold) support
+let mediaRecorder = null;
+let mediaStream = null;
+let audioChunks = [];
+let isRecording = false;
+const recordButton = document.getElementById('recordButton');
+const recordStatus = document.getElementById('recordStatus');
+
+function setRecordingState(state) {
+    isRecording = state;
+    if (recordStatus) {
+        recordStatus.textContent = state ? 'Recording... release to send' : 'Hold to record';
+    }
+    if (recordButton) {
+        recordButton.style.background = state ? '#e53e3e' : 'transparent';
+        recordButton.style.color = state ? 'white' : '#1e3a8a';
+    }
+}
+
+function sendVoiceMessage(blob) {
+    const filename = 'voice_' + Date.now() + '.webm';
+    const file = new File([blob], filename, { type: 'audio/webm' });
+
+    const formData = new FormData();
+    formData.append('receiver_id', '<?php echo $with; ?>');
+    formData.append('booking_id', '<?php echo $booking_id; ?>');
+    formData.append('message', '');
+    formData.append('ajax', '1');
+    formData.append('attachment', file);
+
+    fetch(window.location.href, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success && data.message) {
+            const messagesArea = document.getElementById('messagesArea');
+            const group = document.createElement('div');
+            group.className = 'message-group';
+
+            const audioHtml = `<div class="attachment-preview" style="margin-top:6px;"><audio controls style="width:100%; max-width:250px;"><source src="../${data.message.attachment_path}" type="audio/webm">Your browser does not support audio playback.</audio></div>`;
+            const attachmentLink = `<div class="attachment-link"><a href="../${data.message.attachment_path}" target="_blank" rel="noopener noreferrer">📎 View attachment</a></div>`;
+
+            group.innerHTML = `
+                <div class="message sent">
+                    <div class="message-bubble">
+                        ${audioHtml}
+                        ${attachmentLink}
+                    </div>
+                </div>
+                <div class="message-time">${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+            `;
+            if (messagesArea) {
+                messagesArea.appendChild(group);
+                messagesArea.scrollTop = messagesArea.scrollHeight;
+            }
+        }
+    })
+    .catch(console.error);
+}
+
+function startRecording() {
+    if (isRecording) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Audio recording is not supported by your browser.');
+        return;
+    }
+
+    navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(stream => {
+        mediaStream = stream;
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = function(e) {
+            if (e.data && e.data.size > 0) audioChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = function() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+            if (audioChunks.length > 0) {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                sendVoiceMessage(audioBlob);
+            }
+            setRecordingState(false);
+        };
+
+        mediaRecorder.start();
+        setRecordingState(true);
+    })
+    .catch(err => {
+        console.error('Could not start recording', err);
+        alert('Unable to access microphone. Please allow access and try again.');
+    });
+}
+
+function stopRecording() {
+    if (!isRecording || !mediaRecorder) return;
+    mediaRecorder.stop();
+}
+
+if (recordButton) {
+    recordButton.addEventListener('mousedown', startRecording);
+    recordButton.addEventListener('touchstart', function(e) { e.preventDefault(); startRecording(); });
+    document.addEventListener('mouseup', stopRecording);
+    document.addEventListener('touchend', stopRecording);
+}
+
 // Search conversations
 document.getElementById('searchInput')?.addEventListener('input', function(e) {
     const search = e.target.value.toLowerCase();
@@ -754,8 +1038,9 @@ if (messageForm) {
     messageForm.addEventListener('submit', function(event) {
         event.preventDefault();
         const formData = new FormData(messageForm);
-        const messageText = formData.get('message').trim();
-        if (!messageText) return;
+        const messageText = (formData.get('message') || '').trim();
+        const attachmentFile = formData.get('attachment');
+        if (!messageText && (!attachmentFile || attachmentFile.size === 0)) return;
 
         fetch(window.location.href, {
             method: 'POST',
@@ -770,15 +1055,25 @@ if (messageForm) {
                 const messagesArea = document.getElementById('messagesArea');
                 const group = document.createElement('div');
                 group.className = 'message-group';
+
+                let attachmentHtml = '';
+                if (data.message && data.message.attachment_path) {
+                    attachmentHtml = `<div class="attachment-link"><a href="../${data.message.attachment_path}" target="_blank" rel="noopener noreferrer">📎 View attachment</a></div>`;
+                }
+
                 group.innerHTML = `
                     <div class="message sent">
-                        <div class="message-bubble">${messageText.replace(/\n/g,'<br>')}</div>
+                        <div class="message-bubble">
+                            ${messageText.replace(/\n/g,'<br>')}
+                            ${attachmentHtml}
+                        </div>
                     </div>
                     <div class="message-time">${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
                 `;
                 messagesArea.appendChild(group);
                 messagesArea.scrollTop = messagesArea.scrollHeight;
                 messageForm.querySelector('input[name="message"]').value = '';
+                messageForm.querySelector('input[name="attachment"]').value = '';
             }
         })
         .catch(console.error);
@@ -800,20 +1095,58 @@ if (pollUser) {
                 data.messages.forEach(m => {
                     const group = document.createElement('div');
                     group.className = 'message-group';
+
+                    let attachmentHtml = '';
+                    if (m.attachment_path) {
+                        const isImage = /\.(jpg|jpeg|png|gif)$/i.test(m.attachment_path);
+                        const isAudio = /\.(webm|ogg|mp3|wav)$/i.test(m.attachment_path);
+                        if (isImage) {
+                            attachmentHtml += `<div class="attachment-preview"><img src="../${m.attachment_path}" alt="Attachment preview" style="max-width:180px;max-height:180px;border-radius:8px;margin-top:6px;" /></div>`;
+                        } else if (isAudio) {
+                            const mimeType = m.attachment_path.match(/\.(webm|ogg|mp3|wav)$/i)[1].toLowerCase();
+                            const audioType = mimeType === 'mp3' ? 'mpeg' : mimeType;
+                            attachmentHtml += `<div class="attachment-preview" style="margin-top:6px;"><audio controls style="width:100%; max-width:250px;"><source src="../${m.attachment_path}" type="audio/${audioType}">Your browser does not support audio playback.</audio></div>`;
+                        }
+                        attachmentHtml += `<div class="attachment-link"><a href="../${m.attachment_path}" target="_blank" rel="noopener noreferrer">📎 View attachment</a></div>`;
+                    }
+
                     group.innerHTML = `
                         <div class="message ${m.sender_id == <?php echo $me; ?> ? 'sent' : 'received'}">
-                            <div class="message-bubble">${m.message.replace(/\n/g,'<br>')}</div>
+                            <div class="message-bubble">
+                                ${m.message.replace(/\n/g,'<br>')}
+                                ${attachmentHtml}
+                            </div>
                         </div>
                         <div class="message-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
                     `;
                     messagesArea.appendChild(group);
                 });
                 messagesArea.scrollTop = messagesArea.scrollHeight;
+
+                if (Array.isArray(data.booking_timeline) && data.booking_timeline.length) {
+                    const timelineArea = document.getElementById('bookingTimeline');
+                    if (timelineArea) {
+                        timelineArea.innerHTML = '';
+                        data.booking_timeline.forEach(item => {
+                            const itemEl = document.createElement('div');
+                            itemEl.className = 'timeline-item timeline-' + (item.status || '');
+                            itemEl.innerHTML = `
+                                <div class="timeline-dot"></div>
+                                <div class="timeline-content">
+                                    <div class="timeline-title">${item.label}</div>
+                                    ${item.time ? `<div class="timeline-time">${new Date(item.time).toLocaleString()}</div>` : ''}
+                                </div>
+                            `;
+                            timelineArea.appendChild(itemEl);
+                        });
+                    }
+                }
             }
         })
         .catch(err => console.error('Poll error', err));
     }, 3000);
 }
 </script>
+    </div> <!-- .main-content -->
 </body>
 </html>

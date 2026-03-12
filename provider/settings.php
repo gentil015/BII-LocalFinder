@@ -1238,6 +1238,13 @@ $is_profile_complete = $requirements->isComplete();
             padding: 1.5rem;
             margin-bottom: 1.5rem;
             border: 2px solid #e9ecef;
+            transition: all 0.2s ease;
+        }
+
+        .service-area-form.active {
+            border-color: #007bff;
+            box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15);
+            background: #e8f3ff;
         }
         
         /* Toggle Switch */
@@ -2836,12 +2843,16 @@ $is_profile_complete = $requirements->isComplete();
                                     </div>
                                     
                                     <div class="col-md-6 d-flex align-items-end">
-                                        <div class="form-check">
+                                        <button type="button" class="btn btn-sm btn-info me-2" onclick="setSelectedServiceArea(<?php echo $index; ?>);">
+                                            <i class="fas fa-map-pin"></i> Pick on Map
+                                        </button>
+
+                                        <div class="form-check me-3">
                                             <input class="form-check-input" type="radio" name="primary_area" 
                                                    value="<?php echo $index; ?>" <?php echo $area['is_primary'] ? 'checked' : ''; ?>>
                                             <label class="form-check-label">Primary Service Area</label>
                                         </div>
-                                        
+
                                         <?php if ($index > 0): ?>
                                             <button type="button" class="btn btn-sm btn-outline-danger ms-auto" onclick="removeServiceArea(this)">
                                                 <i class="fas fa-trash"></i> Remove
@@ -2891,6 +2902,10 @@ $is_profile_complete = $requirements->isComplete();
                                 </div>
                                 
                                 <div class="col-md-6 d-flex align-items-end">
+                                    <button type="button" class="btn btn-sm btn-info me-2" onclick="setSelectedServiceArea(0);">
+                                        <i class="fas fa-map-pin"></i> Pick on Map
+                                    </button>
+
                                     <div class="form-check">
                                         <input class="form-check-input" type="radio" name="primary_area" value="0" checked>
                                         <label class="form-check-label">Primary Service Area</label>
@@ -2904,6 +2919,12 @@ $is_profile_complete = $requirements->isComplete();
                 <button type="button" class="btn btn-outline-primary mb-3" onclick="addServiceArea()">
                     <i class="fas fa-plus me-2"></i> Add Another Service Area
                 </button>
+
+                <div class="alert alert-secondary">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Click "Pick on Map" for one service area, then click the map to set its latitude and longitude automatically.
+                    The selected service area is shown as a blue circle (primary) or green circle (secondary).
+                </div>
                 
                 <!-- Map Preview -->
                 <h4 class="mt-4 mb-3">Map Preview</h4>
@@ -5021,18 +5042,13 @@ $is_profile_complete = $requirements->isComplete();
                     attribution: '© OpenStreetMap contributors'
                 }).addTo(map);
                 
-                // Add existing service areas
-                <?php if (!empty($serviceAreas)): ?>
-                    <?php foreach ($serviceAreas as $area): ?>
-                        addServiceAreaToMap(
-                            <?php echo $area['latitude']; ?>,
-                            <?php echo $area['longitude']; ?>,
-                            <?php echo $area['radius_km']; ?>,
-                            '<?php echo addslashes($area['area_name']); ?>',
-                            <?php echo $area['is_primary'] ? 'true' : 'false'; ?>
-                        );
-                    <?php endforeach; ?>
-                <?php endif; ?>
+                // Keep map in sync with form
+                map.on('click', handleMapClick);
+
+                const chosenRadio = document.querySelector('input[name="primary_area"]:checked');
+                selectedServiceAreaIndex = chosenRadio ? Number(chosenRadio.value) : 0;
+                setSelectedServiceArea(selectedServiceAreaIndex);
+                renderServiceAreasOnMap();
             }
         }
         
@@ -5100,7 +5116,11 @@ $is_profile_complete = $requirements->isComplete();
                     </div>
                     
                     <div class="col-md-6 d-flex align-items-end">
-                        <div class="form-check">
+                        <button type="button" class="btn btn-sm btn-info me-2" onclick="setSelectedServiceArea(${newIndex});">
+                            <i class="fas fa-map-pin"></i> Pick on Map
+                        </button>
+
+                        <div class="form-check me-3">
                             <input class="form-check-input" type="radio" name="primary_area" value="${newIndex}">
                             <label class="form-check-label">Set as Primary</label>
                         </div>
@@ -5114,13 +5134,129 @@ $is_profile_complete = $requirements->isComplete();
             
             container.appendChild(newArea);
             serviceAreaCount++;
+            setSelectedServiceArea(newIndex);
+            renderServiceAreasOnMap();
         }
         
         function removeServiceArea(button) {
             const areaForm = button.closest('.service-area-form');
+            const removedIndex = areaForm.dataset.index;
             areaForm.remove();
+            if (selectedServiceAreaIndex === Number(removedIndex)) {
+                selectedServiceAreaIndex = 0;
+                setSelectedServiceArea(0);
+            }
+            renderServiceAreasOnMap();
         }
-        
+
+        let selectedServiceAreaIndex = null;
+
+        function setSelectedServiceArea(index) {
+            selectedServiceAreaIndex = Number(index);
+            document.querySelectorAll('.service-area-form').forEach(form => {
+                form.classList.toggle('active', Number(form.dataset.index) === selectedServiceAreaIndex);
+            });
+
+            const targetRadio = document.querySelector(`input[name='primary_area'][value='${selectedServiceAreaIndex}']`);
+            if (targetRadio) {
+                targetRadio.checked = true;
+            }
+
+            document.querySelector('.alert-secondary').innerHTML =
+                `<i class="fas fa-info-circle me-2"></i>Click on the map to set latitude and longitude for the selected service area (index ${selectedServiceAreaIndex + 1}).`;
+        }
+
+        function getServiceAreaDataFromForm(form) {
+            const index = form.dataset.index;
+            const name = form.querySelector(`[name='service_areas[${index}][name]']`)?.value || `Area ${Number(index) + 1}`;
+            const lat = parseFloat(form.querySelector(`[name='service_areas[${index}][lat]']`)?.value);
+            const lng = parseFloat(form.querySelector(`[name='service_areas[${index}][lng]']`)?.value);
+            const radius = parseFloat(form.querySelector(`[name='service_areas[${index}][radius]']`)?.value) || 10;
+            const isPrimary = form.querySelector(`input[name='primary_area']:checked`)?.value === index;
+            return { name, lat, lng, radius, isPrimary };
+        }
+
+        function renderServiceAreasOnMap() {
+            if (!map) return;
+            markers.forEach(m => {
+                map.removeLayer(m.circle);
+                map.removeLayer(m.marker);
+            });
+            markers = [];
+
+            const areaForms = Array.from(document.querySelectorAll('.service-area-form'));
+            const bounds = L.featureGroup();
+
+            areaForms.forEach(form => {
+                const area = getServiceAreaDataFromForm(form);
+                if (!isNaN(area.lat) && !isNaN(area.lng)) {
+                    addServiceAreaToMap(area.lat, area.lng, area.radius, area.name, area.isPrimary);
+                    bounds.addLayer(L.circle([area.lat, area.lng], { radius: area.radius * 1000 }));
+                }
+            });
+
+            if (bounds.getLayers().length > 0) {
+                map.fitBounds(bounds.getBounds().pad(0.25));
+            }
+        }
+
+        function handleMapClick(e) {
+            if (selectedServiceAreaIndex === null) {
+                alert('Please select a service area first by clicking "Pick on Map"');
+                return;
+            }
+
+            const form = document.querySelector(`.service-area-form[data-index='${selectedServiceAreaIndex}']`);
+            if (!form) {
+                alert('Selected service area form not found.');
+                return;
+            }
+
+            const latInput = form.querySelector(`input[name='service_areas[${selectedServiceAreaIndex}][lat]']`);
+            const lngInput = form.querySelector(`input[name='service_areas[${selectedServiceAreaIndex}][lng]']`);
+            const nameInput = form.querySelector(`input[name='service_areas[${selectedServiceAreaIndex}][name]']`);
+
+            if (latInput && lngInput) {
+                const lat = e.latlng.lat.toFixed(6);
+                const lng = e.latlng.lng.toFixed(6);
+
+                latInput.value = lat;
+                lngInput.value = lng;
+
+                // Reverse geocode area label if area name is blank or default
+                if (nameInput && (!nameInput.value.trim() || nameInput.value.startsWith('Area '))) {
+                    const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=14&addressdetails=1`;
+
+                    fetch(nominatimUrl, { method: 'GET', headers: { 'Accept': 'application/json' } })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data && data.address) {
+                                const address = data.address;
+                                const placeParts = [
+                                    address.neighbourhood,
+                                    address.suburb,
+                                    address.city_district,
+                                    address.city,
+                                    address.town,
+                                    address.village,
+                                    address.state,
+                                    address.country
+                                ].filter(Boolean);
+
+                                if (placeParts.length) {
+                                    nameInput.value = placeParts[0];
+                                }
+                            }
+                        })
+                        .catch(() => {
+                            // fallback: keep current name without changing
+                        });
+                }
+
+                renderServiceAreasOnMap();
+            }
+        }
+
         // Payment method management
         let paymentMethodCount = <?php echo count($paymentMethods); ?>;
         
@@ -5281,6 +5417,22 @@ $is_profile_complete = $requirements->isComplete();
         document.addEventListener('DOMContentLoaded', function() {
             // Initialize map when location section is active
             initializeMap();
+
+            const serviceAreasContainer = document.getElementById('serviceAreasContainer');
+            if (serviceAreasContainer) {
+                serviceAreasContainer.addEventListener('input', function(e) {
+                    if (e.target.name && (e.target.name.startsWith('service_areas') || e.target.name === 'primary_area')) {
+                        renderServiceAreasOnMap();
+                    }
+                });
+
+                serviceAreasContainer.addEventListener('click', function(e) {
+                    if (e.target.matches('input[name="primary_area"]')) {
+                        setSelectedServiceArea(Number(e.target.value));
+                        renderServiceAreasOnMap();
+                    }
+                });
+            }
             
             // Set up form submissions
             document.querySelectorAll('form').forEach(form => {

@@ -11,6 +11,19 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/functions.php';
 
+function ensureMessagesAttachmentColumnExists(): void
+{
+    try {
+        $db = Database::getInstance()->getConnection();
+        $stmt = $db->query("SHOW COLUMNS FROM messages LIKE 'attachment_path'");
+        if (!$stmt->fetch()) {
+            $db->exec("ALTER TABLE messages ADD COLUMN attachment_path VARCHAR(255) DEFAULT NULL");
+        }
+    } catch (Throwable $e) {
+        error_log('ensureMessagesAttachmentColumnExists error: ' . $e->getMessage());
+    }
+}
+
 /**
  * Send a chat message from one user to another.
  *
@@ -19,16 +32,35 @@ require_once __DIR__ . '/functions.php';
  * @param string $message
  * @return bool True on success
  */
-function sendMessage(int $sender_id, int $receiver_id, string $message): bool
+function sendMessage(int $sender_id, int $receiver_id, string $message, string $attachment_path = null): bool
 {
-    if (trim($message) === '') {
+    if (trim($message) === '' && empty($attachment_path)) {
         return false;
     }
 
     try {
         $db = Database::getInstance()->getConnection();
-        $stmt = $db->prepare("INSERT INTO messages (sender_id, receiver_id, message) VALUES (?, ?, ?)");
-        return $stmt->execute([$sender_id, $receiver_id, sanitize($message)]);
+
+        if ($attachment_path !== null) {
+            ensureMessagesAttachmentColumnExists();
+        }
+
+        $sql = "INSERT INTO messages (sender_id, receiver_id, message";
+        $params = [$sender_id, $receiver_id, sanitize($message)];
+
+        if ($attachment_path !== null) {
+            $sql .= ", attachment_path";
+            $params[] = sanitize($attachment_path);
+        }
+
+        $sql .= ") VALUES (?, ?, ?";
+        if ($attachment_path !== null) {
+            $sql .= ", ?";
+        }
+        $sql .= ")";
+
+        $stmt = $db->prepare($sql);
+        return $stmt->execute($params);
     } catch (Throwable $e) {
         error_log('sendMessage error: ' . $e->getMessage());
         return false;
@@ -85,7 +117,9 @@ function getConversationMessages(int $userA, int $userB): array
          ORDER BY m.created_at ASC"
     );
     $stmt->execute([$userA, $userB, $userB, $userA]);
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $origin = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    return $origin;
 }
 
 /**
@@ -104,4 +138,79 @@ function markMessagesRead(int $from, int $to): void
     } catch (Throwable $e) {
         error_log('markMessagesRead error: ' . $e->getMessage());
     }
+}
+
+/**
+ * Build a booking timeline for chat display.
+ *
+ * @param int $booking_id
+ * @return array
+ */
+function getBookingTimeline(int $booking_id): array
+{
+    $db = Database::getInstance()->getConnection();
+    $stmt = $db->prepare("SELECT * FROM bookings WHERE id = ?");
+    $stmt->execute([$booking_id]);
+    $booking = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$booking) {
+        return [];
+    }
+
+    $timeline = [];
+
+    $timeline[] = [
+        'status' => 'created',
+        'label' => 'Booking Created',
+        'time' => $booking['created_at'] ?? null,
+    ];
+
+    if (!empty($booking['responded_at'])) {
+        $timeline[] = [
+            'status' => 'responded',
+            'label' => 'Provider Responded',
+            'time' => $booking['responded_at'],
+        ];
+    }
+
+    switch ($booking['status']) {
+        case 'pending':
+            $timeline[] = [
+                'status' => 'pending',
+                'label' => 'Awaiting response',
+                'time' => $booking['updated_at'] ?? null,
+            ];
+            break;
+        case 'confirmed':
+            $timeline[] = [
+                'status' => 'confirmed',
+                'label' => 'Booking Confirmed',
+                'time' => $booking['updated_at'] ?? null,
+            ];
+            break;
+        case 'completed':
+            $timeline[] = [
+                'status' => 'completed',
+                'label' => 'Booking Completed',
+                'time' => $booking['updated_at'] ?? null,
+            ];
+            break;
+        case 'cancelled':
+            $timeline[] = [
+                'status' => 'cancelled',
+                'label' => 'Booking Cancelled',
+                'time' => $booking['updated_at'] ?? null,
+            ];
+            break;
+    }
+
+    if (!empty($booking['payment_status']) && $booking['payment_status'] !== 'pending') {
+        $timeline[] = [
+            'status' => 'payment',
+            'label' => 'Payment ' . ucfirst($booking['payment_status']),
+            'time' => $booking['updated_at'] ?? null,
+        ];
+    }
+
+    return $timeline;
 }

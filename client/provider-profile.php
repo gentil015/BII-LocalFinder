@@ -590,6 +590,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="../bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <!-- Provider Requirements CSS -->
     <link rel="stylesheet" href="../assets/css/provider-requirements.css">
     <style>
@@ -2538,27 +2539,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
                 <!-- Service Areas -->
                 <?php if (!empty($serviceAreas)): ?>
                 <div class="card">
-                    <div class="card-header">
-                        <h3><i class="fas fa-map-marked-alt me-2"></i> Service Areas</h3>
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <h3><i class="fas fa-map-marked-alt me-2"></i> Service Areas</h3>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="openLargeMapBtn">
+                                <i class="fas fa-expand"></i> View large map
+                            </button>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="showPrimaryToggle">
+                                <label class="form-check-label" for="showPrimaryToggle">Show only primary area</label>
+                            </div>
+                        </div>
                     </div>
                     <div class="service-areas-list">
-                        <?php foreach ($serviceAreas as $area): ?>
-                            <div class="service-area-item">
+                                <?php foreach ($serviceAreas as $area): ?>
+                            <div class="service-area-item" data-is-primary="<?php echo !empty($area['is_primary']) ? '1' : '0'; ?>">
                                 <div class="area-header">
                                     <div class="area-name">
                                         <i class="fas fa-map-marker-alt"></i>
-                                        <span><?php echo htmlspecialchars($area['location_name']); ?></span>
+                                        <span><?php echo htmlspecialchars($area['area_name'] ?? 'Unnamed Area'); ?></span>
                                     </div>
-                                    <?php if ($area['is_primary']): ?>
+                                    <?php if (!empty($area['is_primary'])): ?>
                                         <span class="badge bg-success">Primary</span>
                                     <?php endif; ?>
                                 </div>
-                                <?php if ($area['coverage_radius']): ?>
+                                <?php if (!empty($area['radius_km'])): ?>
                                     <p class="area-coverage text-muted mb-2">
-                                        <i class="fas fa-expand-alt"></i> Coverage: <?php echo $area['coverage_radius']; ?> km radius
+                                        <i class="fas fa-expand-alt"></i> Coverage: <?php echo htmlspecialchars($area['radius_km']); ?> km radius
                                     </p>
                                 <?php endif; ?>
-                                <?php if ($area['districts']): ?>
+                                <?php if (!empty($area['districts'])): ?>
                                     <div class="area-districts">
                                         <?php 
                                             $districts = explode(',', $area['districts']);
@@ -2571,15 +2583,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
                             </div>
                         <?php endforeach; ?>
                     </div>
+
+                    <div id="serviceAreaMap" style="height: 320px; border: 1px solid #dee2e6; border-radius: 8px; margin-top: 1rem;"></div>
+
+                    <!-- Large Map Modal -->
+                    <div class="modal fade" id="largeMapModal" tabindex="-1" aria-labelledby="largeMapModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-xl modal-dialog-centered modal-fullscreen-lg-down">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="largeMapModalLabel">Service Areas (Large View)</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body" style="padding: 0;">
+                                    <div id="serviceAreaMapLarge" style="height: 80vh; min-height: 500px; width: 100%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <?php endif; ?>
 
-                <!-- Reviews Section -->
+            </div>
+
+            <!-- Right Column -->
+            <div>
+                    <!-- Booking CTA (redirects to booking page) -->
+                    <div class="card booking-cta-card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-calendar-check me-2"></i> Book This Provider</h3>
+                        </div>
+                        <div class="card-body text-center">
+                            <p class="mb-3 text-muted">To make a booking request, go to the full booking flow where you can select service, date and provide details.</p>
+                            <a href="booking.php?provider_id=<?php echo $provider_id; ?>" class="btn btn-primary w-100 py-2">
+                                <i class="fas fa-arrow-right me-2"></i> Continue to Booking
+                            </a>
+                            <div class="mt-3 text-start">
+                                <h5 class="h6">Contact</h5>
+                                <?php if ($visibility['show_phone']): ?>
+                                    <div class="d-flex align-items-center gap-2 mb-1">
+                                        <i class="fas fa-phone text-primary"></i>
+                                        <span><?php echo htmlspecialchars($provider['phone']); ?></span>
+                                    </div>
+                                <?php endif; ?>
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <i class="fas fa-envelope text-primary"></i>
+                                    <span><?php echo htmlspecialchars($provider['email']); ?></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                <!-- Reviews Section (moved from left column) -->
                 <div class="card">
                     <div class="card-header">
                         <h3><i class="fas fa-star me-2"></i> Reviews (<?php echo count($reviews); ?>)</h3>
                     </div>
-                    
+
                     <?php if (!empty($reviews)): ?>
                         <!-- Rating Breakdown -->
                         <div class="bg-light rounded p-3 mb-4">
@@ -2645,35 +2704,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
                         </div>
                     <?php endif; ?>
                 </div>
-            </div>
-
-            <!-- Right Column -->
-            <div>
-                    <!-- Booking CTA (redirects to booking page) -->
-                    <div class="card booking-cta-card">
-                        <div class="card-header">
-                            <h3><i class="fas fa-calendar-check me-2"></i> Book This Provider</h3>
-                        </div>
-                        <div class="card-body text-center">
-                            <p class="mb-3 text-muted">To make a booking request, go to the full booking flow where you can select service, date and provide details.</p>
-                            <a href="booking.php?provider_id=<?php echo $provider_id; ?>" class="btn btn-primary w-100 py-2">
-                                <i class="fas fa-arrow-right me-2"></i> Continue to Booking
-                            </a>
-                            <div class="mt-3 text-start">
-                                <h5 class="h6">Contact</h5>
-                                <?php if ($visibility['show_phone']): ?>
-                                    <div class="d-flex align-items-center gap-2 mb-1">
-                                        <i class="fas fa-phone text-primary"></i>
-                                        <span><?php echo htmlspecialchars($provider['phone']); ?></span>
-                                    </div>
-                                <?php endif; ?>
-                                <div class="d-flex align-items-center gap-2 mb-1">
-                                    <i class="fas fa-envelope text-primary"></i>
-                                    <span><?php echo htmlspecialchars($provider['email']); ?></span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
 
                 <!-- Similar Providers Section -->
                 <?php if (!empty($similar_providers)): ?>
@@ -2855,6 +2885,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
 
     <!-- Bootstrap JS -->
     <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         // Sidebar collapse toggle
         const sidebarToggle = document.getElementById('sidebarToggle');
@@ -2890,6 +2921,172 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
                 overlay.classList.remove('active');
             });
         }
+
+        // Service Area Map
+        const providerServiceAreas = <?php echo json_encode($serviceAreas); ?>;
+        let serviceAreaMap;
+        let serviceAreaLayerGroup;
+        let largeServiceAreaMap;
+        let largeServiceAreaLayerGroup;
+
+        function renderServiceAreaMapInto(targetMap, targetLayerGroup, showOnlyPrimary = false) {
+            if (!targetMap || !Array.isArray(providerServiceAreas) || providerServiceAreas.length === 0) {
+                return;
+            }
+
+            if (!targetLayerGroup) {
+                targetLayerGroup = L.layerGroup().addTo(targetMap);
+            } else {
+                targetLayerGroup.clearLayers();
+            }
+
+            const bounds = L.latLngBounds();
+            let added = false;
+
+            providerServiceAreas.forEach(area => {
+                const lat = parseFloat(area.latitude);
+                const lng = parseFloat(area.longitude);
+                const isPrimary = parseInt(area.is_primary || 0, 10) === 1;
+
+                if (showOnlyPrimary && !isPrimary) {
+                    return;
+                }
+
+                if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                    const radiusKm = parseFloat(area.radius_km) || 10;
+                    L.circle([lat, lng], {
+                        color: isPrimary ? '#007bff' : '#28a745',
+                        fillColor: isPrimary ? '#3388ff' : '#33cc33',
+                        fillOpacity: 0.2,
+                        radius: radiusKm * 1000
+                    }).addTo(targetLayerGroup);
+
+                    const marker = L.marker([lat, lng]).addTo(targetLayerGroup);
+                    marker.bindPopup(`<strong>${area.area_name || 'Service Area'}</strong><br>Radius: ${radiusKm} km${isPrimary ? '<br><span style="color:#007bff;font-weight:bold;">Primary</span>' : ''}`);
+
+                    bounds.extend([lat, lng]);
+                    added = true;
+                }
+            });
+
+            if (added && bounds.isValid()) {
+                if (bounds.getNorthEast().equals(bounds.getSouthWest())) {
+                    targetMap.setView(bounds.getCenter(), 12);
+                } else {
+                    targetMap.fitBounds(bounds.pad(0.2));
+                }
+            }
+
+            // Keep caller's layer group reference in sync (for large map separate variable)
+            if (targetMap === serviceAreaMap) {
+                serviceAreaLayerGroup = targetLayerGroup;
+            } else if (targetMap === largeServiceAreaMap) {
+                largeServiceAreaLayerGroup = targetLayerGroup;
+            }
+
+            return targetLayerGroup;
+        }
+
+        function renderServiceAreaMap(showOnlyPrimary = false) {
+            serviceAreaLayerGroup = renderServiceAreaMapInto(serviceAreaMap, serviceAreaLayerGroup, showOnlyPrimary);
+        }
+
+        function renderLargeServiceAreaMap(showOnlyPrimary = false) {
+            if (!largeServiceAreaMap) {
+                return;
+            }
+            largeServiceAreaLayerGroup = renderServiceAreaMapInto(largeServiceAreaMap, largeServiceAreaLayerGroup, showOnlyPrimary);
+            largeServiceAreaMap.invalidateSize();
+        }
+
+        function initializeLargeServiceAreaMap(showOnlyPrimary = false) {
+            const largeMapContainer = document.getElementById('serviceAreaMapLarge');
+            if (!largeMapContainer || !Array.isArray(providerServiceAreas) || providerServiceAreas.length === 0) {
+                return;
+            }
+
+            if (!largeServiceAreaMap) {
+                const firstArea = providerServiceAreas[0];
+                const defaultLat = parseFloat(firstArea.latitude) || -1.9441;
+                const defaultLng = parseFloat(firstArea.longitude) || 30.0619;
+
+                largeServiceAreaMap = L.map('serviceAreaMapLarge').setView([defaultLat, defaultLng], 11);
+
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap contributors'
+                }).addTo(largeServiceAreaMap);
+            }
+
+            renderLargeServiceAreaMap(showOnlyPrimary);
+            setTimeout(() => {
+                largeServiceAreaMap.invalidateSize();
+            }, 200);
+        }
+
+        function initializeServiceAreaMap() {
+            const mapContainer = document.getElementById('serviceAreaMap');
+            if (!mapContainer || !Array.isArray(providerServiceAreas) || providerServiceAreas.length === 0) {
+                return;
+            }
+
+            const firstArea = providerServiceAreas[0];
+            const defaultLat = parseFloat(firstArea.latitude) || -1.9441;
+            const defaultLng = parseFloat(firstArea.longitude) || 30.0619;
+
+            serviceAreaMap = L.map('serviceAreaMap').setView([defaultLat, defaultLng], 11);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(serviceAreaMap);
+
+            const toggle = document.getElementById('showPrimaryToggle');
+            const persistedPrimaryOnly = localStorage.getItem('showOnlyPrimaryArea') === 'true';
+
+            if (toggle) {
+                toggle.checked = persistedPrimaryOnly;
+            }
+
+            renderServiceAreaMap(persistedPrimaryOnly);
+
+            const applyToggleFilter = (showOnlyPrimary) => {
+                renderServiceAreaMap(showOnlyPrimary);
+                renderLargeServiceAreaMap(showOnlyPrimary);
+
+                document.querySelectorAll('.service-area-item').forEach(item => {
+                    const isPrimary = item.getAttribute('data-is-primary') === '1';
+                    item.style.display = showOnlyPrimary && !isPrimary ? 'none' : 'block';
+                });
+            };
+
+            if (toggle) {
+                toggle.addEventListener('change', function() {
+                    localStorage.setItem('showOnlyPrimaryArea', this.checked);
+                    applyToggleFilter(this.checked);
+                });
+            }
+
+            applyToggleFilter(persistedPrimaryOnly);
+
+            const openLargeMapBtn = document.getElementById('openLargeMapBtn');
+            if (openLargeMapBtn) {
+                openLargeMapBtn.addEventListener('click', function() {
+                    const showOnlyPrimary = toggle ? toggle.checked : false;
+                    initializeLargeServiceAreaMap(showOnlyPrimary);
+
+                    const largeMapModalEl = document.getElementById('largeMapModal');
+                    const largeMapModal = new bootstrap.Modal(largeMapModalEl);
+                    largeMapModal.show();
+
+                    largeMapModalEl.addEventListener('shown.bs.modal', () => {
+                        if (largeServiceAreaMap) {
+                            largeServiceAreaMap.invalidateSize();
+                        }
+                    }, { once: true });
+                });
+            }
+        }
+
+        window.addEventListener('load', initializeServiceAreaMap);
 
         // Auto-dismiss alerts after 5 seconds
         setTimeout(() => {

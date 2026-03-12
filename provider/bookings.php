@@ -3,6 +3,7 @@ session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once '../includes/language.php';
+require_once '../includes/chat.php';
 
 requireProvider();
 
@@ -69,6 +70,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
                         // You could trigger a review reminder here
                         error_log("Review reminder should be sent for booking: " . $booking_id);
                     }
+                }
+
+                // Notify client in chat about booking status change
+                $clientRecipient = null;
+                $stmtClient = $db->prepare("SELECT client_id FROM bookings WHERE id = ?");
+                $stmtClient->execute([$booking_id]);
+                $bookingTarget = $stmtClient->fetch(PDO::FETCH_ASSOC);
+                if ($bookingTarget && !empty($bookingTarget['client_id'])) {
+                    $clientRecipient = (int)$bookingTarget['client_id'];
+                }
+
+                if ($clientRecipient) {
+                    sendMessage($_SESSION['user_id'], $clientRecipient, "Booking #{$booking_id} status changed to " . ucfirst($new_status));
                 }
                 
                 $success = "Booking status updated successfully!";
@@ -264,6 +278,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['offer_action'])) {
                 }
                 
                 $success = "✅ Offer accepted and booking confirmed! Final price: RWF " . number_format($finalized_price, 0);
+
+                // Add chat event for booking confirmation
+                sendMessage($_SESSION['user_id'], $offer['client_id'], "Booking #{$offer['booking_id']} has been confirmed by provider at RWF " . number_format($finalized_price, 0));
                 
             } catch (Exception $e) {
                 error_log("Offer acceptance error: " . $e->getMessage());

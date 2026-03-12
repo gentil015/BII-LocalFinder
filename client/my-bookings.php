@@ -2,6 +2,7 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+require_once '../includes/chat.php';
 
 // Check if user is logged in and is a client
 if (!isLoggedIn()) {
@@ -229,11 +230,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_booking'])) {
         $stmt->execute([$booking_id, $_SESSION['user_id']]);
         
         if ($stmt->fetch()) {
+            // Get the provider for messaging and timeline integration
+            $stmtProvider = $db->prepare("SELECT provider_id FROM bookings WHERE id = ?");
+            $stmtProvider->execute([$booking_id]);
+            $providerData = $stmtProvider->fetch(PDO::FETCH_ASSOC);
+            $providerId = $providerData['provider_id'] ?? null;
+
             $stmt = $db->prepare("UPDATE bookings SET status = 'cancelled', cancelled_at = NOW() WHERE id = ?");
             if ($stmt->execute([$booking_id])) {
                 $success = "Booking cancelled successfully";
                 // Log activity
                 logActivity($db, $_SESSION['user_id'], 'booking_cancelled', "Cancelled booking #{$booking_id}");
+
+                if ($providerId) {
+                    sendMessage($_SESSION['user_id'], $providerId, "Booking #{$booking_id} has been cancelled by the client.");
+                }
+
                 // Refresh page
                 header("Location: my-bookings.php?cancelled=1");
                 exit();
