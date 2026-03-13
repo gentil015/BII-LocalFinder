@@ -15,12 +15,47 @@ function ensureMessagesAttachmentColumnExists(): void
 {
     try {
         $db = Database::getInstance()->getConnection();
+
         $stmt = $db->query("SHOW COLUMNS FROM messages LIKE 'attachment_path'");
         if (!$stmt->fetch()) {
             $db->exec("ALTER TABLE messages ADD COLUMN attachment_path VARCHAR(255) DEFAULT NULL");
         }
+
+        $stmt = $db->query("SHOW COLUMNS FROM messages LIKE 'attachment_type'");
+        if (!$stmt->fetch()) {
+            $db->exec("ALTER TABLE messages ADD COLUMN attachment_type VARCHAR(50) DEFAULT NULL");
+        }
     } catch (Throwable $e) {
         error_log('ensureMessagesAttachmentColumnExists error: ' . $e->getMessage());
+    }
+}
+
+function ensureMessagesAudioColumnsExist(): void
+{
+    try {
+        $db = Database::getInstance()->getConnection();
+
+        $stmt = $db->query("SHOW COLUMNS FROM messages LIKE 'message_type'");
+        if (!$stmt->fetch()) {
+            $db->exec("ALTER TABLE messages ADD COLUMN message_type VARCHAR(50) DEFAULT NULL");
+        }
+
+        $stmt = $db->query("SHOW COLUMNS FROM messages LIKE 'file_path'");
+        if (!$stmt->fetch()) {
+            $db->exec("ALTER TABLE messages ADD COLUMN file_path VARCHAR(255) DEFAULT NULL");
+        }
+
+        $stmt = $db->query("SHOW COLUMNS FROM messages LIKE 'file_size'");
+        if (!$stmt->fetch()) {
+            $db->exec("ALTER TABLE messages ADD COLUMN file_size INT DEFAULT NULL");
+        }
+
+        $stmt = $db->query("SHOW COLUMNS FROM messages LIKE 'audio_duration'");
+        if (!$stmt->fetch()) {
+            $db->exec("ALTER TABLE messages ADD COLUMN audio_duration INT DEFAULT NULL");
+        }
+    } catch (Throwable $e) {
+        error_log('ensureMessagesAudioColumnsExist error: ' . $e->getMessage());
     }
 }
 
@@ -32,7 +67,7 @@ function ensureMessagesAttachmentColumnExists(): void
  * @param string $message
  * @return bool True on success
  */
-function sendMessage(int $sender_id, int $receiver_id, string $message, string $attachment_path = null): bool
+function sendMessage(int $sender_id, int $receiver_id, string $message, string $attachment_path = null, string $attachment_type = null): bool
 {
     if (trim($message) === '' && empty($attachment_path)) {
         return false;
@@ -41,7 +76,7 @@ function sendMessage(int $sender_id, int $receiver_id, string $message, string $
     try {
         $db = Database::getInstance()->getConnection();
 
-        if ($attachment_path !== null) {
+        if ($attachment_path !== null || $attachment_type !== null) {
             ensureMessagesAttachmentColumnExists();
         }
 
@@ -53,8 +88,16 @@ function sendMessage(int $sender_id, int $receiver_id, string $message, string $
             $params[] = sanitize($attachment_path);
         }
 
+        if ($attachment_type !== null) {
+            $sql .= ", attachment_type";
+            $params[] = sanitize($attachment_type);
+        }
+
         $sql .= ") VALUES (?, ?, ?";
         if ($attachment_path !== null) {
+            $sql .= ", ?";
+        }
+        if ($attachment_type !== null) {
             $sql .= ", ?";
         }
         $sql .= ")";
@@ -63,6 +106,30 @@ function sendMessage(int $sender_id, int $receiver_id, string $message, string $
         return $stmt->execute($params);
     } catch (Throwable $e) {
         error_log('sendMessage error: ' . $e->getMessage());
+        return false;
+    }
+}
+
+function sendAudioMessage(int $sender_id, int $receiver_id, string $file_path, int $file_size, int $duration, string $message = ''): bool
+{
+    try {
+        $db = Database::getInstance()->getConnection();
+        ensureMessagesAudioColumnsExist();
+
+        $sql = "INSERT INTO messages (sender_id, receiver_id, message, message_type, file_path, file_size, audio_duration) VALUES (?, ?, ?, ?, ?, ?, ?)";
+        $stmt = $db->prepare($sql);
+
+        return $stmt->execute([
+            $sender_id,
+            $receiver_id,
+            sanitize($message),
+            'audio',
+            sanitize($file_path),
+            $file_size,
+            $duration
+        ]);
+    } catch (Throwable $e) {
+        error_log('sendAudioMessage error: ' . $e->getMessage());
         return false;
     }
 }
@@ -76,6 +143,10 @@ function sendMessage(int $sender_id, int $receiver_id, string $message, string $
 function getConversationList(int $user_id): array
 {
     $db = Database::getInstance()->getConnection();
+
+    // Ensure optional columns exist before querying, to avoid SQL errors on older installs.
+    ensureMessagesAudioColumnsExist();
+
     $stmt = $db->prepare(
         "SELECT u.id, u.full_name, u.profile_image,
                 (SELECT m.created_at FROM messages m
@@ -83,6 +154,16 @@ function getConversationList(int $user_id): array
                     OR (m.sender_id = :me AND m.receiver_id = u.id)
                  ORDER BY m.created_at DESC
                  LIMIT 1) as last_message_time,
+                (SELECT m.message FROM messages m
+                 WHERE (m.sender_id = u.id AND m.receiver_id = :me)
+                    OR (m.sender_id = :me AND m.receiver_id = u.id)
+                 ORDER BY m.created_at DESC
+                 LIMIT 1) as last_message,
+                (SELECT m.message_type FROM messages m
+                 WHERE (m.sender_id = u.id AND m.receiver_id = :me)
+                    OR (m.sender_id = :me AND m.receiver_id = u.id)
+                 ORDER BY m.created_at DESC
+                 LIMIT 1) as last_message_type,
                 (SELECT COUNT(*) FROM messages m2
                  WHERE m2.sender_id = u.id AND m2.receiver_id = :me AND m2.is_read = 0) as unread_count
          FROM users u

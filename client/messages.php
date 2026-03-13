@@ -1,4 +1,6 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', '0'); // Don't display errors, log them instead
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
@@ -7,19 +9,29 @@ require_once '../includes/mailer.php';
 
 // API poll endpoint for live update
 if (isset($_GET['action']) && $_GET['action'] === 'poll') {
-    $me = $_SESSION['user_id'] ?? 0;
-    $with = isset($_GET['with']) ? intval($_GET['with']) : 0;
-    if ($me && $with) {
-        $messages = getConversationMessages($me, $with);
-        $bookingTimelineData = [];
-        if (isset($_GET['booking_id']) && intval($_GET['booking_id']) > 0) {
-            $bookingTimelineData = getBookingTimeline(intval($_GET['booking_id']));
+    header('Content-Type: application/json');
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    
+    try {
+        $me = isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : 0;
+        $with = isset($_GET['with']) ? intval($_GET['with']) : 0;
+        
+        if ($me > 0 && $with > 0) {
+            $messages = getConversationMessages($me, $with);
+            $bookingTimelineData = [];
+            $booking_id = isset($_GET['booking_id']) ? intval($_GET['booking_id']) : 0;
+            if ($booking_id > 0) {
+                $bookingTimelineData = getBookingTimeline($booking_id);
+            }
+            echo json_encode(['success' => true, 'messages' => $messages, 'booking_timeline' => $bookingTimelineData]);
+        } else {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'Invalid session or conversation']);
         }
-        header('Content-Type: application/json');
-        echo json_encode(['success' => true, 'messages' => $messages, 'booking_timeline' => $bookingTimelineData]);
-    } else {
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Invalid conversation']);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        error_log('Poll error: ' . $e->getMessage());
+        echo json_encode(['success' => false, 'message' => 'Server error']);
     }
     exit;
 }
@@ -42,10 +54,31 @@ function saveChatAttachment(array $file): ?string
         return null;
     }
 
+    // File size limits (in bytes)
+    $maxSizeAudio = 10 * 1024 * 1024; // 10MB for audio
+    $maxSizeImage = 5 * 1024 * 1024;  // 5MB for images
+    $maxSizeDocument = 5 * 1024 * 1024; // 5MB for documents
+
     $allowedExtensions = ['jpg','jpeg','png','gif','pdf','doc','docx','xls','xlsx','txt','webm'];
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     if (!in_array($ext, $allowedExtensions, true)) {
         return null;
+    }
+
+    // Validate file size based on type
+    $fileSize = $file['size'] ?? 0;
+    if (in_array($ext, ['webm','ogg','mp3','wav'], true)) {
+        if ($fileSize > $maxSizeAudio) {
+            return null; // File too large
+        }
+    } elseif (in_array($ext, ['jpg','jpeg','png','gif'], true)) {
+        if ($fileSize > $maxSizeImage) {
+            return null; // File too large
+        }
+    } else {
+        if ($fileSize > $maxSizeDocument) {
+            return null; // File too large
+        }
     }
 
     $allowedMimeTypes = [
@@ -91,13 +124,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['receiver_id']) && (is
     $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || (isset($_POST['ajax']) && $_POST['ajax'] == '1');
 
     $attachmentPath = null;
+    $attachmentType = null;
     if (!empty($_FILES['attachment']['name'])) {
         $attachmentPath = saveChatAttachment($_FILES['attachment']);
+        if ($attachmentPath !== null) {
+            $ext = strtolower(pathinfo($attachmentPath, PATHINFO_EXTENSION));
+            if (in_array($ext, ['webm','ogg','mp3','wav'], true)) {
+                $attachmentType = 'audio';
+            } elseif (in_array($ext, ['jpg','jpeg','png','gif'], true)) {
+                $attachmentType = 'image';
+            } else {
+                $attachmentType = 'file';
+            }
+        }
     }
 
     $result = false;
     if ($msg !== '' || $attachmentPath !== null) {
-        $result = sendMessage($me, $receiver_id, $msg, $attachmentPath);
+        $result = sendMessage($me, $receiver_id, $msg, $attachmentPath, $attachmentType);
 
         // optionally notify provider via email/push/sms
         if (Mailer::isProviderNotificationEnabled($receiver_id, 'chat_message_email')) {
@@ -140,20 +184,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['receiver_id']) && (is
         header('Content-Type: application/json');
         echo json_encode([
             'success' => $result,
-            'message' => $result ? ['sender_id' => $me, 'receiver_id' => $receiver_id, 'message' => $msg, 'attachment_path' => $attachmentPath, 'created_at' => date('Y-m-d H:i:s')] : null
+            'message' => $result ? ['sender_id' => $me, 'receiver_id' => $receiver_id, 'message' => $msg, 'attachment_path' => $attachmentPath, 'attachment_type' => $attachmentType, 'created_at' => date('Y-m-d H:i:s')] : null
         ]);
         exit;
     }
 
     // redirect to avoid form resubmission
-    redirect('client/messages.php?with=' . $receiver_id . ($booking_id ? '&booking_id=' . $booking_id : ''));
+    redirect('messages.php?with=' . $receiver_id . ($booking_id ? '&booking_id=' . $booking_id : ''));
 }
 
 // determine active conversation partner
 $with = isset($_GET['with']) ? intval($_GET['with']) : 0;
 $booking_id = isset($_GET['booking_id']) ? intval($_GET['booking_id']) : 0;
 
-$convs = getConversationList($me);
+try {
+    $convs = getConversationList($me) ?: [];
+    if (!is_array($convs)) {
+        $convs = [];
+    }
+} catch (Throwable $e) {
+    error_log('getConversationList error: ' . $e->getMessage());
+    $convs = [];
+}
+
 $messages = [];
 $otherUser = null;
 $bookingTimeline = [];
@@ -513,6 +566,23 @@ if ($with) {
             font-size: 13px;
         }
 
+        .voice-badge {
+            display: inline-block;
+            font-size: 12px;
+            color: #ffffff;
+            background: #1e40af;
+            border-radius: 12px;
+            padding: 2px 8px;
+            margin-bottom: 6px;
+            margin-top: 4px;
+            letter-spacing: 0.2px;
+        }
+
+        .attachment-link {
+            margin-top: 8px;
+            font-size: 13px;
+        }
+
         .attachment-link a {
             color: #0a58ca;
             text-decoration: none;
@@ -737,6 +807,10 @@ if ($with) {
                                 <?php 
                                     if ($c['unread_count'] > 0) {
                                         echo '📨 New messages';
+                                    } elseif (!empty($c['last_message_type']) && $c['last_message_type'] === 'audio') {
+                                        echo '🎤 Voice note';
+                                    } elseif (!empty($c['last_message'])) {
+                                        echo htmlspecialchars($c['last_message']);
                                     } else {
                                         echo 'Active now';
                                     }
@@ -817,22 +891,30 @@ if ($with) {
                             <div class="message <?php echo $m['sender_id'] == $me ? 'sent' : 'received'; ?>">
                                 <div class="message-bubble">
                                 <?php echo nl2br(htmlspecialchars($m['message'])); ?>
-                                <?php if (!empty($m['attachment_path'])): ?>
-                                    <?php $ext = strtolower(pathinfo($m['attachment_path'], PATHINFO_EXTENSION)); ?>
+                                <?php
+                                    $isAudioMessage = (!empty($m['message_type']) && $m['message_type'] === 'audio')
+                                        || (!empty($m['attachment_type']) && $m['attachment_type'] === 'audio');
+                                    $attachmentPath = !empty($m['file_path']) ? $m['file_path'] : ($m['attachment_path'] ?? null);
+                                ?>
+                                <?php if ($isAudioMessage): ?>
+                                    <div class="voice-badge">Voice note</div>
+                                <?php endif; ?>
+                                <?php if (!empty($attachmentPath)): ?>
+                                    <?php $ext = strtolower(pathinfo($attachmentPath, PATHINFO_EXTENSION)); ?>
                                     <?php if (in_array($ext, ['jpg','jpeg','png','gif'], true)): ?>
                                         <div class="attachment-preview">
-                                            <img src="../<?php echo htmlspecialchars($m['attachment_path']); ?>" alt="Attachment preview" style="max-width: 180px; max-height: 180px; border-radius: 8px; margin-top: 6px;" />
+                                            <img src="../<?php echo htmlspecialchars($attachmentPath); ?>" alt="Attachment preview" style="max-width: 180px; max-height: 180px; border-radius: 8px; margin-top: 6px;" />
                                         </div>
                                     <?php elseif (in_array($ext, ['webm','ogg','mp3','wav'], true)): ?>
                                         <div class="attachment-preview" style="margin-top: 6px;">
                                             <audio controls style="width: 100%; max-width: 250px;">
-                                                <source src="../<?php echo htmlspecialchars($m['attachment_path']); ?>" type="audio/<?php echo htmlspecialchars($ext === 'webm' ? 'webm' : ($ext === 'ogg' ? 'ogg' : ($ext === 'mp3' ? 'mpeg' : 'wav'))); ?>">
+                                                <source src="../<?php echo htmlspecialchars($attachmentPath); ?>" type="audio/<?php echo htmlspecialchars($ext === 'webm' ? 'webm' : ($ext === 'ogg' ? 'ogg' : ($ext === 'mp3' ? 'mpeg' : 'wav'))); ?>">
                                                 Your browser does not support the audio element.
                                             </audio>
                                         </div>
                                     <?php endif; ?>
                                     <div class="attachment-link">
-                                        <a href="../<?php echo htmlspecialchars($m['attachment_path']); ?>" target="_blank" rel="noopener noreferrer">
+                                        <a href="../<?php echo htmlspecialchars($attachmentPath); ?>" target="_blank" rel="noopener noreferrer">
                                             📎 View attachment
                                         </a>
                                     </div>
@@ -854,11 +936,15 @@ if ($with) {
                     <input type="hidden" name="receiver_id" value="<?php echo $with; ?>">
                     <input type="hidden" name="booking_id" value="<?php echo $booking_id; ?>">
                     <input type="hidden" name="ajax" value="1">
-                    <input type="text" name="message" placeholder="Aa" autocomplete="off" id="messageTextField">
-                    <button type="button" id="recordButton" class="header-btn" title="Hold to record">🎤</button>
-                    <span id="recordStatus" style="font-size: 12px; color: #0a58ca; margin-left: 6px;">Hold to record</span>
-                    <input type="file" name="attachment" id="attachmentInput" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.webm" style="margin-left:8px;" title="Attach file">
-                    <button type="submit" class="send-btn" title="Send"><i class="fas fa-paper-plane"></i></button>
+
+                    <div class="input-row" style="display:flex; align-items:center; gap:8px; width:100%;">
+                        <button type="button" id="attachButton" class="header-btn" title="Attach file"><i class="fas fa-paperclip"></i></button>
+                        <input type="file" name="attachment" id="attachmentInput" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.webm" style="display:none;" title="Attach file">
+                        <input type="text" name="message" placeholder="Aa" autocomplete="off" id="messageTextField" style="flex:1;">
+                        <button type="button" id="recordButton" class="header-btn" title="Record voice message"><i class="fas fa-microphone"></i></button>
+                        <button type="submit" class="send-btn" title="Send"><i class="fas fa-paper-plane"></i></button>
+                    </div>
+                    <div id="recordStatus" style="font-size: 12px; color: #0a58ca; margin-top: 4px;">Hold to record</div>
                 </form>
             </div>
         <?php else: ?>
@@ -910,39 +996,71 @@ if (messageTextField) {
     });
 }
 
-// Voice recording (hold) support
+// Voice recording support (click to start, click send to finish)
 let mediaRecorder = null;
 let mediaStream = null;
 let audioChunks = [];
 let isRecording = false;
+let recordingStartTime = 0;
+let recordingMaxDuration = 60000; // 60 seconds in milliseconds
+let recordingTimer = null;
+let recordingInterval = null;
 const recordButton = document.getElementById('recordButton');
 const recordStatus = document.getElementById('recordStatus');
+const attachButton = document.getElementById('attachButton');
+const attachmentInput = document.getElementById('attachmentInput');
+const sendButton = document.querySelector('.send-btn');
+
+function formatDuration(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function updateRecordingStatus() {
+    if (!recordStatus) return;
+    if (!isRecording) {
+        recordStatus.textContent = 'Hold to record';
+        return;
+    }
+
+    const elapsed = Date.now() - recordingStartTime;
+    recordStatus.textContent = `Recording ${formatDuration(elapsed)} — tap send to finish`;
+}
 
 function setRecordingState(state) {
     isRecording = state;
     if (recordStatus) {
-        recordStatus.textContent = state ? 'Recording... release to send' : 'Hold to record';
+        recordStatus.textContent = state ? 'Recording 0:00 — tap send to finish' : 'Hold to record';
     }
     if (recordButton) {
         recordButton.style.background = state ? '#e53e3e' : 'transparent';
         recordButton.style.color = state ? 'white' : '#1e3a8a';
+        recordButton.innerHTML = state ? '<i class="fas fa-stop"></i>' : '<i class="fas fa-microphone"></i>';
+    }
+    if (sendButton) {
+        sendButton.title = state ? 'Stop recording and send' : 'Send';
     }
 }
 
-function sendVoiceMessage(blob) {
+function sendVoiceMessage(blob, durationSec) {
+    const maxVoiceSize = 10 * 1024 * 1024; // 10MB
+    if (blob.size > maxVoiceSize) {
+        alert('Voice message is too large (max 10MB). Recording was too long.');
+        return;
+    }
+
     const filename = 'voice_' + Date.now() + '.webm';
     const file = new File([blob], filename, { type: 'audio/webm' });
 
     const formData = new FormData();
     formData.append('receiver_id', '<?php echo $with; ?>');
-    formData.append('booking_id', '<?php echo $booking_id; ?>');
-    formData.append('message', '');
-    formData.append('ajax', '1');
-    formData.append('attachment', file);
+    formData.append('duration', durationSec);
+    formData.append('voice', file);
 
-    fetch(window.location.href, {
+    fetch('../upload-voice.php', {
         method: 'POST',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
         body: formData
     })
     .then(r => r.json())
@@ -952,12 +1070,14 @@ function sendVoiceMessage(blob) {
             const group = document.createElement('div');
             group.className = 'message-group';
 
-            const audioHtml = `<div class="attachment-preview" style="margin-top:6px;"><audio controls style="width:100%; max-width:250px;"><source src="../${data.message.attachment_path}" type="audio/webm">Your browser does not support audio playback.</audio></div>`;
-            const attachmentLink = `<div class="attachment-link"><a href="../${data.message.attachment_path}" target="_blank" rel="noopener noreferrer">📎 View attachment</a></div>`;
+            const audioHtml = `<div class="attachment-preview" style="margin-top:6px;"><audio controls style="width:100%; max-width:250px;"><source src="../${data.message.file_path || data.message.attachment_path}" type="audio/webm">Your browser does not support audio playback.</audio></div>`;
+            const voiceBadgeHtml = `<div class="voice-badge">Voice note</div>`;
+            const attachmentLink = `<div class="attachment-link"><a href="../${data.message.file_path || data.message.attachment_path}" target="_blank" rel="noopener noreferrer">📎 View attachment</a></div>`;
 
             group.innerHTML = `
                 <div class="message sent">
                     <div class="message-bubble">
+                        ${voiceBadgeHtml}
                         ${audioHtml}
                         ${attachmentLink}
                     </div>
@@ -985,6 +1105,7 @@ function startRecording() {
         mediaStream = stream;
         mediaRecorder = new MediaRecorder(stream);
         audioChunks = [];
+        recordingStartTime = Date.now();
 
         mediaRecorder.ondataavailable = function(e) {
             if (e.data && e.data.size > 0) audioChunks.push(e.data);
@@ -995,15 +1116,29 @@ function startRecording() {
                 mediaStream.getTracks().forEach(track => track.stop());
                 mediaStream = null;
             }
+            clearTimeout(recordingTimer);
+            clearInterval(recordingInterval);
             if (audioChunks.length > 0) {
                 const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                sendVoiceMessage(audioBlob);
+                const durationSec = mediaRecorder._recordingDuration || Math.round((Date.now() - recordingStartTime) / 1000);
+                sendVoiceMessage(audioBlob, durationSec);
             }
             setRecordingState(false);
         };
 
         mediaRecorder.start();
         setRecordingState(true);
+
+        recordingInterval = setInterval(updateRecordingStatus, 500);
+
+        // Auto-stop recording after max duration
+        recordingTimer = setTimeout(function() {
+            if (isRecording && mediaRecorder) {
+                mediaRecorder._recordingDuration = Math.round(recordingMaxDuration / 1000);
+                mediaRecorder.stop();
+                alert('Maximum recording duration (60 seconds) reached. Recording stopped.');
+            }
+        }, recordingMaxDuration);
     })
     .catch(err => {
         console.error('Could not start recording', err);
@@ -1011,16 +1146,49 @@ function startRecording() {
     });
 }
 
-function stopRecording() {
+function stopRecordingAndSend() {
     if (!isRecording || !mediaRecorder) return;
+    const durationSec = Math.round((Date.now() - recordingStartTime) / 1000);
     mediaRecorder.stop();
+    // send will happen in onstop handler
+    // pass duration via global variable so handler can use it
+    mediaRecorder._recordingDuration = durationSec;
+}
+
+function cancelRecording() {
+    if (!isRecording) return;
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+    }
+    audioChunks = [];
+    clearTimeout(recordingTimer);
+    clearInterval(recordingInterval);
+    setRecordingState(false);
+}
+
+if (attachButton && attachmentInput) {
+    attachButton.addEventListener('click', function() {
+        attachmentInput.click();
+    });
+
+    attachmentInput.addEventListener('change', function() {
+        if (attachmentInput.files && attachmentInput.files.length > 0) {
+            const fileName = attachmentInput.files[0].name;
+            if (recordStatus) {
+                recordStatus.textContent = `Selected: ${fileName}`;
+            }
+        }
+    });
 }
 
 if (recordButton) {
-    recordButton.addEventListener('mousedown', startRecording);
-    recordButton.addEventListener('touchstart', function(e) { e.preventDefault(); startRecording(); });
-    document.addEventListener('mouseup', stopRecording);
-    document.addEventListener('touchend', stopRecording);
+    recordButton.addEventListener('click', function() {
+        if (isRecording) {
+            stopRecordingAndSend();
+        } else {
+            startRecording();
+        }
+    });
 }
 
 // Search conversations
@@ -1036,11 +1204,39 @@ document.getElementById('searchInput')?.addEventListener('input', function(e) {
 const messageForm = document.getElementById('messageForm');
 if (messageForm) {
     messageForm.addEventListener('submit', function(event) {
+        // If we're recording, clicking send should stop + send the voice note.
+        if (isRecording) {
+            event.preventDefault();
+            stopRecordingAndSend();
+            return;
+        }
+
         event.preventDefault();
         const formData = new FormData(messageForm);
         const messageText = (formData.get('message') || '').trim();
         const attachmentFile = formData.get('attachment');
+        
         if (!messageText && (!attachmentFile || attachmentFile.size === 0)) return;
+
+        // Validate file size client-side
+        if (attachmentFile && attachmentFile.size > 0) {
+            const maxSizeAudio = 10 * 1024 * 1024; // 10MB
+            const maxSizeImage = 5 * 1024 * 1024;  // 5MB
+            const maxSizeDoc = 5 * 1024 * 1024;    // 5MB
+            const filename = attachmentFile.name.toLowerCase();
+            let maxSize = maxSizeDoc;
+            
+            if (/\.(webm|ogg|mp3|wav)$/i.test(filename)) {
+                maxSize = maxSizeAudio;
+            } else if (/\.(jpg|jpeg|png|gif)$/i.test(filename)) {
+                maxSize = maxSizeImage;
+            }
+            
+            if (attachmentFile.size > maxSize) {
+                alert('File is too large. Maximum size: ' + (maxSize / (1024 * 1024)).toFixed(1) + 'MB');
+                return;
+            }
+        }
 
         fetch(window.location.href, {
             method: 'POST',
@@ -1049,7 +1245,10 @@ if (messageForm) {
             },
             body: formData
         })
-        .then(r => r.json())
+        .then(r => {
+            if (!r.ok) throw new Error('Network response was not ok');
+            return r.json();
+        })
         .then(data => {
             if (data.success) {
                 const messagesArea = document.getElementById('messagesArea');
@@ -1057,14 +1256,29 @@ if (messageForm) {
                 group.className = 'message-group';
 
                 let attachmentHtml = '';
-                if (data.message && data.message.attachment_path) {
-                    attachmentHtml = `<div class="attachment-link"><a href="../${data.message.attachment_path}" target="_blank" rel="noopener noreferrer">📎 View attachment</a></div>`;
+                let voiceBadgeHtml = '';
+                const attachmentPath = data.message ? (data.message.file_path || data.message.attachment_path) : null;
+                const messageType = data.message ? (data.message.message_type || data.message.attachment_type) : null;
+
+                if (attachmentPath) {
+                    const ext = attachmentPath.split('.').pop().toLowerCase();
+                    if (['jpg','jpeg','png','gif'].includes(ext)) {
+                        attachmentHtml += `<div class="attachment-preview"><img src="../${attachmentPath}" alt="Attachment preview" style="max-width:180px;max-height:180px;border-radius:8px;margin-top:6px;" /></div>`;
+                    } else if (['webm','ogg','mp3','wav'].includes(ext)) {
+                        const audioType = ext === 'mp3' ? 'mpeg' : ext;
+                        attachmentHtml += `<div class="attachment-preview" style="margin-top:6px;"><audio controls style="width:100%; max-width:250px;"><source src="../${attachmentPath}" type="audio/${audioType}">Your browser does not support audio playback.</audio></div>`;
+                    }
+                    if (messageType === 'audio') {
+                        voiceBadgeHtml = '<div class="voice-badge">Voice note</div>';
+                    }
+                    attachmentHtml += `<div class="attachment-link"><a href="../${attachmentPath}" target="_blank" rel="noopener noreferrer">📎 View attachment</a></div>`;
                 }
 
                 group.innerHTML = `
                     <div class="message sent">
                         <div class="message-bubble">
                             ${messageText.replace(/\n/g,'<br>')}
+                            ${voiceBadgeHtml}
                             ${attachmentHtml}
                         </div>
                     </div>
@@ -1084,10 +1298,13 @@ if (messageForm) {
 const pollUser = <?php echo $with; ?>;
 if (pollUser) {
     setInterval(function() {
-        fetch('client/messages.php?action=poll&with=' + pollUser + '&booking_id=' + <?php echo $booking_id; ?>, {
+        fetch('messages.php?action=poll&with=' + pollUser + '&booking_id=' + <?php echo $booking_id; ?>, {
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
         })
-        .then(r => r.json())
+        .then(r => {
+            if (!r.ok) throw new Error('Poll failed: ' + r.status);
+            return r.json();
+        })
         .then(data => {
             if (data.success) {
                 const messagesArea = document.getElementById('messagesArea');
@@ -1097,23 +1314,30 @@ if (pollUser) {
                     group.className = 'message-group';
 
                     let attachmentHtml = '';
-                    if (m.attachment_path) {
-                        const isImage = /\.(jpg|jpeg|png|gif)$/i.test(m.attachment_path);
-                        const isAudio = /\.(webm|ogg|mp3|wav)$/i.test(m.attachment_path);
+                    let voiceBadgeHtml = '';
+                    const attachmentPath = m.file_path || m.attachment_path;
+                    const messageType = m.message_type || m.attachment_type;
+                    if (attachmentPath) {
+                        const isImage = /\.(jpg|jpeg|png|gif)$/i.test(attachmentPath);
+                        const isAudio = /\.(webm|ogg|mp3|wav)$/i.test(attachmentPath);
                         if (isImage) {
-                            attachmentHtml += `<div class="attachment-preview"><img src="../${m.attachment_path}" alt="Attachment preview" style="max-width:180px;max-height:180px;border-radius:8px;margin-top:6px;" /></div>`;
+                            attachmentHtml += `<div class="attachment-preview"><img src="../${attachmentPath}" alt="Attachment preview" style="max-width:180px;max-height:180px;border-radius:8px;margin-top:6px;" /></div>`;
                         } else if (isAudio) {
-                            const mimeType = m.attachment_path.match(/\.(webm|ogg|mp3|wav)$/i)[1].toLowerCase();
+                            const mimeType = attachmentPath.match(/\.(webm|ogg|mp3|wav)$/i)[1].toLowerCase();
                             const audioType = mimeType === 'mp3' ? 'mpeg' : mimeType;
-                            attachmentHtml += `<div class="attachment-preview" style="margin-top:6px;"><audio controls style="width:100%; max-width:250px;"><source src="../${m.attachment_path}" type="audio/${audioType}">Your browser does not support audio playback.</audio></div>`;
+                            attachmentHtml += `<div class="attachment-preview" style="margin-top:6px;"><audio controls style="width:100%; max-width:250px;"><source src="../${attachmentPath}" type="audio/${audioType}">Your browser does not support audio playback.</audio></div>`;
                         }
-                        attachmentHtml += `<div class="attachment-link"><a href="../${m.attachment_path}" target="_blank" rel="noopener noreferrer">📎 View attachment</a></div>`;
+                        if (messageType === 'audio') {
+                            voiceBadgeHtml = '<div class="voice-badge">Voice note</div>';
+                        }
+                        attachmentHtml += `<div class="attachment-link"><a href="../${attachmentPath}" target="_blank" rel="noopener noreferrer">📎 View attachment</a></div>`;
                     }
 
                     group.innerHTML = `
                         <div class="message ${m.sender_id == <?php echo $me; ?> ? 'sent' : 'received'}">
                             <div class="message-bubble">
                                 ${m.message.replace(/\n/g,'<br>')}
+                                ${voiceBadgeHtml}
                                 ${attachmentHtml}
                             </div>
                         </div>
