@@ -26,7 +26,7 @@ $user_id = $_SESSION['user_id'];
 // Auto-expire old offers
 ServiceNegotiation::autoExpireOffers($db);
 
-$action = isset($_POST['action']) ? sanitize($_POST['action']) : '';
+$action = isset($_POST['action']) ? sanitize($_POST['action']) : (isset($_GET['action']) ? sanitize($_GET['action']) : '');
 
 try {
     switch ($action) {
@@ -277,6 +277,45 @@ try {
             echo json_encode([
                 'success' => true,
                 'finalized_price' => $finalized
+            ]);
+            break;
+        
+        // GET: Services for provider
+        case 'get_services':
+            // Get all services created by the logged-in provider
+            if (!isProvider()) {
+                throw new Exception('Only providers can retrieve services');
+            }
+            
+            // Get provider ID from user ID
+            $stmt = $db->prepare("SELECT id FROM service_providers WHERE user_id = ? LIMIT 1");
+            $stmt->execute([$user_id]);
+            $provider = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$provider) {
+                echo json_encode([
+                    'success' => true,
+                    'services' => []
+                ]);
+                break;
+            }
+            
+            $stmt = $db->prepare("
+                SELECT id, name, description, price, negotiable, min_price, max_price, is_available
+                FROM provider_services 
+                WHERE provider_id = ? AND is_available = 1
+                ORDER BY name ASC
+            ");
+            $stmt->execute([$provider['id']]);
+            $services = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            if ($services === false) {
+                $services = [];
+            }
+            
+            echo json_encode([
+                'success' => true,
+                'services' => $services
             ]);
             break;
         

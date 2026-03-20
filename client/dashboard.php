@@ -586,8 +586,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="../bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        /* EXACT SAME STYLES AS BEFORE - NO CHANGES */
         :root {
             --primary: #0d6efd;
             --secondary: #6c757d;
@@ -597,100 +598,137 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
             --info: #0dcaf0;
             --light: #f8f9fa;
             --dark: #212529;
-            --sidebar-width: 250px;
+            --sidebar-width: 260px;
+            --sidebar-collapsed-width: 72px;
+
+            /* Design tokens */
+            --surface: #ffffff;
+            --surface-2: #f7f8fc;
+            --border: #e8eaf0;
+            --border-subtle: #f0f2f7;
+            --text-primary: #0f1117;
+            --text-secondary: #6b7280;
+            --text-muted: #9ca3af;
+            --accent: #0d6efd;
+            --accent-light: #eff4ff;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 20px;
+            --shadow-xs: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 16px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.05);
+            --shadow-lg: 0 8px 32px rgba(0,0,0,0.10), 0 4px 12px rgba(0,0,0,0.06);
+            --transition: all 0.22s cubic-bezier(0.4,0,0.2,1);
         }
-        
+
+        *, *::before, *::after { box-sizing: border-box; }
+
         body {
-            background-color: #f5f7fb;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--surface-2);
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--text-primary);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
         }
-        
-        /* Sidebar Styles */
+
+        /* ── SIDEBAR ── */
         .sidebar {
             width: var(--sidebar-width);
-            background: linear-gradient(180deg, var(--primary), #0a58ca);
-            color: white;
+            background: #ffffff;
+            border-right: 1px solid var(--border);
+            color: var(--text-primary);
             position: fixed;
             height: 100vh;
             left: 0;
             top: 0;
-            transition: all 0.3s;
+            transition: var(--transition);
             z-index: 1000;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
-        
+
         .sidebar-header {
-            padding: 1.5rem 1rem;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            text-align: center;
+            padding: 1.5rem 1.25rem 1.25rem;
+            border-bottom: 1px solid var(--border-subtle);
         }
-        
+
         .sidebar-header h2 {
             margin: 0;
-            font-weight: 700;
-            font-size: 1.3rem;
+            font-weight: 800;
+            font-size: 1.15rem;
+            color: var(--accent);
+            letter-spacing: -0.3px;
         }
-        
+
         .sidebar-header p {
-            margin: 0.5rem 0 0 0;
-            opacity: 0.8;
-            font-size: 0.9rem;
+            margin: 0.3rem 0 0;
+            color: var(--text-muted);
+            font-size: 0.78rem;
+            font-weight: 500;
         }
-        
+
         .sidebar-menu {
             list-style: none;
-            padding: 1rem 0;
+            padding: 0.75rem 0.75rem;
             margin: 0;
+            flex: 1;
+            overflow-y: auto;
         }
-        
-        .sidebar-menu li {
-            margin: 0.2rem 0;
-        }
-        
+
+        .sidebar-menu li { margin: 0.15rem 0; }
+
         .sidebar-menu a {
-            color: rgba(255,255,255,0.8);
+            color: var(--text-secondary);
             text-decoration: none;
-            padding: 0.8rem 1.5rem;
+            padding: 0.65rem 0.85rem;
             display: flex;
             align-items: center;
-            transition: all 0.3s;
-            border-left: 3px solid transparent;
+            transition: var(--transition);
+            border-radius: var(--radius-sm);
+            font-size: 0.875rem;
+            font-weight: 500;
+            gap: 0.65rem;
         }
-        
-        .sidebar-menu a:hover,
+
+        .sidebar-menu a:hover {
+            background: var(--accent-light);
+            color: var(--accent);
+        }
+
         .sidebar-menu a.active {
-            background: rgba(255,255,255,0.1);
+            background: var(--accent);
             color: white;
-            border-left-color: white;
+            font-weight: 600;
         }
-        
+
         .sidebar-menu i {
-            width: 25px;
-            margin-right: 10px;
-            font-size: 1.1rem;
+            width: 18px;
+            font-size: 0.9rem;
+            flex-shrink: 0;
         }
-        
-        /* Main Content */
+
+        /* ── MAIN CONTENT ── */
         .main-content {
-            margin-left: 260px;
-            padding: 1rem 2rem;
+            margin-left: var(--sidebar-width);
+            padding: 1.75rem 2rem;
             min-height: 100vh;
             transition: margin-left 0.3s ease;
         }
 
-        .sidebar.collapsed ~ .main-content {
-            margin-left: 80px;
-        }
-        
-        /* Top Bar */
+        .sidebar.collapsed ~ .main-content { margin-left: var(--sidebar-collapsed-width); }
+
+        /* ── TOP BAR ── */
         .top-bar {
-            background: white;
-            border-radius: 10px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem 1.75rem;
+            margin-bottom: 1.75rem;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-xs);
         }
-        
+
         .welcome-section {
             display: flex;
             justify-content: space-between;
@@ -698,87 +736,93 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
             flex-wrap: wrap;
             gap: 1rem;
         }
-        
+
         .welcome-text h1 {
-            color: var(--dark);
-            margin-bottom: 0.5rem;
-            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.25rem;
+            font-weight: 800;
+            font-size: 1.5rem;
+            letter-spacing: -0.5px;
         }
-        
+
         .welcome-text p {
-            color: var(--secondary);
+            color: var(--text-muted);
             margin: 0;
+            font-size: 0.85rem;
         }
-        
-        /* Stats Grid */
+
+        /* ── STATS GRID ── */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1.25rem;
+            margin-bottom: 1.75rem;
         }
-        
+
         .stat-card {
-            background: white;
-            border-radius: 12px;
+            background: var(--surface);
+            border-radius: var(--radius-lg);
             padding: 1.5rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            border-left: 4px solid var(--primary);
-            transition: transform 0.3s ease;
-            text-align: center;
+            box-shadow: var(--shadow-xs);
+            border: 1px solid var(--border);
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
         }
-        
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: var(--primary);
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        }
+
         .stat-card:hover {
-            transform: translateY(-5px);
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-md);
         }
-        
+
         .stat-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 10px;
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-sm);
             display: flex;
             align-items: center;
             justify-content: center;
-            margin: 0 auto 1rem;
-            font-size: 1.5rem;
+            margin: 0 0 1rem;
+            font-size: 1.15rem;
         }
-        
+
         .stat-card h3 {
             font-size: 2rem;
-            font-weight: 700;
-            margin: 0;
-            color: var(--dark);
+            font-weight: 800;
+            margin: 0 0 0.2rem;
+            color: var(--text-primary);
+            letter-spacing: -1px;
+            font-variant-numeric: tabular-nums;
         }
-        
+
         .stat-card p {
-            color: var(--secondary);
+            color: var(--text-secondary);
             margin: 0;
-            font-weight: 500;
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
-        
-        /* Content Grid */
-        .content-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 2rem;
-        }
-        
-        @media (max-width: 992px) {
-            .content-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-        
-        /* Card Styles */
+
+        /* ── CARDS ── */
         .card {
-            background: white;
-            border-radius: 12px;
+            background: var(--surface);
+            border-radius: var(--radius-lg);
             padding: 1.5rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            border: none;
+            box-shadow: var(--shadow-xs);
+            border: 1px solid var(--border) !important;
             margin-bottom: 1.5rem;
         }
-        
+
         .card-header {
             display: flex;
             justify-content: space-between;
@@ -786,280 +830,218 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
             margin-bottom: 1.5rem;
             flex-wrap: wrap;
             gap: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-subtle);
         }
-        
+
         .card-header h3 {
             margin: 0;
-            color: var(--dark);
-            font-weight: 600;
+            color: var(--text-primary);
+            font-weight: 700;
+            font-size: 1rem;
+            letter-spacing: -0.2px;
         }
-        
-        /* Booking Items */
+
+        /* ── BOOKING ITEMS ── */
         .booking-item {
-            border: 1px solid #e9ecef;
-            border-radius: 8px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
             padding: 1.25rem;
-            margin-bottom: 1rem;
-            transition: all 0.3s ease;
+            margin-bottom: 0.875rem;
+            transition: var(--transition);
+            background: var(--surface);
         }
-        
+
         .booking-item:hover {
-            border-color: var(--primary);
-            box-shadow: 0 2px 8px rgba(13, 110, 253, 0.1);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(13,110,253,0.06);
         }
-        
+
         .booking-header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 1rem;
+            margin-bottom: 0.875rem;
             flex-wrap: wrap;
-            gap: 1rem;
+            gap: 0.75rem;
         }
-        
+
         .provider-info {
             display: flex;
-            gap: 1rem;
+            gap: 0.875rem;
             flex: 1;
+            align-items: center;
         }
-        
+
         .provider-avatar {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            background: var(--primary);
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-sm);
+            background: var(--accent);
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            font-weight: bold;
-            font-size: 1.2rem;
+            font-weight: 700;
+            font-size: 1rem;
             overflow: hidden;
             flex-shrink: 0;
         }
-        
+
         .provider-avatar img {
-            width: 100%;
-            height: 100%;
+            width: 100%; height: 100%;
             object-fit: cover;
         }
-        
-        /* Badges */
+
+        /* ── BADGES ── */
         .badge {
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
+            padding: 0.35rem 0.75rem;
+            border-radius: 100px;
+            font-size: 0.73rem;
+            font-weight: 700;
+            letter-spacing: 0.3px;
         }
-        
-        .badge.pending {
-            background: #fff3cd;
-            color: #856404;
-        }
-        
-        .badge.confirmed {
-            background: #d1ecf1;
-            color: #0c5460;
-        }
-        
-        .badge.completed {
-            background: #d4edda;
-            color: #155724;
-        }
-        
-        .badge.cancelled {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        
-        /* Action Buttons */
+
+        .badge.pending  { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+        .badge.confirmed { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+        .badge.completed { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+        .badge.cancelled { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+
+        /* ── BUTTONS ── */
         .booking-actions {
             display: flex;
             gap: 0.5rem;
             flex-wrap: wrap;
-            margin-top: 1rem;
+            margin-top: 0.875rem;
         }
-        
+
         .btn-sm {
-            padding: 0.4rem 0.8rem;
-            font-size: 0.8rem;
-            border-radius: 6px;
+            padding: 0.4rem 0.875rem;
+            font-size: 0.78rem;
+            border-radius: var(--radius-sm);
             border: none;
             text-decoration: none;
             display: inline-flex;
             align-items: center;
             gap: 0.3rem;
-            transition: all 0.3s;
+            transition: var(--transition);
+            font-weight: 600;
+            cursor: pointer;
         }
-        
-        .btn-view {
-            background: var(--primary);
-            color: white;
-        }
-        
-        .btn-view:hover {
-            background: #0a58ca;
-            color: white;
-            text-decoration: none;
-        }
-        
-        .btn-review {
-            background: var(--warning);
-            color: black;
-        }
-        
-        .btn-review:hover {
-            background: #e0a800;
-            color: black;
-            text-decoration: none;
-        }
-        
-        .btn-cancel {
-            background: var(--danger);
-            color: white;
-        }
-        
-        .btn-cancel:hover {
-            background: #bb2d3b;
-            color: white;
-        }
-        
-        /* Provider Cards */
+
+        .btn-view { background: var(--accent-light); color: var(--accent); }
+        .btn-view:hover { background: var(--accent); color: white; text-decoration: none; }
+        .btn-review { background: #fffbeb; color: #92400e; }
+        .btn-review:hover { background: #ffc107; color: #000; text-decoration: none; }
+        .btn-cancel { background: #fef2f2; color: #dc3545; }
+        .btn-cancel:hover { background: #dc3545; color: white; }
+
+        /* ── PROVIDER CARDS ── */
         .provider-card {
             text-align: center;
-            padding: 1.5rem;
-            border: 1px solid #e9ecef;
-            border-radius: 8px;
-            margin-bottom: 1rem;
-            transition: all 0.3s ease;
-            cursor: pointer; /* clickable entire card */
+            padding: 1.5rem 1.25rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            transition: var(--transition);
+            cursor: pointer;
             position: relative;
+            background: var(--surface);
         }
-        .provider-card-link {
-            display: block;
-            width: 100%;
-            height: 100%;
-        }
-        
+
+        .provider-card-link { display: block; text-decoration: none; color: inherit; }
+
         .provider-card:hover {
-            border-color: var(--primary);
-            box-shadow: 0 2px 8px rgba(13, 110, 253, 0.1);
+            border-color: var(--accent);
+            box-shadow: var(--shadow-md);
+            transform: translateY(-3px);
         }
-        
+
         .provider-card .provider-avatar {
-            width: 70px;
-            height: 70px;
+            width: 64px;
+            height: 64px;
             margin: 0 auto 1rem;
-            font-size: 1.5rem;
+            font-size: 1.4rem;
+            border-radius: var(--radius-md);
         }
-        
-        .provider-card h4 {
-            margin-bottom: 0.5rem;
-            color: var(--dark);
+
+        .provider-card h4, .provider-card h5 {
+            margin-bottom: 0.3rem;
+            color: var(--text-primary);
+            font-weight: 700;
         }
-        
-        .rating {
-            color: #ffc107;
-            margin: 0.5rem 0;
-        }
-        
-        /* Empty State */
+
+        .rating { color: #f59e0b; margin: 0.4rem 0; }
+
+        /* ── EMPTY STATE ── */
         .empty-state {
             text-align: center;
             padding: 3rem 2rem;
-            color: var(--secondary);
+            color: var(--text-muted);
         }
-        
+
         .empty-state i {
-            font-size: 4rem;
+            font-size: 2.5rem;
             margin-bottom: 1rem;
-            color: #dee2e6;
+            color: var(--border);
         }
-        
-        .empty-state h3 {
-            color: var(--secondary);
-            margin-bottom: 0.5rem;
-        }
-        
-        /* Mobile Responsive */
+
+        .empty-state h3 { color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 1rem; }
+
+        /* ── MOBILE ── */
         @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-100%);
-            }
-            
-            .sidebar.mobile-open {
-                transform: translateX(0);
-            }
-            
-            .main-content {
-                margin-left: 0;
-                padding: 1rem;
-            }
-            
-            .mobile-menu-toggle {
-                display: block !important;
-            }
-            
-            .welcome-section {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-            
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .booking-header {
-                flex-direction: column;
-            }
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.mobile-open { transform: translateX(0); }
+            .main-content { margin-left: 0; padding: 1rem; }
+            .mobile-menu-toggle { display: flex !important; }
+            .welcome-section { flex-direction: column; align-items: flex-start; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .booking-header { flex-direction: column; }
         }
-        
+
         .mobile-menu-toggle {
             display: none;
             position: fixed;
             top: 1rem;
             left: 1rem;
             z-index: 1100;
-            background: var(--primary);
+            background: var(--accent);
             color: white;
             border: none;
-            border-radius: 6px;
-            width: 45px;
-            height: 45px;
+            border-radius: var(--radius-sm);
+            width: 42px;
+            height: 42px;
             align-items: center;
             justify-content: center;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
+            cursor: pointer;
+            box-shadow: var(--shadow-md);
         }
-        
+
         .overlay {
             display: none;
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
+            inset: 0;
+            background: rgba(0,0,0,0.4);
             z-index: 999;
-        }
-        
-        .overlay.active {
-            display: block;
+            backdrop-filter: blur(2px);
         }
 
-        /* System Notice */
+        .overlay.active { display: block; }
+
+        /* ── SYSTEM NOTICE ── */
         .system-notice {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-radius: 8px;
-            padding: 1rem;
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            border-radius: var(--radius-md);
+            padding: 1rem 1.25rem;
             margin-bottom: 1rem;
         }
 
-        /* Provider Carousel Styles (horizontal scroll list) */
+        /* ── PROVIDER CAROUSEL ── */
         .providers-carousel-wrapper {
             position: relative;
             width: 100%;
-            margin: 1rem 0;
+            margin: 0.5rem 0;
         }
 
         .providers-carousel {
@@ -1068,9 +1050,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
             gap: 1rem;
             overflow-x: auto;
             overflow-y: hidden;
-            border-radius: 8px;
-            padding: 1rem;
-            min-height: 320px;
+            border-radius: var(--radius-md);
+            padding: 1rem 0.25rem 1rem;
+            min-height: 300px;
             scroll-snap-type: x mandatory;
             scroll-behavior: smooth;
             -webkit-overflow-scrolling: touch;
@@ -1078,190 +1060,106 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
 
         .provider-carousel-item {
             position: relative !important;
-            flex: 0 0 280px !important;
-            min-width: 280px !important;
-            max-width: 300px !important;
+            flex: 0 0 240px !important;
+            min-width: 240px !important;
+            max-width: 260px !important;
             opacity: 1 !important;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            transition: var(--transition);
             scroll-snap-align: start;
         }
 
-        .provider-carousel-item:hover {
-            transform: scale(1.02);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
-        }
+        .provider-carousel-item:hover { transform: translateY(-4px); }
 
-        .providers-carousel::-webkit-scrollbar {
-            height: 8px;
-        }
-
-        .providers-carousel::-webkit-scrollbar-track {
-            background: rgba(0, 0, 0, 0.05);
-        }
-
-        .providers-carousel::-webkit-scrollbar-thumb {
-            background: rgba(13, 110, 253, 0.50);
-            border-radius: 999px;
-        }
+        .providers-carousel::-webkit-scrollbar { height: 5px; }
+        .providers-carousel::-webkit-scrollbar-track { background: var(--border-subtle); border-radius: 99px; }
+        .providers-carousel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
 
         .carousel-control {
             position: absolute;
             top: 50%;
             transform: translateY(-50%);
-            width: 44px;
-            height: 44px;
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
-            border: 2px solid rgba(255, 255, 255, 0.85);
-            background: rgba(13, 110, 253, 0.95);
-            color: #fff;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text-primary);
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             z-index: 5;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            transition: transform 0.2s ease, opacity 0.2s ease;
+            box-shadow: var(--shadow-sm);
+            transition: var(--transition);
         }
 
         .carousel-control:hover {
-            transform: translateY(-50%) scale(1.05);
-            opacity: 0.95;
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+            transform: translateY(-50%) scale(1.08);
         }
 
-        .carousel-control.prev {
-            left: 5px;
-        }
+        .carousel-control.prev { left: 0; }
+        .carousel-control.next { right: 0; }
+        .carousel-control i { font-size: 0.8rem; }
 
-        .carousel-control.next {
-            right: 5px;
-        }
-
-        .carousel-control i {
-            font-size: 0.9rem;
-        }
-
-        .provider-carousel-item {
-            position: relative !important;
-            flex: 0 0 auto;
-            opacity: 1 !important;
-            width: auto !important;
-            transition: none;
-            pointer-events: auto !important;
-            scroll-snap-align: start;
-        }
-
-        .provider-carousel-item.active {
-            /* optionally add a highlight, but keep visible */
-        }
-
-        /* hide carousel indicators and controls when using horizontal list */
-        .carousel-indicators,
-        .carousel-controls {
-            display: none;
-        }
+        /* hide old carousel indicator classes */
+        .carousel-indicators, .carousel-controls { display: none; }
 
         .carousel-btn {
-            width: 40px;
-            height: 40px;
+            width: 36px; height: 36px;
             border-radius: 50%;
-            border: 2px solid var(--primary);
-            background: white;
-            color: var(--primary);
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text-primary);
             cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1rem;
+            transition: var(--transition);
+            display: flex; align-items: center; justify-content: center;
         }
 
-        .carousel-btn:hover {
-            background: var(--primary);
-            color: white;
-        }
+        .carousel-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
 
-        .carousel-btn:active {
-            transform: scale(0.95);
-        }
-
-        .carousel-prev, .carousel-next {
-            flex: 0 0 auto;
-        }
-
-        .carousel-play-pause {
-            flex: 0 0 auto;
-        }
-
-        /* Ranking Badges */
+        /* ── RANKING BADGES ── */
         .ranking-badge {
             display: inline-block;
-            padding: 0.35rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
+            padding: 0.25rem 0.65rem;
+            border-radius: 100px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.3px;
         }
 
-        .ranking-badge.featured {
-            background: linear-gradient(135deg, #ffc107, #ff9800);
-            color: white;
-        }
+        .ranking-badge.featured { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; }
+        .ranking-badge.boosted  { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
+        .ranking-badge.verified { background: linear-gradient(135deg, #10b981, #059669); color: white; }
 
-        .ranking-badge.boosted {
-            background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
-            color: white;
-        }
-
-        .ranking-badge.verified {
-            background: linear-gradient(135deg, #51cf66, #37b24d);
-            color: white;
-        }
-
-        /* Favorite Heart Button */
+        /* ── FAVORITE BUTTON ── */
         .favorite-btn {
             position: absolute;
-            top: 1rem;
-            right: 1rem;
-            width: 40px;
-            height: 40px;
+            top: 0.875rem; right: 0.875rem;
+            width: 34px; height: 34px;
             border-radius: 50%;
-            border: 2px solid #e9ecef;
-            background: rgba(255, 255, 255, 0.95);
-            color: #dc3545;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: #ef4444;
             cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-            font-size: 1.1rem;
+            display: flex; align-items: center; justify-content: center;
+            transition: var(--transition);
+            font-size: 0.9rem;
             z-index: 10;
         }
 
-        .favorite-btn:hover {
-            border-color: #dc3545;
-            background: white;
-            box-shadow: 0 3px 10px rgba(220, 53, 69, 0.2);
-            transform: scale(1.1);
-        }
+        .favorite-btn:hover { border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.1); transform: scale(1.1); }
+        .favorite-btn.favorited { background: #ef4444; color: white; border-color: #ef4444; }
 
-        .favorite-btn.favorited {
-            background: #dc3545;
-            color: white;
-            border-color: #dc3545;
-        }
-
-        .favorite-btn.favorited:hover {
-            background: #bb2d3b;
-            border-color: #bb2d3b;
-            box-shadow: 0 3px 10px rgba(220, 53, 69, 0.3);
-        }
-
-        /* Hero Section */
+        /* ── HERO SECTION ── */
         .hero-section {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 15px;
-            padding: 3rem 2rem;
+            background: linear-gradient(135deg, var(--accent) 0%, #1e40af 100%);
+            border-radius: var(--radius-xl);
+            padding: 2.5rem 2rem;
             color: white;
-            margin-bottom: 2rem;
+            margin-bottom: 1.75rem;
             position: relative;
             overflow: hidden;
         }
@@ -1269,70 +1167,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
         .hero-section::before {
             content: '';
             position: absolute;
-            top: -50%;
-            right: -10%;
-            width: 300px;
-            height: 300px;
-            background: rgba(255,255,255,0.1);
+            top: -60%; right: -8%;
+            width: 320px; height: 320px;
+            background: rgba(255,255,255,0.06);
             border-radius: 50%;
         }
 
-        .hero-content {
-            position: relative;
-            z-index: 2;
+        .hero-section::after {
+            content: '';
+            position: absolute;
+            bottom: -40%; left: -5%;
+            width: 220px; height: 220px;
+            background: rgba(255,255,255,0.04);
+            border-radius: 50%;
         }
 
+        .hero-content { position: relative; z-index: 2; }
+
         .hero-content h2 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 1rem;
+            font-size: 1.85rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.5px;
         }
 
         .hero-content p {
-            font-size: 1.1rem;
-            opacity: 0.95;
-            margin-bottom: 2rem;
+            font-size: 0.95rem;
+            opacity: 0.85;
+            margin-bottom: 1.75rem;
+            max-width: 520px;
         }
 
         .hero-stats {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 2rem;
-            margin-top: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid rgba(255,255,255,0.15);
         }
 
-        .hero-stat {
-            text-align: center;
-        }
+        .hero-stat { text-align: left; }
 
         .hero-stat h3 {
-            font-size: 2rem;
-            font-weight: 700;
+            font-size: 1.8rem;
+            font-weight: 800;
             margin: 0;
+            letter-spacing: -1px;
+            font-variant-numeric: tabular-nums;
         }
 
-        .hero-stat p {
-            margin: 0.5rem 0 0 0;
-            opacity: 0.9;
-            font-size: 0.95rem;
-        }
+        .hero-stat p { margin: 0.25rem 0 0; opacity: 0.75; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
 
-        /* Categories Section */
+        /* ── CATEGORIES ── */
         .categories-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
         }
 
         .category-card {
-            background: white;
-            border: 1px solid #e9ecef;
-            border-radius: 16px;
-            padding: 2rem 1.5rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem 1rem;
             text-align: center;
             cursor: pointer;
-            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: var(--transition);
             text-decoration: none;
             color: inherit;
             position: relative;
@@ -1341,315 +1243,229 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            min-height: 230px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        }
-
-        .category-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, var(--primary), #0a58ca);
-            opacity: 0;
-            transition: opacity 0.35s ease;
-            z-index: -1;
+            min-height: 180px;
         }
 
         .category-card:hover {
-            border-color: var(--primary);
-            background: linear-gradient(135deg, var(--primary), #0a58ca);
+            border-color: var(--accent);
+            background: var(--accent);
             color: white;
-            transform: translateY(-8px);
-            box-shadow: 0 12px 28px rgba(13, 110, 253, 0.25);
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
         }
 
-        .category-card:hover .category-icon {
-            transform: scale(1.2) rotate(5deg);
-        }
-
-        .category-card:hover .category-details {
-            opacity: 1;
-            transform: translateY(0);
-        }
+        .category-card:hover .category-icon { background: rgba(255,255,255,0.15); color: white; }
+        .category-card:hover h5 { color: white; }
+        .category-card:hover .category-details small { color: rgba(255,255,255,0.85); }
+        .category-card:hover .category-rating { color: #fde68a; }
 
         .category-icon {
-            font-size: 3.5rem;
-            margin-bottom: 1rem;
-            color: var(--primary);
-            transition: all 0.35s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 80px;
-            height: 80px;
-            background: #f0f4ff;
-            border-radius: 50%;
-        }
-
-        .category-card:hover .category-icon {
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
+            font-size: 1.75rem;
+            margin-bottom: 0.875rem;
+            color: var(--accent);
+            transition: var(--transition);
+            display: flex; align-items: center; justify-content: center;
+            width: 56px; height: 56px;
+            background: var(--accent-light);
+            border-radius: var(--radius-md);
         }
 
         .category-card h5 {
-            margin: 0.5rem 0 0 0;
+            margin: 0.25rem 0 0;
             font-weight: 700;
-            color: var(--dark);
-            font-size: 1rem;
-            transition: color 0.35s ease;
-        }
-
-        .category-card:hover h5 {
-            color: white;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+            transition: var(--transition);
         }
 
         .category-details {
             display: flex;
             flex-direction: column;
-            gap: 0.5rem;
-            margin-top: 1rem;
-            opacity: 0.7;
-            transition: all 0.35s ease;
+            gap: 0.3rem;
+            margin-top: 0.75rem;
+            opacity: 0.8;
+            transition: var(--transition);
             width: 100%;
         }
 
         .category-details small {
-            color: var(--secondary);
+            color: var(--text-secondary);
             display: block;
-            font-size: 0.85rem;
+            font-size: 0.75rem;
             font-weight: 500;
         }
 
-        .category-card:hover .category-details small {
-            color: rgba(255, 255, 255, 0.95);
-        }
+        .category-rating { color: #f59e0b; font-size: 0.75rem; font-weight: 600; }
 
-        .category-rating {
-            color: #ffc107;
-            font-size: 0.9rem;
-            font-weight: 600;
-        }
-
-        .category-card:hover .category-rating {
-            color: #ffed4e;
-        }
-
-        /* Featured Services Grid */
+        /* ── SERVICE CARDS ── */
         .services-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
             gap: 1rem;
             margin-bottom: 1rem;
         }
 
         .service-card {
-            background: white;
-            border-radius: 12px;
+            background: var(--surface);
+            border-radius: var(--radius-lg);
             overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            transition: all 0.3s ease;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-xs);
+            transition: var(--transition);
             position: relative;
         }
 
         .service-card:hover {
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-            transform: translateY(-5px);
+            box-shadow: var(--shadow-md);
+            transform: translateY(-4px);
+            border-color: transparent;
         }
 
         .service-card-image {
             width: 100%;
             height: 110px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
+            background: linear-gradient(135deg, var(--accent), #1e40af);
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            font-size: 2.5rem;
+            font-size: 2rem;
+            font-weight: 700;
             position: relative;
         }
 
-        .service-card-image::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="20" cy="20" r="1" fill="white" opacity="0.3"/><circle cx="50" cy="30" r="1.5" fill="white" opacity="0.2"/><circle cx="80" cy="40" r="1" fill="white" opacity="0.3"/></svg>');
-            opacity: 0.1;
-        }
-
-        .service-card-content {
-            padding: 0.9rem 1rem;
-        }
+        .service-card-content { padding: 0.875rem 1rem 0.5rem; }
 
         .service-card h5 {
-            margin: 0 0 0.3rem 0;
-            color: var(--dark);
-            font-weight: 600;
-            font-size: 0.95rem;
+            margin: 0 0 0.2rem;
+            color: var(--text-primary);
+            font-weight: 700;
+            font-size: 0.875rem;
         }
 
-        .service-card .rating {
-            color: #ffc107;
-            font-size: 0.8rem;
-            margin: 0.3rem 0;
-        }
+        .service-card .rating { color: #f59e0b; font-size: 0.75rem; margin: 0.2rem 0; }
 
         .service-card .price {
-            color: var(--primary);
+            color: var(--accent);
             font-weight: 700;
-            font-size: 1rem;
-            margin: 0.3rem 0;
+            font-size: 0.9rem;
+            margin: 0.2rem 0;
         }
 
-        .service-card-footer {
-            padding: 0 1rem 1rem;
-        }
+        .service-card-footer { padding: 0 1rem 1rem; }
 
         .service-card-footer a {
             display: block;
             text-align: center;
-            padding: 0.6rem;
-            background: var(--primary);
-            color: white;
-            border-radius: 8px;
+            padding: 0.5rem;
+            background: var(--accent-light);
+            color: var(--accent);
+            border-radius: var(--radius-sm);
             text-decoration: none;
-            transition: all 0.3s;
-            font-size: 0.9rem;
-            font-weight: 600;
+            transition: var(--transition);
+            font-size: 0.8rem;
+            font-weight: 700;
         }
 
-        .service-card-footer a:hover {
-            background: #0a58ca;
-            transform: scale(1.02);
-        }
+        .service-card-footer a:hover { background: var(--accent); color: white; }
 
-        /* How It Works Section */
+        /* ── HOW IT WORKS ── */
         .how-it-works {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            border-radius: 15px;
-            padding: 3rem 2rem;
-            margin-bottom: 2rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xl);
+            padding: 2.5rem 2rem;
+            margin-bottom: 1.75rem;
         }
 
         .how-it-works h2 {
             text-align: center;
-            margin-bottom: 3rem;
-            color: var(--dark);
-            font-weight: 700;
+            margin-bottom: 2.5rem;
+            color: var(--text-primary);
+            font-weight: 800;
+            font-size: 1.35rem;
+            letter-spacing: -0.3px;
         }
 
         .steps-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             gap: 2rem;
         }
 
-        .step-card {
-            text-align: center;
-            position: relative;
-        }
+        .step-card { text-align: center; position: relative; }
 
         .step-number {
-            width: 60px;
-            height: 60px;
-            background: var(--primary);
+            width: 52px; height: 52px;
+            background: var(--accent);
             color: white;
-            border-radius: 50%;
+            border-radius: var(--radius-md);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.8rem;
-            font-weight: 700;
+            font-size: 1.35rem;
+            font-weight: 800;
             margin: 0 auto 1rem;
         }
 
-        .step-card h4 {
-            margin-bottom: 0.5rem;
-            color: var(--dark);
-        }
+        .step-card h4 { margin-bottom: 0.4rem; color: var(--text-primary); font-weight: 700; font-size: 0.9rem; }
+        .step-card p { color: var(--text-muted); margin: 0; font-size: 0.82rem; }
 
-        .step-card p {
-            color: var(--secondary);
-            margin: 0;
-            font-size: 0.95rem;
-        }
-
-        /* Testimonials Section */
+        /* ── TESTIMONIALS ── */
         .testimonials-carousel {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 1.25rem;
+            margin-bottom: 1.75rem;
         }
 
         .testimonial-card {
-            background: white;
-            border-radius: 12px;
+            background: var(--surface);
+            border-radius: var(--radius-lg);
             padding: 1.5rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            border-left: 4px solid var(--primary);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-xs);
+            transition: var(--transition);
         }
 
-        .testimonial-card .rating {
-            color: #ffc107;
-            margin-bottom: 1rem;
-            font-size: 1rem;
-        }
+        .testimonial-card:hover { box-shadow: var(--shadow-sm); transform: translateY(-2px); }
+
+        .testimonial-card .rating { color: #f59e0b; margin-bottom: 0.875rem; font-size: 0.9rem; }
 
         .testimonial-card .comment {
-            color: var(--dark);
-            font-size: 0.95rem;
+            color: var(--text-primary);
+            font-size: 0.875rem;
             margin-bottom: 1rem;
-            line-height: 1.6;
+            line-height: 1.65;
             font-style: italic;
         }
 
-        .testimonial-author {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
+        .testimonial-author { display: flex; align-items: center; gap: 0.875rem; }
 
         .testimonial-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: var(--primary);
+            width: 38px; height: 38px;
+            border-radius: var(--radius-sm);
+            background: var(--accent);
             color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700;
             flex-shrink: 0;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
+            overflow: hidden;
         }
 
-        .testimonial-avatar img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
+        .testimonial-avatar img { width: 100%; height: 100%; object-fit: cover; }
 
-        .testimonial-info h6 {
-            margin: 0 0 0.25rem 0;
-            color: var(--dark);
-            font-weight: 600;
-        }
+        .testimonial-info h6 { margin: 0 0 0.15rem; color: var(--text-primary); font-weight: 700; font-size: 0.85rem; }
+        .testimonial-info small { color: var(--text-muted); display: block; font-size: 0.75rem; }
 
-        .testimonial-info small {
-            color: var(--secondary);
-            display: block;
-        }
-
-        /* Special Offers Section */
+        /* ── OFFERS ── */
         .offers-section {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            border-radius: 15px;
+            background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%);
+            border-radius: var(--radius-xl);
             padding: 2rem;
             color: white;
-            margin-bottom: 2rem;
+            margin-bottom: 1.75rem;
             position: relative;
             overflow: hidden;
         }
@@ -1657,133 +1473,86 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
         .offers-section::before {
             content: '';
             position: absolute;
-            top: -50%;
-            right: -10%;
-            width: 300px;
-            height: 300px;
-            background: rgba(255,255,255,0.1);
+            top: -50%; right: -8%;
+            width: 280px; height: 280px;
+            background: rgba(255,255,255,0.08);
             border-radius: 50%;
         }
 
-        .offers-content {
-            position: relative;
-            z-index: 2;
-        }
+        .offers-content { position: relative; z-index: 2; }
 
         .offers-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
             gap: 1rem;
         }
 
         .offer-card {
-            background: rgba(255,255,255,0.2);
-            border-radius: 10px;
-            padding: 1.5rem;
+            background: rgba(255,255,255,0.12);
+            border-radius: var(--radius-md);
+            padding: 1.25rem;
             text-align: center;
-            border: 1px solid rgba(255,255,255,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
             backdrop-filter: blur(10px);
+            transition: var(--transition);
         }
 
-        .offer-card .discount {
-            font-size: 2rem;
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-        }
+        .offer-card:hover { background: rgba(255,255,255,0.2); }
+        .offer-card .discount { font-size: 1.75rem; font-weight: 800; margin-bottom: 0.4rem; }
+        .offer-card p { margin: 0; font-size: 0.82rem; opacity: 0.9; }
 
-        .offer-card p {
-            margin: 0;
-            font-size: 0.9rem;
-            opacity: 0.95;
-        }
-
-        /* CTA Banner */
+        /* ── CTA BANNER ── */
         .cta-banner {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 15px;
-            padding: 2.5rem;
+            background: linear-gradient(135deg, var(--accent) 0%, #1e40af 100%);
+            border-radius: var(--radius-xl);
+            padding: 2.25rem;
             color: white;
             text-align: center;
-            margin-bottom: 2rem;
+            margin-bottom: 1.75rem;
         }
 
-        .cta-banner h3 {
-            margin: 0 0 1rem 0;
-            font-size: 1.8rem;
-            font-weight: 700;
-        }
+        .cta-banner h3 { margin: 0 0 0.75rem; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.3px; }
+        .cta-banner p { margin: 0 0 1.5rem; opacity: 0.85; font-size: 0.92rem; }
 
-        .cta-banner p {
-            margin: 0 0 1.5rem 0;
-            opacity: 0.95;
-            font-size: 1rem;
-        }
-
-        .cta-banner-buttons {
-            display: flex;
-            gap: 1rem;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
+        .cta-banner-buttons { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
 
         .cta-banner .btn {
-            padding: 0.7rem 1.5rem;
-            border-radius: 8px;
-            font-weight: 600;
-            transition: all 0.3s;
+            padding: 0.6rem 1.35rem;
+            border-radius: var(--radius-sm);
+            font-weight: 700;
+            font-size: 0.875rem;
+            transition: var(--transition);
         }
 
-        .cta-banner .btn-light {
-            background: white;
-            color: var(--primary);
-        }
+        .cta-banner .btn-light { background: white; color: var(--accent); }
+        .cta-banner .btn-light:hover { background: #f1f5ff; transform: scale(1.04); }
 
-        .cta-banner .btn-light:hover {
-            background: #f8f9fa;
-            transform: scale(1.05);
-        }
-
-        /* Trust Section */
+        /* ── TRUST SECTION ── */
         .trust-section {
-            background: white;
-            border-radius: 15px;
+            background: var(--surface);
+            border-radius: var(--radius-xl);
             padding: 2rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            margin-bottom: 1.75rem;
+            border: 1px solid var(--border);
         }
 
         .trust-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
             gap: 2rem;
             text-align: center;
         }
 
-        .trust-item h5 {
-            color: var(--primary);
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-        }
+        .trust-item i { font-size: 1.75rem; color: var(--accent); margin-bottom: 0.75rem; display: block; }
+        .trust-item h5 { color: var(--text-primary); font-weight: 700; margin-bottom: 0.35rem; font-size: 0.9rem; }
+        .trust-item p { color: var(--text-muted); margin: 0; font-size: 0.8rem; }
 
-        .trust-item p {
-            color: var(--secondary);
-            margin: 0;
-            font-size: 0.9rem;
-        }
-
-        .trust-item i {
-            font-size: 2rem;
-            color: var(--primary);
-            margin-bottom: 1rem;
-        }
-
-        /* ========== AI RECOMMENDATIONS SECTION ========== */
-        
+        /* ── AI RECOMMENDATIONS ── */
         .ai-recommendations-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 15px;
-            padding: 2.5rem 2rem;
-            margin-bottom: 2rem;
+            background: linear-gradient(135deg, var(--accent) 0%, #1e40af 100%);
+            border-radius: var(--radius-xl);
+            padding: 2rem 1.75rem;
+            margin-bottom: 1.75rem;
             color: white;
             position: relative;
             overflow: hidden;
@@ -1792,22 +1561,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
         .ai-recommendations-header::before {
             content: '';
             position: absolute;
-            top: -50%;
-            right: -5%;
-            width: 250px;
-            height: 250px;
-            background: rgba(255,255,255,0.1);
+            top: -50%; right: -5%;
+            width: 240px; height: 240px;
+            background: rgba(255,255,255,0.07);
             border-radius: 50%;
         }
 
         .ai-recommendations-header::after {
             content: '';
             position: absolute;
-            bottom: -30%;
-            left: -5%;
-            width: 200px;
-            height: 200px;
-            background: rgba(255,255,255,0.08);
+            bottom: -30%; left: -5%;
+            width: 200px; height: 200px;
+            background: rgba(255,255,255,0.05);
             border-radius: 50%;
         }
 
@@ -1816,92 +1581,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
             z-index: 2;
             display: flex;
             align-items: center;
-            gap: 1.5rem;
+            gap: 1.25rem;
             flex-wrap: wrap;
         }
 
         .ai-header-icon {
-            width: 80px;
-            height: 80px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2.5rem;
+            width: 64px; height: 64px;
+            background: rgba(255,255,255,0.15);
+            border-radius: var(--radius-md);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 2rem;
             flex-shrink: 0;
             backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
         }
 
-        .ai-header-text h2 {
-            margin: 0 0 0.5rem 0;
-            font-size: 2rem;
-            font-weight: 700;
-            letter-spacing: -0.5px;
-        }
+        .ai-header-text h2 { margin: 0 0 0.35rem; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.3px; }
+        .ai-header-text p { margin: 0; opacity: 0.85; font-size: 0.875rem; line-height: 1.5; }
 
-        .ai-header-text p {
-            margin: 0;
-            opacity: 0.95;
-            font-size: 1rem;
-            line-height: 1.5;
-        }
-
-        .ai-badges {
-            display: flex;
-            gap: 0.8rem;
-            margin-top: 1rem;
-            flex-wrap: wrap;
-        }
+        .ai-badges { display: flex; gap: 0.6rem; margin-top: 0.875rem; flex-wrap: wrap; }
 
         .ai-badge {
-            background: rgba(255,255,255,0.2);
-            border: 1px solid rgba(255,255,255,0.3);
-            border-radius: 20px;
-            padding: 0.5rem 1rem;
-            font-size: 0.85rem;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.25);
+            border-radius: 100px;
+            padding: 0.35rem 0.875rem;
+            font-size: 0.75rem;
             font-weight: 600;
             backdrop-filter: blur(10px);
             display: inline-flex;
             align-items: center;
-            gap: 0.4rem;
+            gap: 0.35rem;
         }
 
-        .ai-badge i {
-            font-size: 0.95rem;
-        }
-
-        /* Recommendations Grid */
+        /* AI Recommendations Grid */
         .ai-recommendations-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
+            grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+            gap: 1.25rem;
+            margin-bottom: 1.75rem;
         }
 
         .ai-recommendation-card {
-            background: white;
-            border-radius: 14px;
+            background: var(--surface);
+            border-radius: var(--radius-lg);
             overflow: hidden;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: var(--shadow-xs);
+            transition: var(--transition);
             position: relative;
-            border: 1px solid #f0f0f0;
+            border: 1px solid var(--border);
             display: flex;
             flex-direction: column;
             height: 100%;
         }
 
         .ai-recommendation-card:hover {
-            box-shadow: 0 12px 28px rgba(102, 126, 234, 0.15);
-            transform: translateY(-8px);
-            border-color: #667eea;
+            box-shadow: var(--shadow-md);
+            transform: translateY(-5px);
+            border-color: var(--accent);
         }
 
         .ai-recommendation-banner {
-            height: 130px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 110px;
+            background: linear-gradient(135deg, var(--accent), #1e40af);
             position: relative;
             display: flex;
             align-items: flex-end;
@@ -1909,40 +1651,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
             padding: 1rem;
         }
 
-        .ai-recommendation-banner::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="20" cy="20" r="1.5" fill="white" opacity="0.2"/><circle cx="50" cy="30" r="1" fill="white" opacity="0.15"/><circle cx="80" cy="40" r="1.5" fill="white" opacity="0.2"/><path d="M 10 50 Q 30 40, 50 50 T 90 50" stroke="white" stroke-width="0.5" fill="none" opacity="0.1"/></svg>');
-            opacity: 0.3;
-        }
-
         .ai-provider-avatar-large {
-            width: 100px;
-            height: 100px;
-            border-radius: 12px;
+            width: 80px; height: 80px;
+            border-radius: var(--radius-md);
             background: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: #667eea;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
-            position: relative;
-            z-index: 2;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 2rem; font-weight: 800;
+            color: var(--accent);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+            position: relative; z-index: 2;
             border: 3px solid white;
             overflow: hidden;
         }
 
-        .ai-provider-avatar-large img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
+        .ai-provider-avatar-large img { width: 100%; height: 100%; object-fit: cover; }
 
         .ai-recommendation-content {
-            padding: 1.5rem 1rem;
+            padding: 1.25rem 1rem;
             flex-grow: 1;
             display: flex;
             flex-direction: column;
@@ -1950,204 +1675,292 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
         }
 
         .ai-recommendation-name {
-            font-size: 1.1rem;
-            font-weight: 700;
-            color: var(--dark);
-            margin-bottom: 0.3rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            font-size: 1rem; font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.2rem;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
 
         .ai-recommendation-profession {
-            font-size: 0.85rem;
-            color: var(--secondary);
-            margin-bottom: 0.8rem;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
             font-weight: 500;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
 
         .ai-recommendation-stats {
             display: flex;
             justify-content: center;
-            gap: 1rem;
+            gap: 0.875rem;
             align-items: center;
-            margin-bottom: 1rem;
-            padding: 0.8rem 0;
-            border-top: 1px solid #f0f0f0;
-            border-bottom: 1px solid #f0f0f0;
-            font-size: 0.9rem;
+            margin-bottom: 0.875rem;
+            padding: 0.65rem 0;
+            border-top: 1px solid var(--border-subtle);
+            border-bottom: 1px solid var(--border-subtle);
+            font-size: 0.82rem;
         }
 
-        .ai-stat-item {
-            display: flex;
-            align-items: center;
-            gap: 0.3rem;
-            color: var(--secondary);
-        }
-
-        .ai-stat-item .ai-stat-value {
-            font-weight: 700;
-            color: var(--dark);
-        }
-
-        .ai-rating {
-            color: #ffc107;
-            font-weight: 600;
-        }
+        .ai-stat-item { display: flex; align-items: center; gap: 0.25rem; color: var(--text-muted); }
+        .ai-stat-item .ai-stat-value { font-weight: 700; color: var(--text-primary); }
+        .ai-rating { color: #f59e0b; font-weight: 600; }
 
         .ai-recommendation-badges {
-            display: flex;
-            gap: 0.4rem;
-            margin-bottom: 1rem;
+            display: flex; gap: 0.35rem;
+            margin-bottom: 0.875rem;
             justify-content: center;
             flex-wrap: wrap;
         }
 
         .ai-badge-small {
-            background: #f0f4ff;
-            color: #667eea;
-            border-radius: 12px;
-            padding: 0.25rem 0.7rem;
-            font-size: 0.75rem;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.2rem;
+            background: var(--accent-light);
+            color: var(--accent);
+            border-radius: 100px;
+            padding: 0.2rem 0.6rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            display: inline-flex; align-items: center; gap: 0.2rem;
         }
 
-        .ai-badge-small.featured {
-            background: linear-gradient(135deg, #ffc107, #ff9800);
-            color: white;
-        }
-
-        .ai-badge-small.verified {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .ai-badge-small.location {
-            background: #d1ecf1;
-            color: #0c5460;
-        }
+        .ai-badge-small.featured { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; }
+        .ai-badge-small.verified { background: #f0fdf4; color: #166534; }
+        .ai-badge-small.location { background: #eff6ff; color: #1d4ed8; }
 
         .ai-recommendation-location {
-            font-size: 0.85rem;
-            color: var(--secondary);
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.3rem;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-bottom: 0.875rem;
+            display: flex; align-items: center; justify-content: center;
+            gap: 0.25rem;
         }
 
-        .ai-recommendation-actions {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: auto;
-        }
+        .ai-recommendation-actions { display: flex; gap: 0.5rem; margin-top: auto; }
 
         .ai-btn {
             flex: 1;
-            padding: 0.65rem;
-            border-radius: 8px;
+            padding: 0.55rem;
+            border-radius: var(--radius-sm);
             border: none;
-            font-size: 0.85rem;
-            font-weight: 600;
+            font-size: 0.78rem;
+            font-weight: 700;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: var(--transition);
             text-decoration: none;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            display: flex; align-items: center; justify-content: center;
             gap: 0.3rem;
         }
 
-        .ai-btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-
-        .ai-btn-primary:hover {
-            transform: scale(1.02);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-        }
-
-        .ai-btn-secondary {
-            background: #f0f4ff;
-            color: #667eea;
-            border: 1px solid #e0ebff;
-        }
-
-        .ai-btn-secondary:hover {
-            background: #e0ebff;
-            border-color: #667eea;
-        }
+        .ai-btn-primary { background: var(--accent); color: white; }
+        .ai-btn-primary:hover { background: #0a58ca; color: white; transform: scale(1.02); }
+        .ai-btn-secondary { background: var(--accent-light); color: var(--accent); border: 1px solid rgba(13,110,253,0.15); }
+        .ai-btn-secondary:hover { background: var(--accent); color: white; }
 
         .ai-recommendation-score {
             position: absolute;
-            top: 1rem;
-            right: 1rem;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            top: 0.75rem; right: 0.75rem;
+            background: rgba(0,0,0,0.35);
+            backdrop-filter: blur(6px);
             color: white;
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
+            width: 44px; height: 44px;
+            border-radius: var(--radius-sm);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-align: center;
+            padding: 0.4rem;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .ai-recommendation-score-label { display: block; font-size: 0.55rem; opacity: 0.8; }
+        .ai-recommendation-score-value { display: block; font-size: 0.9rem; }
+
+        .ai-empty-state { text-align: center; padding: 3rem 2rem; color: var(--text-muted); }
+        .ai-empty-state i { font-size: 2.5rem; margin-bottom: 1rem; color: var(--border); }
+        .ai-empty-state h3 { color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 1rem; }
+
+        @keyframes pulse-glow {
+            0%   { box-shadow: 0 0 0 0 rgba(13,110,253,0.5); }
+            70%  { box-shadow: 0 0 0 8px rgba(13,110,253,0); }
+            100% { box-shadow: 0 0 0 0 rgba(13,110,253,0); }
+        }
+
+        .ai-recommendation-card.featured { animation: pulse-glow 2.5s infinite; }
+
+        /* ── UTILITY CHIPS ── */
+        .card-chip {
+            position: absolute; top: 8px; right: 8px;
+            color: white;
+            padding: 0.2rem 0.55rem;
+            border-radius: 100px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            backdrop-filter: blur(6px);
+            z-index: 10;
+            display: inline-flex; align-items: center; gap: 0.2rem;
+        }
+        .chip-used { background: rgba(16, 185, 129, 0.9); }
+        .chip-fav  { background: rgba(239, 68, 68, 0.9); }
+
+        /* ── CARD PROFESSION TEXT ── */
+        .card-profession {
+            font-size: 0.78rem;
+            color: var(--accent);
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        /* ── STAT ICON COLORS ── */
+        .si-blue   { background: #eff4ff; color: #4f46e5; }
+        .si-yellow { background: #fffbeb; color: #92400e; }
+        .si-indigo { background: #eff6ff; color: #1e40af; }
+        .si-green  { background: #f0fdf4; color: #065f46; }
+
+        /* ── AI HOURLY RATE ── */
+        .ai-hourly-rate {
+            font-size: 1rem;
+            font-weight: 800;
+            color: var(--accent);
+            margin-bottom: 0.875rem;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ── AI HEADER BODY ── */
+        .ai-header-body { flex: 1; }
+
+        /* ── RATING COUNT ── */
+        .rating-count { margin-left: 0.25rem; font-size: 0.75rem; color: var(--text-muted); }
+
+        /* ── RANKING BADGE FAVORITE ── */
+        .ranking-badge.rb-favorite { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
+
+        /* ── CONTENT GRID ── */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.75rem;
+        }
+
+        @media (max-width: 992px) {
+            .content-grid { grid-template-columns: 1fr; }
+        }
+
+        /* ── QUICK LINKS ── */
+        .quick-links-grid { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.5rem; }
+
+        .quick-link-item {
+            display: flex;
+            align-items: center;
+            gap: 0.875rem;
+            padding: 0.75rem 0.875rem;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            text-decoration: none;
+            color: var(--text-primary);
+            transition: var(--transition);
+            background: var(--surface-2);
+        }
+
+        .quick-link-item:hover {
+            border-color: var(--accent);
+            background: var(--accent-light);
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .quick-link-icon {
+            width: 34px; height: 34px;
+            border-radius: var(--radius-sm);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.875rem;
+            flex-shrink: 0;
+        }
+
+        .ql-primary { background: var(--accent-light); color: var(--accent); }
+        .ql-indigo  { background: #eff4ff; color: #4f46e5; }
+        .ql-green   { background: #f0fdf4; color: #059669; }
+
+        .quick-link-label { flex: 1; font-weight: 600; font-size: 0.875rem; }
+        .quick-link-arrow { font-size: 0.65rem; color: var(--text-muted); }
+
+        /* ── SYSINFO BLOCK ── */
+        .sysinfo-block {
+            margin-top: 1.25rem;
+            padding-top: 1.25rem;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .sysinfo-label {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: var(--text-muted);
+            margin-bottom: 0.625rem;
+        }
+
+        .sysinfo-item {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.4rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .sysinfo-item i { color: var(--accent); width: 14px; text-align: center; }
+
+        /* ── REVIEW ITEMS ── */
+        .review-item {
+            padding: 0.875rem 0;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .review-item:last-child { border-bottom: none; }
+
+        .review-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.4rem;
+        }
+
+        .review-provider-name { font-size: 0.875rem; font-weight: 700; color: var(--text-primary); }
+        .review-comment { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.3rem; line-height: 1.5; }
+        .review-date { font-size: 0.72rem; color: var(--text-muted); margin: 0; }
+
+        /* ── AVATAR FALLBACK ── */
+        .avatar-fallback {
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.75rem;
+            width: 100%;
+            height: 100%;
+            color: white;
+            font-size: 2rem;
             font-weight: 700;
-            text-align: center;
-            padding: 0.5rem;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
         }
 
-        .ai-recommendation-score-label {
-            display: block;
-            font-size: 0.6rem;
-            opacity: 0.9;
+        /* ── ALERT OVERRIDES ── */
+        .alert {
+            border-radius: var(--radius-md);
+            font-size: 0.875rem;
+            border: 1px solid transparent;
         }
 
-        .ai-recommendation-score-value {
-            display: block;
-            font-size: 1rem;
+        /* ── PROVIDER CARD VIEW PROFILE BTN ── */
+        .provider-card .btn-outline-primary {
+            border-color: var(--border);
+            color: var(--text-secondary);
+            border-radius: var(--radius-sm);
+            font-size: 0.78rem;
+            font-weight: 600;
+            padding: 0.4rem 0.875rem;
         }
 
-        .ai-empty-state {
-            text-align: center;
-            padding: 3rem 2rem;
-            color: var(--secondary);
-        }
-
-        .ai-empty-state i {
-            font-size: 4rem;
-            margin-bottom: 1rem;
-            color: #dee2e6;
-        }
-
-        .ai-empty-state h3 {
-            color: var(--secondary);
-            margin-bottom: 0.5rem;
-        }
-
-        /* Loading Animation */
-        @keyframes pulse-glow {
-            0% {
-                box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.7);
-            }
-            70% {
-                box-shadow: 0 0 0 10px rgba(102, 126, 234, 0);
-            }
-            100% {
-                box-shadow: 0 0 0 0 rgba(102, 126, 234, 0);
-            }
-        }
-
-        .ai-recommendation-card.featured {
-            animation: pulse-glow 2s infinite;
+        .provider-card .btn-outline-primary:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
         }
     </style>
 </head>
@@ -2235,7 +2048,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                 <div class="ai-header-icon">
                     <i class="fas fa-brain"></i>
                 </div>
-                <div style="flex: 1;">
+                <div class="ai-header-body">
                     <div class="ai-header-text">
                         <h2>Recommended for You</h2>
                         <p>Our AI analyzes your booking history, location preferences, and service trends to find the perfect providers</p>
@@ -2296,7 +2109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
 
                         <!-- Banner with Avatar -->
                         <div class="ai-recommendation-banner">
-                            <a href="../client/provider-profile.php?id=<?php echo $rec['id']; ?>" style="text-decoration: none;">
+                            <a href="../client/provider-profile.php?id=<?php echo $rec['id']; ?>">
                                 <div class="ai-provider-avatar-large">
                                     <?php if ($has_image): ?>
                                         <img src="../uploads/profiles/<?php echo htmlspecialchars($rec['profile_image']); ?>"
@@ -2340,11 +2153,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                             <!-- Stats -->
                             <div class="ai-recommendation-stats">
                                 <div class="ai-stat-item">
-                                    <span style="color: #ffc107;">★</span>
+                                    <span class="ai-rating">★</span>
                                     <span class="ai-rating"><?php echo number_format($rating, 1); ?></span>
                                 </div>
                                 <div class="ai-stat-item">
-                                    <i class="fas fa-comment-dots" style="color: var(--secondary); font-size: 0.9rem;"></i>
+                                    <i class="fas fa-comment-dots text-muted"></i>
                                     <span class="ai-stat-value"><?php echo intval($rec['total_reviews'] ?? 0); ?></span>
                                 </div>
                             </div>
@@ -2359,7 +2172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
 
                             <!-- Hourly Rate -->
                             <?php if (!empty($rec['hourly_rate'])): ?>
-                                <div style="font-size: 1.1rem; font-weight: 700; color: var(--primary); margin-bottom: 1rem;">
+                                <div class="ai-hourly-rate">
                                     <?php echo htmlspecialchars($rec['hourly_rate']); ?> / hour
                                 </div>
                             <?php endif; ?>
@@ -2381,30 +2194,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
             </div>
         <?php endif; ?>
 
-        <!-- Browse Categories Section - Modern Professional Design -->
-        <div class="card mb-4" style="border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.08);">
-            <div class="card-header" style="border-bottom: 2px solid #f0f4ff; padding: 2rem 1.5rem;">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-                    <div>
-                        <h3 style="margin: 0; font-size: 1.6rem; font-weight: 700;">
-                            <i class="fas fa-th-large me-2" style="color: var(--primary);"></i>Browse by Category
-                        </h3>
-                        <p style="margin: 0.5rem 0 0 0; color: var(--secondary); font-size: 0.95rem;">Explore our diverse range of professional services</p>
-                    </div>
-                    <a href="../client/providers.php" class="text-decoration-none" style="padding: 0.6rem 1.5rem; background: var(--primary); color: white; border-radius: 8px; font-weight: 600; transition: all 0.3s; display: inline-flex; align-items: center; gap: 0.5rem;">
-                        View All <i class="fas fa-arrow-right"></i>
-                    </a>
-                </div>
+        <!-- Browse Categories Section -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h3><i class="fas fa-th-large me-2 text-primary"></i>Browse by Category</h3>
+                <a href="../client/providers.php" class="btn-sm btn-view text-decoration-none">
+                    View All <i class="fas fa-arrow-right ms-1"></i>
+                </a>
             </div>
 
             <?php if (empty($categories)): ?>
                 <div class="empty-state">
-                    <i class="fas fa-folder" style="opacity: 0.5;"></i>
+                    <i class="fas fa-folder"></i>
                     <h3>No Categories Available</h3>
                     <p>Check back soon for available service categories</p>
                 </div>
             <?php else: ?>
-                <div class="categories-grid" style="padding: 2rem;">
+                <div class="categories-grid">
                     <?php 
                     $category_icons = [
                         'Plumbing' => 'fas fa-wrench',
@@ -2443,7 +2249,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                             <h5><?php echo htmlspecialchars($category['category']); ?></h5>
                             <div class="category-details">
                                 <small>
-                                    <i class="fas fa-users" style="margin-right: 0.3rem;"></i>
+                                    <i class="fas fa-users me-1"></i>
                                     <?php echo $category['provider_count']; ?> provider<?php echo $category['provider_count'] != 1 ? 's' : ''; ?>
                                 </small>
                                 <div class="category-rating">
@@ -2452,7 +2258,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                                         echo $i <= floor($rating) ? '<i class="fas fa-star"></i>' : '<i class="far fa-star"></i>';
                                     endfor; 
                                     ?>
-                                    <span style="margin-left: 0.3rem; font-size: 0.8rem;"><?php echo number_format($rating, 1); ?></span>
+                                    <span class="rating-count"><?php echo number_format($rating, 1); ?></span>
                                 </div>
                             </div>
                         </a>
@@ -2473,13 +2279,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                         <h3><i class="fas fa-fire me-2"></i>Featured Services</h3>
                         <span class="badge bg-danger">Personalized for You</span>
                     </div>
-                    <div class="services-grid" style="padding: 1rem;">
+                    <div class="services-grid">
                         <?php foreach (array_slice($featured_services, 0, 4) as $service): 
                             $provider_initial = strtoupper(substr($service['full_name'] ?? '', 0, 1)) ?: '?';
                             $has_image = !empty($service['profile_image']);
                         ?>
                             <div class="service-card">
-                                <div class="service-card-image" style="position: relative; background: linear-gradient(135deg, #667eea, #764ba2);">
+                                <div class="service-card-image">
                                     <?php if ($has_image): ?>
                                         <img src="../uploads/profiles/<?php echo htmlspecialchars($service['profile_image']); ?>" 
                              alt="<?php echo htmlspecialchars($service['full_name']); ?>"
@@ -2489,22 +2295,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                                             <?php echo htmlspecialchars($provider_initial); ?>
                                         </div>
                                     <?php else: ?>
-                                        <div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: white; font-size: 2rem; font-weight: bold;">
+                                        <div class="avatar-fallback">
                                             <?php echo htmlspecialchars($provider_initial); ?>
                                         </div>
                                     <?php endif; ?>
                                     <?php if ($service['previously_booked']): ?>
-                                        <div style="position: absolute; top: 8px; right: 8px; background: rgba(52, 211, 153, 0.9); color: white; padding: 0.25rem 0.6rem; border-radius: 20px; font-size: 0.65rem; font-weight: 600; backdrop-filter: blur(5px); z-index: 10;">
+                                        <div class="card-chip chip-used">
                                             <i class="fas fa-check-circle me-1"></i> Used
                                         </div>
                                     <?php endif; ?>
                                 </div>
                                 <div class="service-card-content">
                                     <h5><?php echo htmlspecialchars($service['full_name']); ?></h5>
-                                    <p class="text-primary small mb-1" style="font-size: 0.8rem;">
+                                    <p class="card-profession">
                                         <?php echo htmlspecialchars($service['profession']); ?>
                                     </p>
-                                    <div class="rating" style="font-size: 0.75rem;">
+                                    <div class="rating">
                                         <?php 
                                         $rating = $service['average_rating'] ?? 0;
                                         for ($i = 1; $i <= 5; $i++): 
@@ -2514,7 +2320,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                                     </div>
                                 </div>
                                 <div class="service-card-footer">
-                                    <a href="../client/provider-profile.php?id=<?php echo $service['id']; ?>" style="padding: 0.5rem;">
+                                    <a href="../client/provider-profile.php?id=<?php echo $service['id']; ?>">
                                         <i class="fas fa-arrow-right me-1"></i> View
                                     </a>
                                 </div>
@@ -2532,13 +2338,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                         View All <i class="fas fa-arrow-right ms-1"></i>
                     </a>
                 </div>
-                <div class="services-grid" style="padding: 1rem;">
+                <div class="services-grid">
                     <?php foreach (array_slice($services, 0, 4) as $service): 
                         $provider_initial = strtoupper(substr($service['provider_name'] ?? '', 0, 1)) ?: '?';
                         $has_image = !empty($service['provider_image']);
                     ?>
                         <div class="service-card">
-                            <div class="service-card-image" style="position: relative; background: linear-gradient(135deg, #667eea, #764ba2);">
+                            <div class="service-card-image">
                                 <?php if ($has_image): ?>
                                     <img src="../uploads/profiles/<?php echo htmlspecialchars($service['provider_image']); ?>" 
                          alt="<?php echo htmlspecialchars($service['provider_name']); ?>"
@@ -2548,19 +2354,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                                         <?php echo htmlspecialchars($provider_initial); ?>
                                     </div>
                                 <?php else: ?>
-                                    <div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: white; font-size: 2rem; font-weight: bold;">
+                                    <div class="avatar-fallback">
                                         <?php echo htmlspecialchars($provider_initial); ?>
                                     </div>
                                 <?php endif; ?>
                                 <?php if ($service['is_favorite']): ?>
-                                    <div style="position: absolute; top: 8px; right: 8px; background: rgba(239, 68, 68, 0.9); color: white; padding: 0.25rem 0.6rem; border-radius: 20px; font-size: 0.65rem; font-weight: 600; backdrop-filter: blur(5px); z-index: 10;">
+                                    <div class="card-chip chip-fav">
                                         <i class="fas fa-heart me-1"></i> Favorite
                                     </div>
                                 <?php endif; ?>
                             </div>
                             <div class="service-card-content">
                                 <h5><?php echo htmlspecialchars($service['name'] ?? 'Service'); ?></h5>
-                                <p class="text-primary small mb-1" style="font-size: 0.8rem;">
+                                <p class="card-profession">
                                     By <?php echo htmlspecialchars($service['provider_name']); ?>
                                 </p>
                                 <?php if ($service['price']): ?>
@@ -2568,7 +2374,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                                 <?php endif; ?>
                             </div>
                             <div class="service-card-footer">
-                                <a href="../client/booking.php?provider_id=<?php echo $service['provider_id']; ?>&service_id=<?php echo $service['id']; ?>" style="padding: 0.5rem;">
+                                <a href="../client/booking.php?provider_id=<?php echo $service['provider_id']; ?>&service_id=<?php echo $service['id']; ?>">
                                     <i class="fas fa-arrow-right me-1"></i> Book
                                 </a>
                             </div>
@@ -2585,13 +2391,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                     <h3><i class="fas fa-fire me-2"></i>Featured Services</h3>
                     <span class="badge bg-danger">Personalized for You</span>
                 </div>
-                <div class="services-grid" style="padding: 1rem;">
+                <div class="services-grid">
                     <?php foreach ($featured_services as $service): 
                         $provider_initial = strtoupper(substr($service['full_name'] ?? '', 0, 1)) ?: '?';
                         $has_image = !empty($service['profile_image']);
                     ?>
                         <div class="service-card">
-                            <div class="service-card-image" style="position: relative; background: linear-gradient(135deg, #667eea, #764ba2);">
+                            <div class="service-card-image">
                                 <?php if ($has_image): ?>
                                     <img src="../uploads/profiles/<?php echo htmlspecialchars($service['profile_image']); ?>" 
                          alt="<?php echo htmlspecialchars($service['full_name']); ?>"
@@ -2601,22 +2407,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                                         <?php echo htmlspecialchars($provider_initial); ?>
                                     </div>
                                 <?php else: ?>
-                                    <div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: white; font-size: 2rem; font-weight: bold;">
+                                    <div class="avatar-fallback">
                                         <?php echo htmlspecialchars($provider_initial); ?>
                                     </div>
                                 <?php endif; ?>
                                 <?php if ($service['previously_booked']): ?>
-                                    <div style="position: absolute; top: 8px; right: 8px; background: rgba(52, 211, 153, 0.9); color: white; padding: 0.25rem 0.6rem; border-radius: 20px; font-size: 0.65rem; font-weight: 600; backdrop-filter: blur(5px); z-index: 10;">
+                                    <div class="card-chip chip-used">
                                         <i class="fas fa-check-circle me-1"></i> Used
                                     </div>
                                 <?php endif; ?>
                             </div>
                             <div class="service-card-content">
                                 <h5><?php echo htmlspecialchars($service['full_name']); ?></h5>
-                                <p class="text-primary small mb-1" style="font-size: 0.8rem;">
+                                <p class="card-profession">
                                     <?php echo htmlspecialchars($service['profession']); ?>
                                 </p>
-                                <div class="rating" style="font-size: 0.75rem;">
+                                <div class="rating">
                                     <?php 
                                     $rating = $service['average_rating'] ?? 0;
                                     for ($i = 1; $i <= 5; $i++): 
@@ -2625,13 +2431,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                                     ?>
                                 </div>
                                 <?php if ($service['hourly_rate']): ?>
-                                    <p class="price mb-1" style="font-size: 0.9rem;">
+                                    <p class="price mb-1">
                                         RWF <?php echo number_format($service['hourly_rate']); ?>/hr
                                     </p>
                                 <?php endif; ?>
                             </div>
                             <div class="service-card-footer">
-                                <a href="../client/provider-profile.php?id=<?php echo $service['id']; ?>" style="padding: 0.5rem;">
+                                <a href="../client/provider-profile.php?id=<?php echo $service['id']; ?>">
                                     <i class="fas fa-arrow-right me-1"></i> View
                                 </a>
                             </div>
@@ -2680,7 +2486,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                     <h3><i class="fas fa-comments me-2"></i>What Our Clients Say</h3>
                 </div>
 
-                <div class="testimonials-carousel" style="padding: 1.5rem;">
+                <div class="testimonials-carousel">
                     <?php foreach ($testimonials as $testimonial): 
                         $client_initial = strtoupper(substr($testimonial['full_name'] ?? '', 0, 1)) ?: '?';
                     ?>
@@ -2714,7 +2520,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
         <div class="offers-section">
             <div class="offers-content">
                 <h3><i class="fas fa-gift me-2"></i>Special Offers This Week</h3>
-                <p style="margin-bottom: 1.5rem;">Limited time promotions to help you save on your services</p>
+                <p class="mb-4 opacity-75">Limited time promotions to help you save on your services</p>
                 <div class="offers-grid">
                     <div class="offer-card">
                         <div class="discount">20%</div>
@@ -2842,7 +2648,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                                 <div class="mb-2">
                                     <?php 
                                         if ($provider['is_favorite']) {
-                                            echo '<div class="ranking-badge" style="background: linear-gradient(135deg, #e74c3c, #c0392b); color: white;"><i class="fas fa-heart me-1"></i> Your Favorite</div>';
+                                            echo '<div class="ranking-badge rb-favorite"><i class="fas fa-heart me-1"></i> Your Favorite</div>';
                                         } elseif ($ranking_score >= 1500) {
                                             echo '<div class="ranking-badge featured"><i class="fas fa-star me-1"></i> Featured</div>';
                                         } elseif ($ranking_score >= 1000) {
@@ -2881,7 +2687,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
         <!-- Statistics -->
         <div class="stats-grid mb-4">
             <div class="stat-card">
-                <div class="stat-icon" style="background: #e0e7ff; color: #4f46e5;">
+                <div class="stat-icon si-blue">
                     <i class="fas fa-calendar"></i>
                 </div>
                 <h3><?php echo $total_bookings; ?></h3>
@@ -2889,7 +2695,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
             </div>
 
             <div class="stat-card">
-                <div class="stat-icon" style="background: #fef3c7; color: #92400e;">
+                <div class="stat-icon si-yellow">
                     <i class="fas fa-clock"></i>
                 </div>
                 <h3><?php echo $pending_bookings; ?></h3>
@@ -2900,7 +2706,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
             </div>
 
             <div class="stat-card">
-                <div class="stat-icon" style="background: #dbeafe; color: #1e40af;">
+                <div class="stat-icon si-indigo">
                     <i class="fas fa-check"></i>
                 </div>
                 <h3><?php echo $confirmed_bookings; ?></h3>
@@ -2908,7 +2714,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
             </div>
 
             <div class="stat-card">
-                <div class="stat-icon" style="background: #d1fae5; color: #065f46;">
+                <div class="stat-icon si-green">
                     <i class="fas fa-check-circle"></i>
                 </div>
                 <h3><?php echo $completed_bookings; ?></h3>
@@ -3047,31 +2853,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                     <div class="card">
                         <div class="card-header">
                             <h3>My Recent Reviews</h3>
-                            <a href="my-reviews.php" class="text-decoration-none fw-semibold text-primary">
-                                View All
-                            </a>
+                            <a href="my-reviews.php" class="btn-sm btn-view text-decoration-none">View All</a>
                         </div>
 
                         <?php foreach ($my_reviews as $review): ?>
-                            <div class="border-bottom pb-3 mb-3">
-                                <div class="d-flex justify-content-between align-items-start mb-2">
-                                    <strong><?php echo htmlspecialchars($review['provider_name']); ?></strong>
-                                    <div class="text-warning">
+                            <div class="review-item">
+                                <div class="review-item-header">
+                                    <strong class="review-provider-name"><?php echo htmlspecialchars($review['provider_name']); ?></strong>
+                                    <div class="rating">
                                         <?php for ($i = 1; $i <= 5; $i++): ?>
-                                            <?php if ($i <= $review['rating']): ?>
-                                                <i class="fas fa-star"></i>
-                                            <?php else: ?>
-                                                <i class="far fa-star"></i>
-                                            <?php endif; ?>
+                                            <?php echo $i <= $review['rating'] ? '<i class="fas fa-star"></i>' : '<i class="far fa-star"></i>'; ?>
                                         <?php endfor; ?>
                                     </div>
                                 </div>
-                                <p class="text-muted small mb-2">
-                                    <?php echo htmlspecialchars($review['comment']); ?>
-                                </p>
-                                <p class="text-muted small mb-0">
-                                    <?php echo date('M d, Y', strtotime($review['created_at'])); ?>
-                                </p>
+                                <p class="review-comment"><?php echo htmlspecialchars($review['comment']); ?></p>
+                                <p class="review-date"><?php echo date('M d, Y', strtotime($review['created_at'])); ?></p>
                             </div>
                         <?php endforeach; ?>
                     </div>
@@ -3079,38 +2875,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
 
                 <!-- Quick Actions -->
                 <div class="card mb-4">
-                    <h3 class="mb-3">Quick Actions</h3>
-                    <div class="d-grid gap-2">
-                        <a href="../client/providers.php" class="btn btn-primary">
-                            <i class="fas fa-search me-2"></i> Find New Providers
+                    <div class="card-header">
+                        <h3>Quick Actions</h3>
+                    </div>
+                    <div class="quick-links-grid">
+                        <a href="../client/providers.php" class="quick-link-item">
+                            <span class="quick-link-icon ql-primary"><i class="fas fa-search"></i></span>
+                            <span class="quick-link-label">Find Providers</span>
+                            <i class="fas fa-chevron-right quick-link-arrow"></i>
                         </a>
-                        <a href="my-bookings.php" class="btn btn-outline-primary">
-                            <i class="fas fa-calendar me-2"></i> View All Bookings
+                        <a href="my-bookings.php" class="quick-link-item">
+                            <span class="quick-link-icon ql-indigo"><i class="fas fa-calendar"></i></span>
+                            <span class="quick-link-label">All Bookings</span>
+                            <i class="fas fa-chevron-right quick-link-arrow"></i>
                         </a>
-                        <a href="profile.php" class="btn btn-outline-primary">
-                            <i class="fas fa-user me-2"></i> Edit Profile
+                        <a href="profile.php" class="quick-link-item">
+                            <span class="quick-link-icon ql-green"><i class="fas fa-user"></i></span>
+                            <span class="quick-link-label">Edit Profile</span>
+                            <i class="fas fa-chevron-right quick-link-arrow"></i>
                         </a>
                     </div>
-                    
+
                     <!-- System Information -->
-                    <div class="mt-4 pt-3 border-top">
-                        <h6 class="text-muted mb-2">System Information</h6>
-                        <div class="small text-muted">
-                            <div class="mb-1">
-                                <i class="fas fa-clock me-1"></i> Timezone: <?php echo $system_settings['timezone']; ?>
-                            </div>
-                            <div class="mb-1">
-                                <i class="fas fa-phone me-1"></i> Support: <?php echo $system_settings['contact_phone']; ?>
-                            </div>
-                            <div class="mb-1">
-                                <i class="fas fa-envelope me-1"></i> Email: <?php echo $system_settings['contact_email']; ?>
-                            </div>
-                            <?php if ($system_settings['max_cancellations_per_month'] > 0): ?>
-                                <div class="mb-1">
-                                    <i class="fas fa-times-circle me-1"></i> Cancellations: <?php echo $monthly_cancellations; ?>/<?php echo $system_settings['max_cancellations_per_month']; ?> this month
-                                </div>
-                            <?php endif; ?>
+                    <div class="sysinfo-block">
+                        <p class="sysinfo-label">System Info</p>
+                        <div class="sysinfo-item">
+                            <i class="fas fa-clock"></i> <?php echo $system_settings['timezone']; ?>
                         </div>
+                        <div class="sysinfo-item">
+                            <i class="fas fa-phone"></i> <?php echo $system_settings['contact_phone']; ?>
+                        </div>
+                        <div class="sysinfo-item">
+                            <i class="fas fa-envelope"></i> <?php echo $system_settings['contact_email']; ?>
+                        </div>
+                        <?php if ($system_settings['max_cancellations_per_month'] > 0): ?>
+                            <div class="sysinfo-item">
+                                <i class="fas fa-times-circle"></i>
+                                Cancellations: <?php echo $monthly_cancellations; ?>/<?php echo $system_settings['max_cancellations_per_month']; ?> this month
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
     </div>

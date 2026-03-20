@@ -465,942 +465,830 @@ if ($view === 'bookings') {
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="../bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        *, *::before, *::after { box-sizing: border-box; }
+
         :root {
-            --primary: #0d6efd;
-            --secondary: #6c757d;
-            --success: #198754;
-            --danger: #dc3545;
-            --warning: #ffc107;
-            --info: #0dcaf0;
-            --light: #f8f9fa;
-            --dark: #212529;
-            --sidebar-width: 250px;
+            --accent:        #0d6efd;
+            --accent-dark:   #0a58ca;
+            --accent-light:  #eff4ff;
+            --success:       #16a34a;
+            --success-light: #f0fdf4;
+            --danger:        #dc2626;
+            --danger-light:  #fef2f2;
+            --warning:       #d97706;
+            --warning-light: #fffbeb;
+            --info:          #0891b2;
+            --info-light:    #ecfeff;
+            --surface:       #ffffff;
+            --surface-2:     #f7f8fc;
+            --border:        #e8eaf0;
+            --border-subtle: #f0f2f7;
+            --text-primary:  #0f1117;
+            --text-secondary:#6b7280;
+            --text-muted:    #9ca3af;
+            --sidebar-width: 260px;
+            --radius-sm:     8px;
+            --radius-md:     12px;
+            --radius-lg:     16px;
+            --radius-xl:     20px;
+            --shadow-xs:     0 1px 3px rgba(0,0,0,0.06);
+            --shadow-sm:     0 2px 8px rgba(0,0,0,0.07);
+            --shadow-md:     0 4px 16px rgba(0,0,0,0.09);
+            --shadow-lg:     0 8px 32px rgba(0,0,0,0.12);
+            --transition:    all 0.18s cubic-bezier(0.4,0,0.2,1);
         }
-        
+
         body {
-            background-color: #f5f7fb;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--surface-2);
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
         }
-        
-        /* Maintenance Warning */
-        .maintenance-warning {
-            background: linear-gradient(135deg, #ffc107, #e0a800);
-            color: #856404;
-            border: none;
-            margin-bottom: 1rem;
-        }
-        
-        /* Sidebar Styles */
+
+        /* ── APP SIDEBAR ── */
         .sidebar {
             width: var(--sidebar-width);
-            background: linear-gradient(180deg, var(--primary), #0a58ca);
-            color: white;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
             position: fixed;
             height: 100vh;
-            left: 0;
-            top: 0;
-            transition: all 0.3s;
+            left: 0; top: 0;
+            transition: var(--transition);
             z-index: 1000;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
         }
-        
-        .sidebar-header {
-            padding: 1.5rem 1rem;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            text-align: center;
-        }
-        
-        .sidebar-header h2 {
-            margin: 0;
-            font-weight: 700;
-            font-size: 1.3rem;
-        }
-        
-        .sidebar-header p {
-            margin: 0.5rem 0 0 0;
-            opacity: 0.8;
-            font-size: 0.9rem;
-        }
-        
-        .sidebar-menu {
-            list-style: none;
-            padding: 1rem 0;
-            margin: 0;
-        }
-        
-        .sidebar-menu li {
-            margin: 0.2rem 0;
-        }
-        
+
+        .sidebar-header { padding: 1.5rem 1.25rem 1.25rem; border-bottom: 1px solid var(--border-subtle); }
+        .sidebar-header h2 { margin: 0; font-weight: 800; font-size: 1.1rem; color: var(--accent); }
+        .sidebar-header p  { margin: 0.3rem 0 0; color: var(--text-muted); font-size: 0.78rem; }
+        .sidebar-menu { list-style: none; padding: 0.75rem; margin: 0; }
+        .sidebar-menu li { margin: 2px 0; }
         .sidebar-menu a {
-            color: rgba(255,255,255,0.8);
-            text-decoration: none;
-            padding: 0.8rem 1.5rem;
-            display: flex;
-            align-items: center;
-            transition: all 0.3s;
-            border-left: 3px solid transparent;
+            color: var(--text-secondary); text-decoration: none;
+            padding: 0.6rem 0.85rem; display: flex; align-items: center; gap: 0.65rem;
+            transition: var(--transition); border-radius: var(--radius-sm);
+            font-size: 0.875rem; font-weight: 500;
         }
-        
-        .sidebar-menu a:hover,
-        .sidebar-menu a.active {
-            background: rgba(255,255,255,0.1);
-            color: white;
-            border-left-color: white;
-        }
-        
-        .sidebar-menu i {
-            width: 25px;
-            margin-right: 10px;
-            font-size: 1.1rem;
-        }
-        
-        /* Main Content */
+        .sidebar-menu a:hover { background: var(--accent-light); color: var(--accent); }
+        .sidebar-menu a.active { background: var(--accent); color: white; font-weight: 600; }
+        .sidebar-menu i { width: 18px; font-size: 0.9rem; flex-shrink: 0; }
+
+        /* ── MAIN CONTENT ── */
         .main-content {
             margin-left: var(--sidebar-width);
-            padding: 1rem 2rem;
+            padding: 1.75rem 2rem;
             min-height: 100vh;
         }
-        
-        /* Header */
-        .page-header {
-            background: white;
-            border-radius: 10px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+
+        /* ── MAINTENANCE WARNING ── */
+        .maintenance-warning {
+            background: var(--warning-light);
+            border: 1px solid #fde68a;
+            color: var(--warning);
+            border-radius: var(--radius-md);
+            padding: 1rem 1.25rem;
+            margin-bottom: 1.25rem;
         }
-        
+
+        /* ── PAGE HEADER ── */
+        .page-header {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem 1.75rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-xs);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
         .page-header h1 {
-            color: var(--dark);
-            margin-bottom: 0.5rem;
-            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0;
+            font-weight: 800;
+            font-size: 1.4rem;
+            letter-spacing: -0.4px;
             display: flex;
             align-items: center;
             gap: 0.5rem;
         }
-        
-        .page-header p {
-            color: var(--secondary);
-            margin: 0;
-        }
-        
-        /* Stats Grid */
+
+        .page-header h1 i { color: var(--accent); font-size: 1.1rem; }
+        .page-header p { color: var(--text-muted); margin: 0.2rem 0 0; font-size: 0.82rem; }
+
+        /* ── STATS GRID ── */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 1.125rem;
+            margin-bottom: 1.5rem;
         }
-        
+
         .stat-card {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            transition: all 0.3s ease;
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem 1.5rem;
+            box-shadow: var(--shadow-xs);
+            transition: var(--transition);
             text-decoration: none !important;
             color: inherit;
             border: 2px solid transparent;
+            position: relative;
+            overflow: hidden;
         }
-        
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: var(--accent);
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        }
+
         .stat-card:hover {
             transform: translateY(-3px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            box-shadow: var(--shadow-md);
             text-decoration: none;
             color: inherit;
         }
-        
-        .stat-card.active {
-            border-color: var(--primary);
-        }
-        
+
+        .stat-card.active { border-color: var(--accent); }
+
         .stat-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 10px;
+            width: 42px; height: 42px;
+            border-radius: var(--radius-sm);
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 0.875rem;
+            font-size: 1.05rem;
+        }
+
+        .stat-card h3 {
+            font-size: 1.9rem;
+            font-weight: 800;
+            margin: 0 0 0.2rem;
+            color: var(--text-primary);
+            letter-spacing: -1px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .stat-card p {
+            color: var(--text-secondary);
+            margin: 0;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        /* ── ALERTS ── */
+        .alert {
+            border-radius: var(--radius-md);
+            border: 1px solid transparent;
+            padding: 0.875rem 1.125rem;
+            margin-bottom: 1.25rem;
+            font-size: 0.875rem;
+        }
+
+        .alert-success { background: var(--success-light); color: var(--success); border-color: #bbf7d0; }
+        .alert-danger  { background: var(--danger-light);  color: var(--danger);  border-color: #fecaca; }
+        .alert-warning { background: var(--warning-light); color: var(--warning); border-color: #fde68a; }
+
+        /* ── VIEW TABS ── */
+        .view-tabs {
+            display: flex;
+            gap: 0.25rem;
+            margin-bottom: 1.5rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 0.3rem;
+            width: fit-content;
+            box-shadow: var(--shadow-xs);
+        }
+
+        .view-tab {
+            padding: 0.55rem 1.25rem;
+            text-decoration: none;
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.82rem;
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
             display: flex;
             align-items: center;
+            gap: 0.5rem;
+        }
+
+        .view-tab:hover { color: var(--accent); text-decoration: none; }
+        .view-tab.active { background: var(--accent); color: white; }
+
+        .view-tab .tab-count {
+            display: inline-flex;
+            align-items: center;
             justify-content: center;
-            margin-bottom: 1rem;
-            font-size: 1.5rem;
+            background: rgba(255,255,255,0.25);
+            color: inherit;
+            border-radius: 100px;
+            min-width: 18px; height: 18px;
+            padding: 0 5px;
+            font-size: 0.68rem;
+            font-weight: 800;
         }
-        
-        .stat-card h3 {
-            font-size: 1.8rem;
-            font-weight: 700;
-            margin: 0;
-            color: var(--dark);
-        }
-        
-        .stat-card p {
-            color: var(--secondary);
-            margin: 0;
-            font-weight: 500;
-        }
-        
-        /* Filters Card */
+
+        .view-tab:not(.active) .tab-count { background: var(--border); color: var(--text-muted); }
+        .view-tab:not(.active).has-alert .tab-count { background: var(--danger); color: white; }
+
+        /* ── FILTERS CARD ── */
         .filters-card {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-xs);
         }
-        
+
         .filters-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: 1fr 1fr 1fr auto;
             gap: 1rem;
             align-items: end;
         }
-        
-        /* Table Card */
-        .table-card {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            border: none;
+
+        .form-label { font-weight: 600; color: var(--text-primary); margin-bottom: 0.35rem; display: block; font-size: 0.8rem; }
+
+        .form-control, .form-select {
+            padding: 0.575rem 0.875rem;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            font-family: inherit;
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            background: var(--surface);
+            transition: var(--transition);
         }
-        
+
+        .form-control:focus, .form-select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(13,110,253,0.08);
+            outline: none;
+        }
+
+        /* ── TABLE CARD ── */
+        .table-card {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-xs);
+        }
+
         .table-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 1.5rem;
             flex-wrap: wrap;
-            gap: 1rem;
+            gap: 0.875rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-subtle);
         }
-        
+
         .table-header h3 {
             margin: 0;
-            color: var(--dark);
-            font-weight: 600;
+            color: var(--text-primary);
+            font-weight: 700;
+            font-size: 0.975rem;
         }
-        
-        .bulk-actions {
+
+        .bulk-actions { display: flex; gap: 0.5rem; align-items: center; }
+
+        /* ── BOOKING CARDS GRID ── */
+        .bookings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+            gap: 1.25rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .booking-card {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-xs);
+            transition: var(--transition);
+            cursor: pointer;
             display: flex;
-            gap: 0.5rem;
-            align-items: center;
+            flex-direction: column;
         }
-        
-        /* Table Styles */
-        .table {
-            margin-bottom: 0;
+
+        .booking-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-md);
+            border-color: var(--accent);
         }
-        
-        .table th {
-            background-color: #f8f9fa;
-            border-bottom: 2px solid #dee2e6;
-            font-weight: 600;
-            color: var(--dark);
-            padding: 1rem 0.75rem;
-        }
-        
-        .table td {
-            padding: 1rem 0.75rem;
-            vertical-align: middle;
-        }
-        
-        .client-info {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-        
-        .client-avatar {
-            width: 45px;
-            height: 45px;
-            border-radius: 50%;
-            background: var(--primary);
+
+        /* Card banner / avatar area */
+        .booking-card-banner {
+            width: 100%;
+            height: 160px;
+            background: linear-gradient(135deg, var(--accent), #1e40af);
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 1.2rem;
+            overflow: hidden;
+            position: relative;
             flex-shrink: 0;
         }
-        
-        .client-avatar img {
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
+
+        .booking-card-banner img {
+            width: 100%; height: 100%;
             object-fit: cover;
         }
-        
-        /* Badges */
-        .badge {
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
+
+        .booking-card-banner .avatar-initials {
+            font-size: 3rem;
+            font-weight: 800;
+            color: rgba(255,255,255,0.9);
+            letter-spacing: -2px;
+            font-family: inherit;
         }
-        
-        .badge.pending {
-            background: #fff3cd;
-            color: #856404;
+
+        .booking-card-badge {
+            position: absolute;
+            top: 10px; right: 10px;
         }
-        
-        .badge.confirmed {
-            background: #d1ecf1;
-            color: #0c5460;
-        }
-        
-        .badge.completed {
-            background: #d4edda;
-            color: #155724;
-        }
-        
-        .badge.cancelled {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        
-        .badge.accepted {
-            background: #d4edda;
-            color: #155724;
-        }
-        
-        .badge.rejected {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        
-        .badge.expired {
-            background: #e2e3e5;
-            color: #383d41;
-        }
-        
-        /* Tabs */
-        .view-tabs {
+
+        /* Card body */
+        .booking-card-body {
+            padding: 1.125rem 1.25rem;
+            flex: 1;
             display: flex;
-            gap: 0.5rem;
-            border-bottom: 2px solid #dee2e6;
-            margin-bottom: 2rem;
-            flex-wrap: wrap;
+            flex-direction: column;
         }
-        
-        .view-tab {
-            padding: 0.75rem 1.5rem;
-            text-decoration: none;
-            color: var(--secondary);
-            font-weight: 500;
-            border-bottom: 3px solid transparent;
-            margin-bottom: -2px;
-            transition: all 0.3s;
+
+        .booking-card-name {
+            font-weight: 800;
+            font-size: 0.975rem;
+            color: var(--text-primary);
+            margin-bottom: 0.2rem;
+            letter-spacing: -0.2px;
+        }
+
+        .booking-card-service {
+            font-size: 0.78rem;
+            color: var(--accent);
+            font-weight: 600;
+            margin-bottom: 0.875rem;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.3rem;
         }
-        
-        .view-tab:hover {
-            color: var(--primary);
+
+        .booking-card-meta {
+            margin-top: auto;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
         }
-        
-        .view-tab.active {
-            color: var(--primary);
-            border-bottom-color: var(--primary);
+
+        .booking-meta-row {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
         }
-        
-        .view-tab .badge {
-            margin-left: 0.5rem;
+
+        .booking-meta-row i {
+            width: 14px;
+            color: var(--accent);
+            font-size: 0.72rem;
         }
-        
-        /* Offer Card */
+
+        /* ── STATUS BADGES ── */
+        .badge {
+            padding: 0.28rem 0.65rem;
+            border-radius: 100px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .badge.pending,   .badge-pending   { background: var(--warning-light); color: var(--warning); border: 1px solid #fde68a; }
+        .badge.confirmed, .badge-confirmed { background: var(--info-light);    color: var(--info);    border: 1px solid #a5f3fc; }
+        .badge.completed, .badge-completed { background: var(--success-light); color: var(--success); border: 1px solid #bbf7d0; }
+        .badge.cancelled, .badge-cancelled { background: var(--danger-light);  color: var(--danger);  border: 1px solid #fecaca; }
+        .badge.accepted   { background: var(--success-light); color: var(--success); border: 1px solid #bbf7d0; }
+        .badge.rejected   { background: var(--danger-light);  color: var(--danger);  border: 1px solid #fecaca; }
+        .badge.expired    { background: var(--surface-2);     color: var(--text-muted); border: 1px solid var(--border); }
+
+        /* ── OFFER CARDS ── */
         .offer-card {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem 1.5rem;
             margin-bottom: 1rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            border-left: 4px solid var(--warning);
-            transition: all 0.3s;
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--warning);
+            box-shadow: var(--shadow-xs);
+            transition: var(--transition);
         }
-        
-        .offer-card:hover {
-            box-shadow: 0 4px 15px rgba(0,0,0,0.12);
-        }
-        
+
+        .offer-card:hover { box-shadow: var(--shadow-sm); }
+
         .offer-header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
             margin-bottom: 1rem;
         }
-        
-        .offer-client {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
+
+        .offer-client { display: flex; align-items: center; gap: 0.875rem; }
+
+        .client-avatar {
+            width: 42px; height: 42px;
+            border-radius: var(--radius-sm);
+            background: var(--accent);
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-weight: 700; font-size: 0.95rem; flex-shrink: 0; overflow: hidden;
         }
-        
+
+        .client-avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+
         .offer-price {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--primary);
+            font-size: 1.35rem;
+            font-weight: 800;
+            color: var(--accent);
+            font-variant-numeric: tabular-nums;
         }
-        
-        .offer-actions {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-            margin-top: 1rem;
-        }
-        
+
+        .offer-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
+
         .btn-offer-action {
-            padding: 0.4rem 1rem;
-            border-radius: 6px;
+            padding: 0.4rem 0.875rem;
+            border-radius: var(--radius-sm);
             border: none;
             cursor: pointer;
-            font-size: 0.85rem;
-            transition: all 0.3s;
+            font-size: 0.78rem;
+            font-weight: 700;
+            font-family: inherit;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            transition: var(--transition);
         }
-        
-        .btn-accept-offer {
-            background: var(--success);
-            color: white;
+
+        .btn-accept-offer  { background: var(--success-light); color: var(--success); }
+        .btn-accept-offer:hover  { background: var(--success); color: white; }
+        .btn-reject-offer  { background: var(--danger-light);  color: var(--danger); }
+        .btn-reject-offer:hover  { background: var(--danger);  color: white; }
+        .btn-counter-offer { background: var(--info-light); color: var(--info); }
+        .btn-counter-offer:hover { background: var(--info); color: white; }
+        .btn-cancel-action { background: var(--surface-2); color: var(--text-secondary); }
+        .btn-cancel-action:hover { background: var(--border); color: var(--text-primary); }
+
+        /* Counter offer form */
+        .counter-form {
+            display: none;
+            margin-top: 1rem;
+            padding: 1.125rem;
+            background: var(--surface-2);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            animation: fadeSlideIn 0.2s ease;
         }
-        
-        .btn-accept-offer:hover {
-            background: #157347;
+
+        @keyframes fadeSlideIn {
+            from { opacity: 0; transform: translateY(-8px); }
+            to   { opacity: 1; transform: translateY(0); }
         }
-        
-        .btn-reject-offer {
-            background: var(--danger);
-            color: white;
-        }
-        
-        .btn-reject-offer:hover {
-            background: #bb2d3b;
-        }
-        
-        .btn-counter-offer {
-            background: var(--info);
-            color: white;
-        }
-        
-        .btn-counter-offer:hover {
-            background: #0aa2c0;
-        }
-        
-        /* Action Buttons */
-        .action-buttons {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-        
+
+        /* ── ACTION BUTTONS ── */
         .btn-sm {
-            padding: 0.4rem 0.8rem;
-            font-size: 0.8rem;
-            border-radius: 6px;
+            padding: 0.38rem 0.75rem;
+            font-size: 0.75rem;
+            border-radius: var(--radius-sm);
             border: none;
             text-decoration: none;
             display: inline-flex;
             align-items: center;
             gap: 0.3rem;
-            transition: all 0.3s;
+            transition: var(--transition);
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
         }
-        
-        .btn-accept {
-            background: var(--success);
-            color: white;
-        }
-        
-        .btn-accept:hover {
-            background: #157347;
-            color: white;
-        }
-        
-        .btn-reject {
-            background: var(--danger);
-            color: white;
-        }
-        
-        .btn-reject:hover {
-            background: #bb2d3b;
-            color: white;
-        }
-        
-        .btn-complete {
-            background: var(--info);
-            color: white;
-        }
-        
-        .btn-complete:hover {
-            background: #0aa2c0;
-            color: white;
-        }
-        
-        /* Empty State */
+
+        .btn-accept  { background: var(--success-light); color: var(--success); }
+        .btn-accept:hover  { background: var(--success); color: white; }
+        .btn-reject  { background: var(--danger-light);  color: var(--danger); }
+        .btn-reject:hover  { background: var(--danger);  color: white; }
+        .btn-complete { background: var(--info-light); color: var(--info); }
+        .btn-complete:hover { background: var(--info); color: white; }
+
+        /* ── EMPTY STATE ── */
         .empty-state {
             text-align: center;
-            padding: 3rem 2rem;
-            color: var(--secondary);
+            padding: 3.5rem 2rem;
+            color: var(--text-muted);
         }
-        
-        .empty-state i {
-            font-size: 4rem;
-            margin-bottom: 1rem;
-            color: #dee2e6;
-        }
-        
-        .empty-state h3 {
-            color: var(--secondary);
-            margin-bottom: 0.5rem;
-        }
-        
-        /* Pagination */
+
+        .empty-state i { font-size: 2.5rem; margin-bottom: 1rem; display: block; color: var(--border); }
+        .empty-state h3 { color: var(--text-secondary); margin-bottom: 0.4rem; font-size: 1rem; font-weight: 700; }
+        .empty-state p { font-size: 0.82rem; margin-bottom: 1.25rem; }
+
+        /* ── PAGINATION ── */
         .pagination {
             display: flex;
             justify-content: center;
-            gap: 0.5rem;
-            margin-top: 2rem;
+            gap: 0.35rem;
+            margin-top: 1.5rem;
             flex-wrap: wrap;
         }
-        
+
         .page-btn {
-            padding: 0.5rem 1rem;
-            border: 1px solid #dee2e6;
-            border-radius: 6px;
+            padding: 0.45rem 0.875rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
             text-decoration: none;
-            color: var(--dark);
-            transition: all 0.3s;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
+            color: var(--text-secondary);
+            font-size: 0.82rem;
+            font-weight: 600;
+            transition: var(--transition);
+            display: inline-flex; align-items: center; gap: 0.4rem;
         }
-        
-        .page-btn:hover {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-            text-decoration: none;
-        }
-        
-        .page-btn.active {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-        }
-        
-        /* Alert Styles */
-        .alert {
-            border-radius: 8px;
-            border: none;
-            margin-bottom: 1.5rem;
-        }
-        
-        /* Mobile Responsive */
-        @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-100%);
-            }
-            
-            .sidebar.mobile-open {
-                transform: translateX(0);
-            }
-            
-            .main-content {
-                margin-left: 0;
-                padding: 1rem;
-            }
-            
-            .mobile-menu-toggle {
-                display: block !important;
-            }
-            
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .filters-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .table-header {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-            
-            .bulk-actions {
-                width: 100%;
-                justify-content: flex-start;
-            }
-            
-            .table-responsive {
-                font-size: 0.9rem;
-            }
-        }
-        
+
+        .page-btn:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent); text-decoration: none; }
+        .page-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+        /* ── MOBILE ── */
         .mobile-menu-toggle {
             display: none;
-            position: fixed;
-            top: 1rem;
-            left: 1rem;
+            position: fixed; top: 1rem; left: 1rem;
             z-index: 1100;
-            background: var(--primary);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            width: 45px;
-            height: 45px;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.2rem;
-        }
-        
-        .overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 999;
-        }
-        
-        .overlay.active {
-            display: block;
-        }
-        
-        .form-check-input:checked {
-            background-color: var(--primary);
-            border-color: var(--primary);
-        }
-        
-        .booking-details {
-            max-width: 300px;
-            word-wrap: break-word;
-        }
-        
-        .service-name {
-            font-weight: 600;
-            color: var(--dark);
-            margin-bottom: 0.25rem;
+            background: var(--accent); color: white; border: none;
+            border-radius: var(--radius-sm); width: 42px; height: 42px;
+            align-items: center; justify-content: center;
+            font-size: 1.1rem; cursor: pointer; box-shadow: var(--shadow-md);
         }
 
-        /* Booking Cards Grid */
-        .booking-card {
-            background: white;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            transition: all 0.3s ease;
-            border: 2px solid transparent;
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
+        .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999; backdrop-filter: blur(2px); }
+        .overlay.active { display: block; }
 
-        .booking-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.12);
-            border-color: var(--primary);
-        }
-
-        .client-avatar-large {
-            width: 100%;
-            height: 180px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .client-avatar-large img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .badge-pending {
-            background: #fff3cd;
-            color: #856404;
-        }
-
-        .badge-confirmed {
-            background: #d1ecf1;
-            color: #0c5460;
-        }
-
-        .badge-completed {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .badge-cancelled {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        /* Booking Detail Modal */
+        /* ── BOOKING DETAIL MODAL ── */
         .booking-modal {
             display: none;
             position: fixed;
             z-index: 2000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-            animation: fadeIn 0.3s ease;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            backdrop-filter: blur(4px);
+            animation: modalFadeIn 0.2s ease;
         }
+
+        @keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
         .booking-modal.active {
             display: flex;
             align-items: center;
             justify-content: center;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
+            padding: 1rem;
         }
 
         .booking-modal-content {
-            background: white;
-            border-radius: 16px;
-            width: 90%;
-            max-width: 700px;
-            max-height: 90vh;
+            background: var(--surface);
+            border-radius: var(--radius-xl);
+            width: 100%;
+            max-width: 640px;
+            max-height: 92vh;
             overflow-y: auto;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            animation: slideUp 0.3s ease;
+            box-shadow: 0 24px 64px rgba(0,0,0,0.25);
+            animation: modalSlideUp 0.25s cubic-bezier(0.4,0,0.2,1);
         }
 
-        @keyframes slideUp {
-            from { transform: translateY(50px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
+        @keyframes modalSlideUp {
+            from { transform: translateY(24px); opacity: 0; }
+            to   { transform: translateY(0);    opacity: 1; }
         }
 
         .booking-modal-header {
             position: relative;
-            height: 200px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 180px;
+            background: linear-gradient(135deg, var(--accent), #1e40af);
             display: flex;
             align-items: flex-end;
-            padding: 2rem 1.5rem 1.5rem;
+            padding: 1.5rem 1.5rem 1.25rem;
             color: white;
+            border-radius: var(--radius-xl) var(--radius-xl) 0 0;
         }
 
         .booking-modal-header .close-btn {
             position: absolute;
-            top: 1rem;
-            right: 1rem;
-            background: rgba(255,255,255,0.2);
-            border: none;
+            top: 1rem; right: 1rem;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.2);
             color: white;
-            width: 40px;
-            height: 40px;
+            width: 36px; height: 36px;
             border-radius: 50%;
             cursor: pointer;
-            font-size: 1.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s;
+            font-size: 1rem;
+            display: flex; align-items: center; justify-content: center;
+            transition: var(--transition);
         }
 
-        .booking-modal-header .close-btn:hover {
-            background: rgba(255,255,255,0.3);
-        }
+        .booking-modal-header .close-btn:hover { background: rgba(255,255,255,0.28); }
 
         .modal-client-avatar {
-            width: 120px;
-            height: 120px;
-            border-radius: 50%;
-            border: 4px solid white;
+            width: 72px; height: 72px;
+            border-radius: var(--radius-md);
+            border: 3px solid rgba(255,255,255,0.6);
             background: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 3rem;
-            font-weight: bold;
-            color: #667eea;
-            margin-right: 1.5rem;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.75rem;
+            font-weight: 800;
+            color: var(--accent);
+            margin-right: 1.125rem;
             overflow: hidden;
             flex-shrink: 0;
         }
 
-        .modal-client-avatar img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
+        .modal-client-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: calc(var(--radius-md) - 3px); }
 
-        .modal-client-info h3 {
-            margin: 0 0 0.5rem 0;
-            font-size: 1.5rem;
-            font-weight: 700;
-        }
+        .modal-client-info h3 { margin: 0 0 0.35rem; font-size: 1.2rem; font-weight: 800; letter-spacing: -0.3px; }
+        .modal-client-info p { margin: 0.2rem 0; opacity: 0.85; font-size: 0.8rem; display: flex; align-items: center; gap: 0.4rem; }
 
-        .modal-client-info p {
-            margin: 0.25rem 0;
-            opacity: 0.9;
-            font-size: 0.95rem;
-        }
+        .booking-modal-body { padding: 1.5rem; }
 
-        .booking-modal-body {
-            padding: 2rem 1.5rem;
-        }
-
-        .modal-section {
-            margin-bottom: 2rem;
-        }
-
-        .modal-section:last-child {
-            margin-bottom: 0;
-        }
+        .modal-section { margin-bottom: 1.5rem; }
+        .modal-section:last-child { margin-bottom: 0; }
 
         .modal-section-title {
-            font-size: 1.1rem;
+            font-size: 0.72rem;
             font-weight: 700;
-            color: var(--dark);
-            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.4rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-subtle);
         }
 
-        .modal-section-title i {
-            color: var(--primary);
-            font-size: 1.25rem;
-        }
+        .modal-section-title i { color: var(--accent); }
 
         .info-row {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            padding: 0.75rem 0;
-            border-bottom: 1px solid #f0f0f0;
+            align-items: flex-start;
+            padding: 0.55rem 0;
+            border-bottom: 1px solid var(--border-subtle);
         }
 
-        .info-row:last-child {
-            border-bottom: none;
-        }
-
-        .info-label {
-            color: var(--secondary);
-            font-size: 0.9rem;
-            font-weight: 500;
-        }
-
-        .info-value {
-            color: var(--dark);
-            font-weight: 600;
-            text-align: right;
-            flex: 1;
-            margin-left: 1rem;
-        }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { color: var(--text-muted); font-size: 0.8rem; font-weight: 500; flex-shrink: 0; }
+        .info-value { color: var(--text-primary); font-weight: 600; font-size: 0.875rem; text-align: right; flex: 1; margin-left: 1rem; }
 
         .contact-method {
             display: flex;
             align-items: center;
-            padding: 0.75rem;
-            background: #f8f9fa;
-            border-radius: 8px;
-            margin-bottom: 0.75rem;
+            padding: 0.75rem 0.875rem;
+            background: var(--surface-2);
+            border-radius: var(--radius-sm);
+            margin-bottom: 0.5rem;
             text-decoration: none;
-            color: var(--dark);
-            transition: all 0.3s;
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            transition: var(--transition);
         }
 
-        .contact-method:hover {
-            background: #e9ecef;
-            color: var(--primary);
-        }
-
-        .contact-method:last-child {
-            margin-bottom: 0;
-        }
+        .contact-method:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent); text-decoration: none; }
+        .contact-method:last-child { margin-bottom: 0; }
 
         .contact-method i {
-            width: 35px;
-            height: 35px;
-            background: linear-gradient(135deg, var(--primary), #0a58ca);
+            width: 32px; height: 32px;
+            background: var(--accent);
             color: white;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 1rem;
+            border-radius: var(--radius-sm);
+            display: flex; align-items: center; justify-content: center;
+            margin-right: 0.875rem;
             flex-shrink: 0;
+            font-size: 0.875rem;
         }
+
+        .contact-label { font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
+        .contact-value { font-weight: 700; font-size: 0.875rem; color: var(--text-primary); }
 
         .modal-action-buttons {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-            padding: 1.5rem;
-            border-top: 1px solid #e9ecef;
-            background: #f8f9fa;
-            border-radius: 0 0 16px 16px;
+            gap: 0.75rem;
+            padding: 1.25rem 1.5rem;
+            border-top: 1px solid var(--border);
+            background: var(--surface-2);
+            border-radius: 0 0 var(--radius-xl) var(--radius-xl);
         }
 
         .modal-action-buttons .btn {
-            padding: 0.8rem 1.5rem;
-            font-size: 0.95rem;
-            font-weight: 600;
+            padding: 0.7rem 1.25rem;
+            font-size: 0.875rem;
+            font-weight: 700;
+            font-family: inherit;
             border: none;
-            border-radius: 8px;
+            border-radius: var(--radius-sm);
             cursor: pointer;
-            transition: all 0.3s;
+            transition: var(--transition);
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 0.5rem;
+            gap: 0.4rem;
+            width: 100%;
+            margin-bottom: 0;
         }
 
-        .modal-action-buttons .btn-accept {
-            background: linear-gradient(135deg, var(--success), #157347);
-            color: white;
-        }
+        .modal-action-buttons .btn-accept { background: var(--success); color: white; }
+        .modal-action-buttons .btn-accept:hover { background: #15803d; transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+        .modal-action-buttons .btn-reject { background: var(--danger); color: white; }
+        .modal-action-buttons .btn-reject:hover { background: #b91c1c; transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 
-        .modal-action-buttons .btn-accept:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(25, 135, 84, 0.4);
-        }
+        /* ── FORM CHECK ── */
+        .form-check-input:checked { background-color: var(--accent); border-color: var(--accent); }
 
-        .modal-action-buttons .btn-reject {
-            background: linear-gradient(135deg, var(--danger), #bb2d3b);
-            color: white;
-        }
-
-        .modal-action-buttons .btn-reject:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.mobile-open { transform: translateX(0); box-shadow: 4px 0 20px rgba(0,0,0,0.12); }
+            .main-content { margin-left: 0; padding: 1rem; }
+            .mobile-menu-toggle { display: flex !important; }
+            .stats-grid { grid-template-columns: repeat(2,1fr); }
+            .filters-grid { grid-template-columns: 1fr; }
+            .table-header { flex-direction: column; align-items: flex-start; }
+            .bulk-actions { width: 100%; }
+            .bookings-grid { grid-template-columns: 1fr; }
         }
 
         @media (max-width: 600px) {
-            .booking-modal-content {
-                width: 95%;
-                max-height: 95vh;
-                border-radius: 12px;
-            }
-
-            .booking-modal-header {
-                flex-direction: column;
-                align-items: center;
-                text-align: center;
-                padding: 1.5rem;
-            }
-
-            .modal-client-avatar {
-                margin-right: 0;
-                margin-bottom: 1rem;
-            }
-
-            .modal-action-buttons {
-                grid-template-columns: 1fr;
-            }
+            .booking-modal-content { border-radius: var(--radius-lg); }
+            .booking-modal-header { flex-direction: column; align-items: center; text-align: center; padding: 1.25rem; border-radius: var(--radius-lg) var(--radius-lg) 0 0; height: auto; min-height: 160px; }
+            .modal-client-avatar { margin-right: 0; margin-bottom: 0.875rem; }
+            .modal-action-buttons { grid-template-columns: 1fr; border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
         }
+
+        /* ── STAT ICON COLORS ── */
+        .si-total     { background: #eff4ff; color: #4f46e5; }
+        .si-pending   { background: var(--warning-light); color: var(--warning); }
+        .si-confirmed { background: var(--info-light); color: var(--info); }
+        .si-completed { background: var(--success-light); color: var(--success); }
+        .si-cancelled { background: var(--danger-light); color: var(--danger); }
+
+        /* ── BOOKING CARD UTILITY ── */
+        .booking-card-banner-wrap { position: relative; flex-grow: 1; }
+
+        .booking-card-footer {
+            margin-top: 0.875rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border-subtle);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .booking-card-amount {
+            font-size: 1.05rem;
+            font-weight: 800;
+            color: var(--accent);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .booking-card-chevron {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            transition: transform 0.2s ease;
+        }
+
+        .booking-card:hover .booking-card-chevron { transform: translateX(3px); color: var(--accent); }
+
+        /* ── OFFER DETAILS ── */
+        .offer-details { margin-bottom: 1rem; }
+        .offer-details p { font-size: 0.875rem; margin-bottom: 0.4rem; color: var(--text-secondary); }
+        .offer-details p:last-child { margin-bottom: 0; }
+        .offer-details strong { color: var(--text-primary); font-weight: 700; }
+
+        /* ── INFO VALUE BLOCK ── */
+        .info-value-block { text-align: left; display: block; margin-top: 0.35rem; }
     </style>
 </head>
 <body>
@@ -1494,7 +1382,7 @@ if ($view === 'bookings') {
         ?>
         <div class="stats-grid">
             <a href="?view=bookings&status=" class="stat-card <?php echo empty($status_filter) ? 'active' : ''; ?>">
-                <div class="stat-icon" style="background: #e0e7ff; color: #4f46e5;">
+                <div class="stat-icon si-total">
                     <i class="fas fa-calendar"></i>
                 </div>
                 <h3><?php echo $total_bookings; ?></h3>
@@ -1502,7 +1390,7 @@ if ($view === 'bookings') {
             </a>
 
             <a href="?view=bookings&status=pending" class="stat-card <?php echo $status_filter === 'pending' ? 'active' : ''; ?>">
-                <div class="stat-icon" style="background: #fef3c7; color: #92400e;">
+                <div class="stat-icon si-pending">
                     <i class="fas fa-clock"></i>
                 </div>
                 <h3><?php echo $pending_bookings; ?></h3>
@@ -1510,7 +1398,7 @@ if ($view === 'bookings') {
             </a>
 
             <a href="?view=bookings&status=confirmed" class="stat-card <?php echo $status_filter === 'confirmed' ? 'active' : ''; ?>">
-                <div class="stat-icon" style="background: #dbeafe; color: #1e40af;">
+                <div class="stat-icon si-confirmed">
                     <i class="fas fa-check"></i>
                 </div>
                 <h3><?php echo $confirmed_bookings; ?></h3>
@@ -1518,7 +1406,7 @@ if ($view === 'bookings') {
             </a>
 
             <a href="?view=bookings&status=completed" class="stat-card <?php echo $status_filter === 'completed' ? 'active' : ''; ?>">
-                <div class="stat-icon" style="background: #d1fae5; color: #065f46;">
+                <div class="stat-icon si-completed">
                     <i class="fas fa-check-circle"></i>
                 </div>
                 <h3><?php echo $completed_bookings; ?></h3>
@@ -1526,7 +1414,7 @@ if ($view === 'bookings') {
             </a>
 
             <a href="?view=bookings&status=cancelled" class="stat-card <?php echo $status_filter === 'cancelled' ? 'active' : ''; ?>">
-                <div class="stat-icon" style="background: #fee2e2; color: #991b1b;">
+                <div class="stat-icon si-cancelled">
                     <i class="fas fa-times-circle"></i>
                 </div>
                 <h3><?php echo $cancelled_bookings; ?></h3>
@@ -1611,7 +1499,7 @@ if ($view === 'bookings') {
                 <h3><?php echo __('bookings.table_title', [], 'dashboard') . ' (' . $total_bookings . ')'; ?></h3>
                 <?php if (!empty($items)): ?>
                     <form method="POST" class="bulk-actions">
-                        <select name="bulk_action_type" class="form-select" style="width: auto;">
+                        <select name="bulk_action_type" class="form-select" style="width:auto;">
                             <option value=""><?php echo __('bookings.bulk_actions', [], 'dashboard'); ?></option>
                             <option value="confirmed"><?php echo __('bookings.accept_selected', [], 'dashboard'); ?></option>
                             <?php if (isProviderRejectionAllowed()): ?>
@@ -1642,9 +1530,9 @@ if ($view === 'bookings') {
                 </div>
             <?php else: ?>
                 <!-- Bookings Grid View -->
-                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.75rem; margin-bottom: 2rem;">
+                <div class="bookings-grid">
                     <?php foreach ($items as $booking): ?>
-                        <div class="booking-card" style="cursor: pointer;" onclick="openBookingModal(this)" 
+                        <div class="booking-card" onclick="openBookingModal(this)" 
                              data-booking-id="<?php echo htmlspecialchars($booking['id']); ?>"
                              data-client-name="<?php echo htmlspecialchars($booking['client_name']); ?>"
                              data-client-email="<?php echo htmlspecialchars($booking['client_email']); ?>"
@@ -1660,53 +1548,41 @@ if ($view === 'bookings') {
                              data-created-at="<?php echo htmlspecialchars($booking['created_at']); ?>"
                              data-urgency="<?php echo htmlspecialchars($booking['urgency_level'] ?? ''); ?>"
                              data-can-respond="<?php echo intval($booking['status'] === 'pending' ? 1 : 0); ?>">
-                            <div style="position: relative; flex-grow: 1;">
+                            <div class="booking-card-banner-wrap">
                                 <div class="client-avatar-large">
                                     <?php if (!empty($booking['client_image'])): ?>
                                         <img src="../uploads/profiles/<?php echo htmlspecialchars($booking['client_image']); ?>" alt="<?php echo htmlspecialchars($booking['client_name']); ?>">
                                     <?php else: ?>
-                                        <div style="font-size: 3.5rem; font-weight: bold; color: white; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
-                                            <?php echo strtoupper(substr($booking['client_name'], 0, 1)); ?>
-                                        </div>
+                                        <span class="avatar-initials"><?php echo strtoupper(substr($booking['client_name'], 0, 1)); ?></span>
                                     <?php endif; ?>
                                 </div>
-                                <span class="badge badge-<?php echo htmlspecialchars($booking['status']); ?>" style="position: absolute; top: 12px; right: 12px; padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600;">
+                                <span class="badge badge-<?php echo htmlspecialchars($booking['status']); ?> booking-card-badge">
                                     <?php echo ucfirst($booking['status']); ?>
                                 </span>
                             </div>
-                            <div style="padding: 1.25rem; flex-grow: 1; display: flex; flex-direction: column;">
-                                <h4 style="margin-bottom: 0.5rem; font-weight: 700; color: var(--dark); font-size: 1.1rem;">
+                            <div class="booking-card-body">
+                                <div class="booking-card-name">
                                     <?php echo htmlspecialchars($booking['client_name']); ?>
-                                </h4>
-                                <p style="font-size: 0.9rem; color: var(--secondary); margin-bottom: 0.75rem;">
-                                    <i class="fas fa-concierge-bell" style="margin-right: 0.5rem;"></i>
-                                    <?php echo htmlspecialchars($booking['service_name'] ?? 'Service'); ?>
-                                </p>
-                                <div style="border-top: 1px solid #dee2e6; padding-top: 0.75rem; margin-top: 0.75rem; flex-grow: 1;">
-                                    <p style="font-size: 0.85rem; color: var(--secondary); margin-bottom: 0.5rem;">
-                                        <i class="fas fa-calendar" style="margin-right: 0.4rem; color: var(--primary);"></i>
-                                        <?php echo date('M d, Y', strtotime($booking['preferred_date'])); ?>
-                                    </p>
-                                    <p style="font-size: 0.85rem; color: var(--secondary); margin-bottom: 0.5rem;">
-                                        <i class="fas fa-map-marker-alt" style="margin-right: 0.4rem; color: var(--primary);"></i>
-                                        <?php echo htmlspecialchars(strlen($booking['location']) > 25 ? substr($booking['location'], 0, 25) . '...' : $booking['location']); ?>
-                                    </p>
-                                    <p style="font-size: 0.85rem; color: var(--secondary);">
-                                        <i class="fas fa-clock" style="margin-right: 0.4rem; color: var(--primary);"></i>
-                                        <?php echo __('bookings.requested', [], 'dashboard'); ?>: <?php echo date('M d, Y', strtotime($booking['created_at'])); ?>
-                                    </p>
                                 </div>
-                                <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center;">
+                                <div class="booking-card-service">
+                                    <i class="fas fa-concierge-bell"></i>
+                                    <?php echo htmlspecialchars($booking['service_name'] ?? 'Service'); ?>
+                                </div>
+                                <div class="booking-card-meta">
+                                    <div class="booking-meta-row"><i class="fas fa-calendar"></i>
+                                        <?php echo date('M d, Y', strtotime($booking['preferred_date'])); ?></div>
+                                    <div class="booking-meta-row"><i class="fas fa-map-marker-alt"></i>
+                                        <?php echo htmlspecialchars(strlen($booking['location']) > 25 ? substr($booking['location'], 0, 25) . '...' : $booking['location']); ?></div>
+                                    <div class="booking-meta-row"><i class="fas fa-clock"></i>
+                                        <?php echo __('bookings.requested', [], 'dashboard'); ?>: <?php echo date('M d, Y', strtotime($booking['created_at'])); ?></div>
+                                </div>
+                                <div class="booking-card-footer">
                                     <div>
                                         <?php if (!empty($booking['amount'])): ?>
-                                            <p style="margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--primary);">
-                                                RWF <?php echo number_format($booking['amount'], 0); ?>
-                                            </p>
+                                            <span class="booking-card-amount">RWF <?php echo number_format($booking['amount'], 0); ?></span>
                                         <?php endif; ?>
                                     </div>
-                                    <div style="font-size: 1.5rem; color: var(--primary); transition: transform 0.3s;">
-                                        <i class="fas fa-chevron-right"></i>
-                                    </div>
+                                    <div class="booking-card-chevron"><i class="fas fa-chevron-right"></i></div>
                                 </div>
                             </div>
                         </div>
@@ -1787,7 +1663,7 @@ if ($view === 'bookings') {
                                         <td>
                                             <div class="action-buttons">
                                                 <?php if ($booking['status'] === 'pending'): ?>
-                                                    <form method="POST" style="display: inline;">
+                                                    <form method="POST" class="d-inline">
                                                         <input type="hidden" name="booking_id" value="<?php echo $booking['id']; ?>">
                                                         <input type="hidden" name="status" value="confirmed">
                                                         <button type="submit" name="update_status" class="btn-sm btn-accept" title="<?php echo __('bookings.confirm', [], 'dashboard'); ?>">
@@ -1795,7 +1671,7 @@ if ($view === 'bookings') {
                                                         </button>
                                                     </form>
                                                     <?php if (isProviderRejectionAllowed()): ?>
-                                                        <form method="POST" style="display: inline;" onsubmit="return confirm('<?php echo __('bookings.confirm_reject', [], 'dashboard'); ?>')">
+                                                        <form method="POST" class="d-inline" onsubmit="return confirm('<?php echo __('bookings.confirm_reject', [], 'dashboard'); ?>')">
                                                             <input type="hidden" name="booking_id" value="<?php echo $booking['id']; ?>">
                                                             <input type="hidden" name="status" value="cancelled">
                                                             <button type="submit" name="update_status" class="btn-sm btn-reject" title="<?php echo __('bookings.reject', [], 'dashboard'); ?>">
@@ -1804,7 +1680,7 @@ if ($view === 'bookings') {
                                                         </form>
                                                     <?php endif; ?>
                                                 <?php elseif ($booking['status'] === 'confirmed'): ?>
-                                                    <form method="POST" style="display: inline;">
+                                                    <form method="POST" class="d-inline">
                                                         <input type="hidden" name="booking_id" value="<?php echo $booking['id']; ?>">
                                                         <input type="hidden" name="status" value="completed">
                                                         <button type="submit" name="update_status" class="btn-sm btn-complete" title="<?php echo __('bookings.complete', [], 'dashboard'); ?>">
@@ -1901,7 +1777,7 @@ if ($view === 'bookings') {
                                 </div>
                             </div>
 
-                            <div style="margin-bottom: 1rem;">
+                            <div class="offer-details">
                                 <p class="mb-2"><strong><?php echo __('bookings.service', [], 'dashboard'); ?>:</strong> <?php echo htmlspecialchars($offer['service_name']); ?></p>
                                 <p class="mb-2"><strong><?php echo __('bookings.offer_price', [], 'dashboard'); ?>:</strong> <span class="offer-price">RWF <?php echo number_format($offer['offered_price'], 2); ?></span></p>
                                 <p class="mb-2"><strong><?php echo __('bookings.negotiation_round', [], 'dashboard'); ?>:</strong> <?php echo $offer['round_number']; ?></p>
@@ -1916,14 +1792,14 @@ if ($view === 'bookings') {
 
                             <?php if ($offer['status'] === 'pending'): ?>
                             <div class="offer-actions">
-                                <form method="POST" style="display: inline;">
+                                <form method="POST" class="d-inline">
                                     <input type="hidden" name="offer_id" value="<?php echo $offer['id']; ?>">
                                     <input type="hidden" name="offer_action" value="accept">
                                     <button type="submit" class="btn-offer-action btn-accept-offer" onclick="return confirm('<?php echo __('bookings.confirm_accept_offer', [], 'dashboard'); ?>')">
                                         <i class="fas fa-check"></i> <?php echo __('bookings.accept_offer', [], 'dashboard'); ?>
                                     </button>
                                 </form>
-                                <form method="POST" style="display: inline;">
+                                <form method="POST" class="d-inline">
                                     <input type="hidden" name="offer_id" value="<?php echo $offer['id']; ?>">
                                     <input type="hidden" name="offer_action" value="reject">
                                     <button type="submit" class="btn-offer-action btn-reject-offer" onclick="return confirm('<?php echo __('bookings.confirm_reject_offer', [], 'dashboard'); ?>')">
@@ -1936,7 +1812,7 @@ if ($view === 'bookings') {
                             </div>
 
                             <!-- Counter-Offer Form (Hidden by default) -->
-                            <form method="POST" id="counter-form-<?php echo $offer['id']; ?>" style="display: none; margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                            <form method="POST" id="counter-form-<?php echo $offer['id']; ?>" class="counter-form">
                                 <input type="hidden" name="offer_id" value="<?php echo $offer['id']; ?>">
                                 <input type="hidden" name="offer_action" value="counter">
                                 <div class="mb-3">
@@ -1951,7 +1827,7 @@ if ($view === 'bookings') {
                                     <button type="submit" class="btn-offer-action btn-counter-offer">
                                         <i class="fas fa-paper-plane"></i> <?php echo __('bookings.send_counter_offer', [], 'dashboard'); ?>
                                     </button>
-                                    <button type="button" class="btn-offer-action" style="background: #6c757d; color: white;" onclick="toggleCounterForm(<?php echo $offer['id']; ?>)">
+                                    <button type="button" class="btn-offer-action btn-cancel-action" onclick="toggleCounterForm(<?php echo $offer['id']; ?>)">
                                         <i class="fas fa-times"></i> <?php echo __('bookings.cancel', [], 'dashboard'); ?>
                                     </button>
                                 </div>
@@ -1992,62 +1868,93 @@ if ($view === 'bookings') {
     <!-- Bootstrap JS -->
     <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Mobile sidebar toggle
-        const mobileToggle = document.getElementById('mobileToggle');
-        const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('overlay');
-        
-        mobileToggle.addEventListener('click', () => {
-            sidebar.classList.toggle('mobile-open');
-            overlay.classList.toggle('active');
-        });
-        
-        overlay.addEventListener('click', () => {
-            sidebar.classList.remove('mobile-open');
-            overlay.classList.remove('active');
-        });
-        
-        function toggleSelectAll() {
+        // ── Mobile sidebar toggle ──────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', function () {
+            const mobileToggle = document.getElementById('mobileToggle');
+            const sidebar      = document.getElementById('providerSidebar');
+            const overlay      = document.getElementById('overlay');
+
+            if (mobileToggle && sidebar) {
+                mobileToggle.addEventListener('click', () => {
+                    sidebar.classList.toggle('mobile-open');
+                    overlay.classList.toggle('active');
+                    document.body.style.overflow = sidebar.classList.contains('mobile-open') ? 'hidden' : '';
+                });
+            }
+
+            if (overlay) {
+                overlay.addEventListener('click', () => {
+                    if (sidebar) sidebar.classList.remove('mobile-open');
+                    overlay.classList.remove('active');
+                    document.body.style.overflow = '';
+                });
+            }
+
+            // Select-all checkbox behaviour
             const selectAll = document.getElementById('selectAll');
             const checkboxes = document.querySelectorAll('.booking-checkbox');
-            
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = selectAll.checked;
-            });
+
+            if (selectAll) {
+                checkboxes.forEach(cb => {
+                    cb.addEventListener('change', () => {
+                        selectAll.checked = [...checkboxes].every(c => c.checked);
+                        selectAll.indeterminate = !selectAll.checked && [...checkboxes].some(c => c.checked);
+                    });
+                });
+            }
+
+            // Auto-dismiss alerts after 5 seconds
+            setTimeout(() => {
+                document.querySelectorAll('.alert').forEach(el => {
+                    try { new bootstrap.Alert(el).close(); } catch (e) {}
+                });
+            }, 5000);
+
+            // Close modal when clicking backdrop
+            const modal = document.getElementById('bookingModal');
+            if (modal) {
+                modal.addEventListener('click', e => { if (e.target === modal) closeBookingModal(); });
+            }
+        });
+
+        // ── Toast notification ─────────────────────────────────────────────
+        function showToast(message, type = 'success') {
+            let container = document.getElementById('toastContainer');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'toastContainer';
+                container.style.cssText = 'position:fixed;top:1.25rem;right:1.25rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;';
+                document.body.appendChild(container);
+            }
+            const colors = { success: '#16a34a', danger: '#dc2626', warning: '#d97706', info: '#0891b2' };
+            const toast = document.createElement('div');
+            toast.style.cssText = `background:${colors[type]||colors.info};color:#fff;padding:0.75rem 1.125rem;border-radius:10px;font-size:0.875rem;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,0.15);min-width:260px;display:flex;align-items:center;gap:0.5rem;animation:toastIn 0.22s ease;font-family:inherit;`;
+            toast.innerHTML = `<i class="fas fa-${type==='success'?'check-circle':type==='danger'?'exclamation-circle':'info-circle'}"></i> ${escapeHtml(message)}`;
+            container.appendChild(toast);
+            setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 3500);
         }
-        
+
+        // ── Bulk action ────────────────────────────────────────────────────
+        function toggleSelectAll() {
+            const selectAll  = document.getElementById('selectAll');
+            const checkboxes = document.querySelectorAll('.booking-checkbox');
+            checkboxes.forEach(cb => cb.checked = selectAll.checked);
+        }
+
         function confirmBulkAction() {
             const selected = document.querySelectorAll('.booking-checkbox:checked');
             if (selected.length === 0) {
-                alert('Please select at least one booking to perform bulk action.');
+                showToast('Please select at least one booking.', 'warning');
                 return false;
             }
-            return confirm(`Are you sure you want to update ${selected.length} booking(s)?`);
+            return confirm(`Update ${selected.length} booking(s)?`);
         }
 
-        // Auto-dismiss alerts after 5 seconds
-        setTimeout(() => {
-            const alerts = document.querySelectorAll('.alert');
-            alerts.forEach(alert => {
-                const bsAlert = new bootstrap.Alert(alert);
-                bsAlert.close();
-            });
-        }, 5000);
-        
-        // Update select all checkbox state
-        document.addEventListener('DOMContentLoaded', function() {
-            const checkboxes = document.querySelectorAll('.booking-checkbox');
-            const selectAll = document.getElementById('selectAll');
-            
-            checkboxes.forEach(checkbox => {
-                checkbox.addEventListener('change', function() {
-                    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-                    selectAll.checked = allChecked;
-                });
-            });
-        });
+        function confirmReject() {
+            return confirm('Are you sure you want to reject this booking?');
+        }
 
-        // Toggle counter-offer form
+        // ── Toggle counter-offer form ──────────────────────────────────────
         function toggleCounterForm(offerId) {
             const form = document.getElementById('counter-form-' + offerId);
             if (form.style.display === 'none' || form.style.display === '') {
@@ -2148,10 +2055,10 @@ if ($view === 'bookings') {
                 if (bookingIdInput2) bookingIdInput2.value = bookingData.id;
             } else if (bookingData.status === 'confirmed') {
                 actionButtons.innerHTML = `
-                    <form method="POST" style="width: 100%; grid-column: 1/-1;">
+                    <form method="POST" style="grid-column:1/-1;">
                         <input type="hidden" name="booking_id" value="${bookingData.id}">
                         <input type="hidden" name="status" value="completed">
-                        <button type="submit" name="update_status" class="btn btn-accept" style="width: 100%;">
+                        <button type="submit" name="update_status" class="btn btn-accept">
                             <i class="fas fa-check-circle"></i> Mark as Completed
                         </button>
                     </form>
@@ -2199,8 +2106,8 @@ if ($view === 'bookings') {
                 <div class="modal-client-avatar" id="modalClientAvatar"></div>
                 <div class="modal-client-info">
                     <h3 id="modalClientName">Client Name</h3>
-                    <p><i class="fas fa-envelope" style="margin-right: 0.5rem;"></i><span id="modalClientEmail">email@example.com</span></p>
-                    <p><i class="fas fa-phone" style="margin-right: 0.5rem;"></i><span id="modalClientPhone">+250700000000</span></p>
+                    <p><i class="fas fa-envelope"></i><span id="modalClientEmail">email@example.com</span></p>
+                    <p><i class="fas fa-phone"></i><span id="modalClientPhone">+250700000000</span></p>
                 </div>
             </div>
 
@@ -2216,7 +2123,7 @@ if ($view === 'bookings') {
                     </div>
                     <div class="info-row">
                         <span class="info-label">Description</span>
-                        <span class="info-value" id="modalServiceDesc" style="text-align: left; display: block; margin-top: 0.5rem;">—</span>
+                        <span class="info-value info-value-block" id="modalServiceDesc">—</span>
                     </div>
                 </div>
 
@@ -2246,8 +2153,8 @@ if ($view === 'bookings') {
                     </div>
                     <div class="info-row">
                         <span class="info-label">Status</span>
-                        <span class="info-value" style="text-align: left;">
-                            <span class="badge" id="modalStatusBadge" style="padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.8rem;"></span>
+                        <span class="info-value">
+                            <span class="badge" id="modalStatusBadge"></span>
                         </span>
                     </div>
                     <div class="info-row">
@@ -2268,15 +2175,13 @@ if ($view === 'bookings') {
                     <a class="contact-method" href="mailto:" id="modalContactEmail">
                         <i class="fas fa-envelope"></i>
                         <div>
-                            <div style="font-size: 0.7rem; color: var(--secondary); text-transform: uppercase; margin-bottom: 0.2rem; font-weight: 600;">Email</div>
-                            <div id="modalClientEmailContact" style="font-weight: 600; font-size: 0.95rem;">email@example.com</div>
+                            <div class="contact-label">Email</div><div class="contact-value" id="modalClientEmailContact">email@example.com</div>
                         </div>
                     </a>
                     <a class="contact-method" href="tel:" id="modalContactPhone">
                         <i class="fas fa-phone"></i>
                         <div>
-                            <div style="font-size: 0.7rem; color: var(--secondary); text-transform: uppercase; margin-bottom: 0.2rem; font-weight: 600;">Phone</div>
-                            <div id="modalClientPhoneContact" style="font-weight: 600; font-size: 0.95rem;">+250700000000</div>
+                            <div class="contact-label">Phone</div><div class="contact-value" id="modalClientPhoneContact">+250700000000</div>
                         </div>
                     </a>
                 </div>
@@ -2284,17 +2189,17 @@ if ($view === 'bookings') {
 
             <!-- Action Buttons -->
             <div class="modal-action-buttons">
-                <form method="POST" id="confirmBookingForm" style="width: 100%;">
+                <form method="POST" id="confirmBookingForm">
                     <input type="hidden" name="booking_id">
                     <input type="hidden" name="status" value="confirmed">
-                    <button type="submit" name="update_status" class="btn btn-accept" style="width: 100%; margin-bottom: 0;">
+                    <button type="submit" name="update_status" class="btn btn-accept">
                         <i class="fas fa-check"></i> Confirm Booking
                     </button>
                 </form>
-                <form method="POST" id="rejectBookingForm" style="width: 100%;" onsubmit="return confirm('Are you sure you want to reject this booking?');">
+                <form method="POST" id="rejectBookingForm" onsubmit="return confirmReject();">
                     <input type="hidden" name="booking_id">
                     <input type="hidden" name="status" value="cancelled">
-                    <button type="submit" name="update_status" class="btn btn-reject" style="width: 100%; margin-bottom: 0;">
+                    <button type="submit" name="update_status" class="btn btn-reject">
                         <i class="fas fa-times"></i> Reject Booking
                     </button>
                 </form>

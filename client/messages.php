@@ -236,20 +236,47 @@ if ($with) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Messages - Chat</title>
+    <title>Messages</title>
     <link rel="stylesheet" href="../bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: #f5f5f5;
-            overflow: hidden;
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --accent: #0d6efd;
+            --accent-dark: #0a58ca;
+            --accent-light: #eff4ff;
+            --surface: #ffffff;
+            --surface-2: #f7f8fc;
+            --border: #e8eaf0;
+            --border-subtle: #f0f2f7;
+            --text-primary: #0f1117;
+            --text-secondary: #6b7280;
+            --text-muted: #9ca3af;
+            --sent-bg: #0d6efd;
+            --recv-bg: #f0f2f7;
+            --online: #22c55e;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --shadow-sm: 0 1px 4px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+            --transition: all 0.18s cubic-bezier(0.4,0,0.2,1);
         }
 
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--surface-2);
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+            color: var(--text-primary);
+        }
+
+        /* ── SIDEBAR OFFSET ── */
         .main-content {
-            margin-left: 80px;
+            margin-left: 72px;
             transition: margin-left 0.3s ease;
             min-height: 100vh;
         }
@@ -259,112 +286,130 @@ if ($with) {
             margin-left: 260px;
         }
 
+        /* ── CHAT SHELL ── */
         .chat-container {
             display: flex;
             height: 100vh;
-            background: white;
+            background: var(--surface);
+            overflow: hidden;
         }
 
-        /* Conversations Panel */
+        /* ══════════════════════════════════════
+           CONVERSATIONS PANEL
+        ══════════════════════════════════════ */
         .conversations-panel {
-            width: 360px;
-            border-right: 1px solid #e5e5e5;
+            width: 320px;
+            min-width: 320px;
+            border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            background: white;
+            background: var(--surface);
         }
 
         .conversations-header {
-            padding: 16px 20px;
-            border-bottom: 1px solid #e5e5e5;
+            padding: 1.25rem 1.25rem 1rem;
+            border-bottom: 1px solid var(--border-subtle);
         }
 
         .conversations-header h2 {
-            font-size: 32px;
-            font-weight: 600;
-            margin: 0 0 16px 0;
-            color: #111;
+            font-size: 1.25rem;
+            font-weight: 800;
+            letter-spacing: -0.4px;
+            color: var(--text-primary);
+            margin-bottom: 0.875rem;
         }
 
+        /* Search box */
         .search-box {
             position: relative;
-            margin-bottom: 0;
         }
 
         .search-box input {
             width: 100%;
-            padding: 10px 16px 10px 40px;
-            border: 1px solid #e5e5e5;
-            border-radius: 24px;
-            font-size: 15px;
-            background: #f0f0f0;
+            padding: 0.55rem 1rem 0.55rem 2.25rem;
+            border: 1px solid var(--border);
+            border-radius: 100px;
+            font-size: 0.85rem;
+            font-family: inherit;
+            background: var(--surface-2);
+            color: var(--text-primary);
+            transition: var(--transition);
         }
 
         .search-box input:focus {
             outline: none;
-            background: white;
-            border-color: #0a58ca;
+            background: var(--surface);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(13,110,253,0.08);
         }
 
         .search-box i {
             position: absolute;
-            left: 14px;
+            left: 0.75rem;
             top: 50%;
             transform: translateY(-50%);
-            color: #999;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            pointer-events: none;
         }
 
+        /* Conversations list */
         .conversations-list {
             flex: 1;
             overflow-y: auto;
             list-style: none;
+            padding: 0.5rem 0.625rem;
         }
 
         .conversation-item {
-            padding: 8px 8px;
+            padding: 0.625rem 0.75rem;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: var(--transition);
             display: flex;
             align-items: center;
-            gap: 12px;
-            margin: 0 8px;
-            border-radius: 12px;
+            gap: 0.75rem;
+            border-radius: var(--radius-md);
             position: relative;
+            margin-bottom: 2px;
         }
 
-        .conversation-item:hover {
-            background: #f0f0f0;
-        }
+        .conversation-item:hover { background: var(--surface-2); }
 
         .conversation-item.active {
-            background: #e7f3ff;
+            background: var(--accent-light);
         }
 
+        /* Avatar */
         .conversation-avatar {
-            width: 56px;
-            height: 56px;
+            width: 48px;
+            height: 48px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #0a58ca, #0d6efd);
+            background: linear-gradient(135deg, var(--accent), var(--accent-dark));
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            font-size: 20px;
-            font-weight: 600;
+            font-size: 1rem;
+            font-weight: 700;
             flex-shrink: 0;
             position: relative;
+            overflow: hidden;
+        }
+
+        .conversation-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
         .conversation-avatar.online::after {
             content: '';
             position: absolute;
-            width: 14px;
-            height: 14px;
-            background: #31a24c;
-            border: 3px solid white;
+            width: 11px; height: 11px;
+            background: var(--online);
+            border: 2px solid var(--surface);
             border-radius: 50%;
-            bottom: 0;
-            right: 0;
+            bottom: 1px; right: 1px;
         }
 
         .conversation-info {
@@ -373,51 +418,67 @@ if ($with) {
         }
 
         .conversation-name {
-            font-size: 15px;
-            font-weight: 500;
-            color: #111;
-            margin-bottom: 4px;
-        }
-
-        .conversation-preview {
-            font-size: 13px;
-            color: #65676b;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.2rem;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
+        .conversation-preview {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .conversation-item.active .conversation-name { color: var(--accent); }
+        .conversation-item.active .conversation-preview { color: var(--accent); opacity: 0.75; }
+
         .unread-badge {
-            background: #0a58ca;
+            background: var(--accent);
             color: white;
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
+            border-radius: 100px;
+            min-width: 20px;
+            height: 20px;
+            padding: 0 5px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 12px;
+            font-size: 0.7rem;
             font-weight: 700;
             flex-shrink: 0;
         }
 
+        /* Empty state */
         .empty-state {
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             height: 100%;
-            color: #65676b;
-            padding: 20px;
+            color: var(--text-muted);
+            padding: 2rem;
             text-align: center;
+            gap: 0.5rem;
         }
 
-        /* Chat Panel */
+        .empty-state i { font-size: 2.5rem; opacity: 0.3; }
+        .empty-state p { font-size: 0.9rem; font-weight: 600; color: var(--text-secondary); }
+        .empty-state small { font-size: 0.78rem; }
+
+        /* ══════════════════════════════════════
+           CHAT PANEL
+        ══════════════════════════════════════ */
         .chat-panel {
             flex: 1;
             display: flex;
             flex-direction: column;
-            background: white;
+            background: var(--surface-2);
+            min-width: 0;
         }
 
         .chat-empty {
@@ -426,459 +487,519 @@ if ($with) {
             justify-content: center;
             height: 100%;
             text-align: center;
-            color: #65676b;
+            color: var(--text-muted);
+            background: var(--surface-2);
         }
 
-        .chat-empty i {
-            font-size: 80px;
-            color: #e5e5e5;
-            margin-bottom: 16px;
-        }
+        .chat-empty i { font-size: 3.5rem; opacity: 0.15; margin-bottom: 1rem; display: block; }
+        .chat-empty p { font-size: 1rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.25rem; }
+        .chat-empty small { font-size: 0.8rem; }
 
         /* Chat Header */
         .chat-header {
-            padding: 12px 20px;
-            border-bottom: 1px solid #e5e5e5;
+            padding: 0.875rem 1.25rem;
+            border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: white;
+            background: var(--surface);
+            box-shadow: var(--shadow-sm);
+            position: relative;
+            z-index: 5;
         }
 
         .chat-header-info {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 0.75rem;
         }
 
+        .chat-header-avatar-link { text-decoration: none; }
+
         .chat-header-avatar {
-            width: 40px;
-            height: 40px;
+            width: 38px; height: 38px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #0a58ca, #0d6efd);
+            background: linear-gradient(135deg, var(--accent), var(--accent-dark));
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            font-weight: 600;
+            font-weight: 700;
+            font-size: 0.9rem;
             position: relative;
+            overflow: hidden;
+            flex-shrink: 0;
         }
+
+        .chat-header-avatar img { width: 100%; height: 100%; object-fit: cover; }
 
         .chat-header-avatar.online::after {
             content: '';
             position: absolute;
-            width: 12px;
-            height: 12px;
-            background: #31a24c;
-            border: 2px solid white;
+            width: 10px; height: 10px;
+            background: var(--online);
+            border: 2px solid var(--surface);
             border-radius: 50%;
-            bottom: 0;
-            right: 0;
+            bottom: 0; right: 0;
         }
 
         .chat-header-name {
-            font-weight: 500;
-            color: #111;
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: var(--text-primary);
         }
 
         .chat-header-status {
-            font-size: 12px;
-            color: #65676b;
+            font-size: 0.72rem;
+            color: var(--online);
+            font-weight: 500;
         }
 
+        /* Header action buttons */
         .chat-header-actions {
             display: flex;
-            gap: 12px;
+            gap: 0.25rem;
             position: relative;
         }
 
-        .chat-options-dropdown {
-            position: absolute;
-            top: 48px;
-            right: 0;
-            min-width: 210px;
-            background: #fff;
-            border: 1px solid #e5e5e5;
-            border-radius: 10px;
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-            z-index: 10;
-            display: none;
-            flex-direction: column;
-            padding: 6px 0;
+        .header-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 50%;
+            transition: var(--transition);
+            display: flex; align-items: center; justify-content: center;
+            width: 36px; height: 36px;
         }
 
-        .chat-options-dropdown.visible {
-            display: flex;
+        .header-btn:hover {
+            background: var(--surface-2);
+            color: var(--accent);
         }
+
+        /* Options dropdown */
+        .chat-options-dropdown {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            min-width: 200px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-md);
+            z-index: 50;
+            display: none;
+            flex-direction: column;
+            padding: 0.375rem 0;
+            overflow: hidden;
+        }
+
+        .chat-options-dropdown.visible { display: flex; }
 
         .chat-options-dropdown button {
             text-align: left;
             border: none;
             background: transparent;
             width: 100%;
-            padding: 10px 14px;
-            font-size: 14px;
-            color: #1a1a1a;
+            padding: 0.625rem 1rem;
+            font-size: 0.82rem;
+            font-family: inherit;
+            color: var(--text-primary);
             cursor: pointer;
+            font-weight: 500;
+            transition: var(--transition);
         }
 
-        .chat-options-dropdown button:hover {
-            background: #f6f6f8;
-        }
+        .chat-options-dropdown button:hover { background: var(--surface-2); color: var(--accent); }
 
+        /* Confirm modal */
         .chat-confirm-modal {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.35);
+            background: rgba(0,0,0,0.35);
+            backdrop-filter: blur(3px);
             display: none;
             align-items: center;
             justify-content: center;
             z-index: 100;
         }
 
-        .chat-confirm-modal.show {
-            display: flex;
-        }
+        .chat-confirm-modal.show { display: flex; }
 
         .chat-confirm-card {
-            background: #fff;
-            border-radius: 12px;
-            padding: 20px;
-            max-width: 420px;
-            width: 100%;
-            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            max-width: 400px;
+            width: calc(100% - 2rem);
+            box-shadow: 0 20px 48px rgba(0,0,0,0.18);
         }
 
         .chat-confirm-card h3 {
-            margin-top: 0;
-            font-size: 18px;
-            margin-bottom: 10px;
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
         }
+
+        .chat-confirm-card p { font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem; }
 
         .chat-confirm-card textarea {
             width: 100%;
             min-height: 80px;
-            border: 1px solid #dcdce0;
-            border-radius: 6px;
-            padding: 8px 10px;
-            margin-top: 8px;
-            margin-bottom: 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 0.625rem 0.75rem;
+            margin-bottom: 1rem;
             resize: vertical;
+            font-family: inherit;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+        }
+
+        .chat-confirm-card textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(13,110,253,0.08);
         }
 
         .chat-confirm-actions {
             display: flex;
             justify-content: flex-end;
-            gap: 8px;
+            gap: 0.5rem;
         }
 
+        /* Toast */
         .chat-action-toast {
             position: fixed;
-            bottom: 25px;
-            right: 25px;
-            background: #111;
-            color: #fff;
-            padding: 10px 14px;
-            border-radius: 8px;
+            bottom: 1.5rem; right: 1.5rem;
+            background: var(--text-primary);
+            color: white;
+            padding: 0.625rem 1rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.82rem;
+            font-weight: 500;
             opacity: 0;
-            transition: opacity 0.25s ease;
+            transition: opacity 0.22s ease;
             z-index: 110;
             pointer-events: none;
+            box-shadow: var(--shadow-md);
         }
 
-        .chat-action-toast.error {
-            background: #be1e2d;
-        }
+        .chat-action-toast.error   { background: #dc2626; }
+        .chat-action-toast.success { background: #16a34a; }
 
-        .chat-action-toast.success {
-            background: #1e733b;
-        }
-
-        .header-btn {
-            background: none;
-            border: none;
-            color: #0a58ca;
-            font-size: 18px;
-            cursor: pointer;
-            padding: 8px;
-            border-radius: 50%;
-            transition: background 0.2s;
-        }
-
-        .header-btn:hover {
-            background: #f0f0f0;
-        }
-
-        /* Booking Info */
+        /* ── BOOKING INFO BANNER ── */
         .booking-info {
-            padding: 12px 20px;
-            background: #e7f3ff;
-            border-bottom: 1px solid #b3d9ff;
-            border-radius: 0;
-            margin: 0;
+            padding: 0.625rem 1.25rem;
+            background: var(--accent-light);
+            border-bottom: 1px solid #c7d9ff;
             display: flex;
             align-items: center;
-            gap: 12px;
-            font-size: 14px;
-            color: #0c5aa0;
+            gap: 0.625rem;
+            font-size: 0.8rem;
+            color: var(--accent-dark);
+            font-weight: 500;
         }
 
-        .booking-info i {
-            font-size: 18px;
+        .booking-info i { font-size: 0.9rem; flex-shrink: 0; }
+
+        .booking-info a {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 700;
         }
 
+        .booking-info a:hover { text-decoration: underline; }
+
+        /* ── BOOKING TIMELINE ── */
         .booking-timeline {
-            padding: 12px 20px;
-            border: 1px solid #d7e8ff;
-            background: #f2f8ff;
-            margin: 0 0 8px 0;
-            border-radius: 10px;
+            padding: 0.875rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+            display: flex;
+            gap: 0;
+            flex-wrap: wrap;
         }
 
         .timeline-item {
             display: flex;
             align-items: flex-start;
-            gap: 8px;
-            margin-bottom: 8px;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            flex: 1;
+            min-width: 120px;
         }
 
         .timeline-dot {
-            width: 10px;
-            height: 10px;
+            width: 8px; height: 8px;
             border-radius: 50%;
-            margin-top: 6px;
-            background: #0a58ca;
+            margin-top: 5px;
+            background: var(--accent);
             flex-shrink: 0;
         }
 
-        .timeline-content {
-            flex: 1;
-        }
+        .timeline-title { font-size: 0.78rem; font-weight: 600; color: var(--accent-dark); }
+        .timeline-time { font-size: 0.7rem; color: var(--text-muted); margin-top: 1px; }
 
-        .timeline-title {
-            font-size: 13px;
-            font-weight: 600;
-            color: #0a58ca;
-        }
-
-        .timeline-time {
-            font-size: 12px;
-            color: #666;
-        }
-
-        .attachment-link {
-            margin-top: 8px;
-            font-size: 13px;
-        }
-
-        .voice-badge {
-            display: inline-block;
-            font-size: 12px;
-            color: #ffffff;
-            background: #1e40af;
-            border-radius: 12px;
-            padding: 2px 8px;
-            margin-bottom: 6px;
-            margin-top: 4px;
-            letter-spacing: 0.2px;
-        }
-
-        .attachment-link {
-            margin-top: 8px;
-            font-size: 13px;
-        }
-
-        .attachment-link a {
-            color: #0a58ca;
-            text-decoration: none;
-        }
-
-        .attachment-link a:hover {
-            text-decoration: underline;
-        }
-
-        .booking-info a {
-            color: #0a58ca;
-            text-decoration: none;
-            font-weight: 600;
-        }
-
-        .booking-info a:hover {
-            text-decoration: underline;
-        }
-
-        /* Messages Area */
+        /* ── MESSAGES AREA ── */
         .messages-area {
             flex: 1;
             overflow-y: auto;
-            padding: 16px 20px;
+            padding: 1.25rem 1.5rem;
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            background: white;
+            gap: 0.5rem;
+            background: var(--surface-2);
         }
+
+        .msg-empty {
+            margin: auto;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        .msg-empty i { font-size: 2.5rem; opacity: 0.2; display: block; margin-bottom: 0.75rem; }
+        .msg-empty p { font-size: 0.875rem; font-weight: 500; }
 
         .message-group {
             display: flex;
             flex-direction: column;
-            gap: 4px;
-            margin-bottom: 8px;
+            gap: 2px;
         }
 
         .message {
             display: flex;
-            gap: 8px;
             align-items: flex-end;
-            margin-bottom: 2px;
+            gap: 0.5rem;
         }
 
-        .message.sent {
-            justify-content: flex-end;
+        .message.sent { justify-content: flex-end; }
+
+        /* Bubbles */
+        .message-bubble {
+            max-width: 58%;
+            padding: 0.6rem 0.875rem;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            word-wrap: break-word;
+            animation: msgIn 0.2s ease-out;
+        }
+
+        @keyframes msgIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
         }
 
         .message.sent .message-bubble {
-            background: #0a58ca;
+            background: var(--sent-bg);
             color: white;
             border-radius: 18px 4px 18px 18px;
         }
 
         .message.received .message-bubble {
-            background: #e5e5ea;
-            color: #111;
+            background: var(--surface);
+            color: var(--text-primary);
             border-radius: 4px 18px 18px 18px;
-        }
-
-        .message-bubble {
-            max-width: 55%;
-            padding: 8px 12px;
-            border-radius: 18px;
-            font-size: 15px;
-            line-height: 1.4;
-            word-wrap: break-word;
-            animation: slideIn 0.3s ease-out;
-        }
-
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            border: 1px solid var(--border);
         }
 
         .message-time {
-            font-size: 12px;
-            color: #999;
-            margin-top: 4px;
-            padding: 0 8px;
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            padding: 0 0.5rem;
         }
 
-        .message.sent .message-time {
+        .message.sent + .message-time,
+        .message-group > .message-time {
             text-align: right;
         }
 
-        /* Message Input Area */
-        .message-input-area {
-            padding: 12px 20px 16px 20px;
-            border-top: 1px solid #e5e5e5;
-            display: flex;
-            gap: 12px;
-            align-items: flex-end;
-            background: white;
+        /* Attachments */
+        .attachment-preview { margin-top: 0.4rem; }
+        .attachment-preview img { max-width: 180px; max-height: 180px; border-radius: var(--radius-sm); display: block; }
+        .attachment-preview audio { width: 100%; max-width: 240px; }
+
+        .attachment-link { margin-top: 0.4rem; font-size: 0.78rem; }
+        .attachment-link a { color: inherit; opacity: 0.85; text-decoration: none; }
+        .attachment-link a:hover { opacity: 1; text-decoration: underline; }
+
+        .message.sent .attachment-link a { color: white; }
+        .message.received .attachment-link a { color: var(--accent); }
+
+        .voice-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            background: rgba(255,255,255,0.2);
+            border-radius: 100px;
+            padding: 0.15rem 0.5rem;
+            margin-bottom: 0.25rem;
         }
 
-        .input-form {
+        .message.received .voice-badge {
+            background: var(--accent-light);
+            color: var(--accent);
+        }
+
+        /* ── TYPING INDICATOR ── */
+        .typing-indicator {
+            padding: 0.375rem 1.5rem;
+            font-size: 0.78rem;
+            color: var(--accent);
+            font-weight: 500;
             display: flex;
-            gap: 8px;
-            align-items: flex-end;
-            flex: 1;
+            align-items: center;
+            gap: 0.375rem;
+            background: var(--surface-2);
+        }
+
+        /* ── MESSAGE INPUT AREA ── */
+        .message-input-area {
+            padding: 0.75rem 1.25rem 1rem;
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        .input-form { width: 100%; }
+
+        .input-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 100px;
+            padding: 0.375rem 0.5rem 0.375rem 0.75rem;
+            transition: var(--transition);
+        }
+
+        .input-row:focus-within {
+            border-color: var(--accent);
+            background: var(--surface);
+            box-shadow: 0 0 0 3px rgba(13,110,253,0.07);
         }
 
         input[name="message"] {
             flex: 1;
-            border: 1px solid #e5e5e5;
-            border-radius: 24px;
-            padding: 10px 16px;
-            font-size: 15px;
+            border: none;
+            background: transparent;
+            padding: 0.3rem 0.25rem;
+            font-size: 0.875rem;
             font-family: inherit;
-            resize: none;
-            max-height: 100px;
+            color: var(--text-primary);
+            outline: none;
         }
 
-        input[name="message"]:focus {
-            outline: none;
-            border-color: #0a58ca;
-            box-shadow: 0 0 0 3px rgba(10, 88, 202, 0.1);
+        input[name="message"]::placeholder { color: var(--text-muted); }
+
+        .record-status {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            padding: 0.3rem 0.75rem 0;
+            font-weight: 500;
+            min-height: 1.2rem;
         }
+
+        .record-status.recording { color: #dc2626; }
 
         .send-btn {
-            background: #0a58ca;
+            background: var(--accent);
             color: white;
             border: none;
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            width: 34px; height: 34px;
+            display: flex; align-items: center; justify-content: center;
             cursor: pointer;
-            transition: background 0.2s;
-            font-size: 18px;
+            transition: var(--transition);
+            font-size: 0.85rem;
+            flex-shrink: 0;
         }
 
-        .send-btn:hover {
-            background: #0856c1;
-        }
+        .send-btn:hover  { background: var(--accent-dark); }
+        .send-btn:active { transform: scale(0.93); }
 
-        .send-btn:active {
-            transform: scale(0.95);
-        }
-
-        /* Scrollbar */
+        /* ── SCROLLBARS ── */
         .conversations-list::-webkit-scrollbar,
-        .messages-area::-webkit-scrollbar {
-            width: 8px;
-        }
+        .messages-area::-webkit-scrollbar { width: 4px; }
 
         .conversations-list::-webkit-scrollbar-track,
-        .messages-area::-webkit-scrollbar-track {
-            background: transparent;
-        }
+        .messages-area::-webkit-scrollbar-track { background: transparent; }
 
         .conversations-list::-webkit-scrollbar-thumb,
-        .messages-area::-webkit-scrollbar-thumb {
-            background: #ddd;
-            border-radius: 4px;
-        }
+        .messages-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
 
-        .conversations-list::-webkit-scrollbar-thumb:hover,
-        .messages-area::-webkit-scrollbar-thumb:hover {
-            background: #999;
-        }
-
-        /* Responsive */
+        /* ── RESPONSIVE ── */
         @media (max-width: 768px) {
             .conversations-panel {
                 width: 100%;
+                min-width: unset;
                 position: absolute;
                 height: 100%;
                 z-index: 10;
             }
-            .conversations-panel.hidden {
-                display: none;
-            }
-            .chat-panel {
-                width: 100%;
-            }
-            .message-bubble {
-                max-width: 85%;
-            }
-            .chat-header {
-                padding: 12px 16px;
-            }
+
+            .conversations-panel.hidden { display: none; }
+            .chat-panel { width: 100%; }
+            .message-bubble { max-width: 82%; }
+            .chat-header { padding: 0.75rem 1rem; }
+            .main-content { margin-left: 0 !important; }
+        }
+
+        /* ── UTILITY ── */
+        .conv-avatar-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+        }
+
+        .attach-img {
+            max-width: 180px;
+            max-height: 180px;
+            border-radius: var(--radius-sm);
+            display: block;
+            margin-top: 0.375rem;
+        }
+
+        .attach-audio {
+            width: 100%;
+            max-width: 240px;
+            margin-top: 0.375rem;
+        }
+
+        /* Recording active state */
+        .header-btn.recording {
+            background: #fef2f2;
+            color: #dc2626;
+        }
+
+        /* Date separators in chat */
+        .date-separator {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin: 0.75rem 0;
+            color: var(--text-muted);
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .date-separator::before,
+        .date-separator::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
         }
     </style>
 </head>
@@ -906,7 +1027,7 @@ if ($with) {
                         <div class="conversation-avatar online">
                             <?php if (!empty($c['profile_image'])): ?>
                                 <?php $convProfile = '../uploads/profiles/' . htmlspecialchars($c['profile_image']); ?>
-                                <img src="<?php echo $convProfile; ?>" alt="<?php echo htmlspecialchars($c['full_name']); ?>" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.onerror=null;this.src='../uploads/<?php echo htmlspecialchars($c['profile_image']); ?>';" />
+                                <img src="<?php echo $convProfile; ?>" alt="<?php echo htmlspecialchars($c['full_name']); ?>" class="conv-avatar-img" onerror="this.onerror=null;this.src='../uploads/<?php echo htmlspecialchars($c['profile_image']); ?>';" />
                             <?php else: ?>
                                 <?php echo strtoupper(substr($c['full_name'], 0, 1)); ?>
                             <?php endif; ?>
@@ -949,10 +1070,10 @@ if ($with) {
             <div class="chat-header">
                 <div class="chat-header-info">
                     <a href="<?php echo htmlspecialchars($profileHref ?? '../provider/profile.php?id=' . (int)$with); ?>" class="chat-header-avatar-link" title="View provider profile">
-                        <div class="chat-header-avatar online" style="overflow:hidden;">
+                        <div class="chat-header-avatar online">
                             <?php if (!empty($otherUser['profile_image'])): ?>
                                 <?php $profilePath = '../uploads/profiles/' . htmlspecialchars($otherUser['profile_image']); ?>
-                                <img src="<?php echo $profilePath; ?>" alt="<?php echo htmlspecialchars($otherUser['full_name']); ?>" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.onerror=null;this.src='../uploads/<?php echo htmlspecialchars($otherUser['profile_image']); ?>';" />
+                                <img src="<?php echo $profilePath; ?>" alt="<?php echo htmlspecialchars($otherUser['full_name']); ?>" class="conv-avatar-img" onerror="this.onerror=null;this.src='../uploads/<?php echo htmlspecialchars($otherUser['profile_image']); ?>';" />
                             <?php else: ?>
                                 <?php echo strtoupper(substr($otherUser['full_name'], 0, 1)); ?>
                             <?php endif; ?>
@@ -979,7 +1100,7 @@ if ($with) {
                 <div class="chat-confirm-card">
                     <h3 id="chatConfirmTitle">Confirm</h3>
                     <p id="chatConfirmText">Are you sure?</p>
-                    <div id="chatConfirmInputWrapper" style="display:none;">
+                    <div id="chatConfirmInputWrapper" style="display:none;" class="mt-2">
                         <textarea id="chatConfirmReason" placeholder="Report reason"></textarea>
                     </div>
                     <div class="chat-confirm-actions">
@@ -1018,8 +1139,8 @@ if ($with) {
             <!-- Messages Area -->
             <div class="messages-area" id="messagesArea">
                 <?php if (empty($messages)): ?>
-                    <div style="margin: auto; text-align: center; color: #999;">
-                        <i class="fas fa-comment-dots" style="font-size: 48px; margin-bottom: 12px; opacity: 0.3;"></i>
+                    <div class="msg-empty">
+                        <i class="fas fa-comment-dots"></i>
                         <p>No messages yet. Say hello!</p>
                     </div>
                 <?php else: ?>
@@ -1040,11 +1161,11 @@ if ($with) {
                                     <?php $ext = strtolower(pathinfo($attachmentPath, PATHINFO_EXTENSION)); ?>
                                     <?php if (in_array($ext, ['jpg','jpeg','png','gif'], true)): ?>
                                         <div class="attachment-preview">
-                                            <img src="../<?php echo htmlspecialchars($attachmentPath); ?>" alt="Attachment preview" style="max-width: 180px; max-height: 180px; border-radius: 8px; margin-top: 6px;" />
+                                            <img src="../<?php echo htmlspecialchars($attachmentPath); ?>" alt="Attachment preview" class="attach-img" />
                                         </div>
                                     <?php elseif (in_array($ext, ['webm','ogg','mp3','wav'], true)): ?>
-                                        <div class="attachment-preview" style="margin-top: 6px;">
-                                            <audio controls style="width: 100%; max-width: 250px;">
+                                        <div class="attachment-preview">
+                                            <audio controls class="attach-audio">
                                                 <source src="../<?php echo htmlspecialchars($attachmentPath); ?>" type="audio/<?php echo htmlspecialchars($ext === 'webm' ? 'webm' : ($ext === 'ogg' ? 'ogg' : ($ext === 'mp3' ? 'mpeg' : 'wav'))); ?>">
                                                 Your browser does not support the audio element.
                                             </audio>
@@ -1065,7 +1186,7 @@ if ($with) {
             </div>
 
             <!-- Message Input Area -->
-            <div class="typing-indicator" id="typingIndicator" style="display:none; padding: 8px 20px; color: #0a58ca; font-size: 14px;">
+            <div class="typing-indicator" id="typingIndicator" style="display:none;">
                 <i class="fas fa-ellipsis-h fa-fw"></i> Typing...
             </div>
             <div class="message-input-area">
@@ -1074,21 +1195,21 @@ if ($with) {
                     <input type="hidden" name="booking_id" value="<?php echo $booking_id; ?>">
                     <input type="hidden" name="ajax" value="1">
 
-                    <div class="input-row" style="display:flex; align-items:center; gap:8px; width:100%;">
+                    <div class="input-row">
                         <button type="button" id="attachButton" class="header-btn" title="Attach file"><i class="fas fa-paperclip"></i></button>
                         <input type="file" name="attachment" id="attachmentInput" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.webm" style="display:none;" title="Attach file">
-                        <input type="text" name="message" placeholder="Aa" autocomplete="off" id="messageTextField" style="flex:1;">
+                        <input type="text" name="message" placeholder="Type a message…" autocomplete="off" id="messageTextField">
                         <button type="button" id="recordButton" class="header-btn" title="Record voice message"><i class="fas fa-microphone"></i></button>
                         <button type="submit" class="send-btn" title="Send"><i class="fas fa-paper-plane"></i></button>
                     </div>
-                    <div id="recordStatus" style="font-size: 12px; color: #0a58ca; margin-top: 4px;">Hold to record</div>
+                    <div id="recordStatus" class="record-status">Hold mic to record</div>
                 </form>
             </div>
         <?php else: ?>
             <div class="chat-empty">
                 <div>
                     <i class="fas fa-comments"></i>
-                    <p style="font-size: 18px; margin-top: 12px;">Select a conversation to start chatting</p>
+                    <p>Select a conversation to start chatting</p>
                     <small>Choose a provider from the list or create a new booking</small>
                 </div>
             </div>
@@ -1122,7 +1243,7 @@ const messageTextField = document.getElementById('messageTextField');
 if (messageTextField) {
     messageTextField.addEventListener('input', function() {
         if (typingIndicatorEl) {
-            typingIndicatorEl.style.display = 'block';
+            typingIndicatorEl.style.display = 'flex';
         }
         clearTimeout(typingTimer);
         typingTimer = setTimeout(function() {
@@ -1172,8 +1293,8 @@ function setRecordingState(state) {
         recordStatus.textContent = state ? 'Recording 0:00 — tap send to finish' : 'Hold to record';
     }
     if (recordButton) {
-        recordButton.style.background = state ? '#e53e3e' : 'transparent';
-        recordButton.style.color = state ? 'white' : '#1e3a8a';
+        recordButton.classList.toggle('recording', state);
+        // color handled by CSS
         recordButton.innerHTML = state ? '<i class="fas fa-stop"></i>' : '<i class="fas fa-microphone"></i>';
     }
     if (sendButton) {
@@ -1211,7 +1332,7 @@ function sendVoiceMessage(blob, durationSec) {
             const group = document.createElement('div');
             group.className = 'message-group';
 
-            const audioHtml = `<div class="attachment-preview" style="margin-top:6px;"><audio controls style="width:100%; max-width:250px;"><source src="../${data.message.file_path || data.message.attachment_path}" type="audio/webm">Your browser does not support audio playback.</audio></div>`;
+            const audioHtml = `<div class="attachment-preview"><audio controls class="attach-audio"><source src="../${data.message.file_path || data.message.attachment_path}" type="audio/webm">Your browser does not support audio playback.</audio></div>`;
             const voiceBadgeHtml = `<div class="voice-badge">Voice note</div>`;
             const attachmentLink = `<div class="attachment-link"><a href="../${data.message.file_path || data.message.attachment_path}" target="_blank" rel="noopener noreferrer">📎 View attachment</a></div>`;
 
@@ -1411,10 +1532,10 @@ if (messageForm) {
                 if (attachmentPath) {
                     const ext = attachmentPath.split('.').pop().toLowerCase();
                     if (['jpg','jpeg','png','gif'].includes(ext)) {
-                        attachmentHtml += `<div class="attachment-preview"><img src="../${attachmentPath}" alt="Attachment preview" style="max-width:180px;max-height:180px;border-radius:8px;margin-top:6px;" /></div>`;
+                        attachmentHtml += `<div class="attachment-preview"><img src="../${attachmentPath}" alt="Attachment preview" class="attach-img" /></div>`;
                     } else if (['webm','ogg','mp3','wav'].includes(ext)) {
                         const audioType = ext === 'mp3' ? 'mpeg' : ext;
-                        attachmentHtml += `<div class="attachment-preview" style="margin-top:6px;"><audio controls style="width:100%; max-width:250px;"><source src="../${attachmentPath}" type="audio/${audioType}">Your browser does not support audio playback.</audio></div>`;
+                        attachmentHtml += `<div class="attachment-preview"><audio controls class="attach-audio"><source src="../${attachmentPath}" type="audio/${audioType}">Your browser does not support audio playback.</audio></div>`;
                     }
                     if (messageType === 'audio') {
                         voiceBadgeHtml = '<div class="voice-badge">Voice note</div>';
@@ -1442,6 +1563,44 @@ if (messageForm) {
     });
 }
 
+// Helper functions for service offer/send interactions
+function bookService(btn, serviceId, serviceName) {
+    const providerId = <?php echo $with; ?>;
+    window.location.href = `booking.php?provider_id=${providerId}&service_id=${serviceId}`;
+}
+
+function negotiateOfferPrice(btn, serviceId) {
+    const newPrice = prompt('Enter your negotiated price (RWF):');
+    if (!newPrice) return;
+    
+    fetch('../api/service_offers.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: `action=create_offer&service_id=${serviceId}&offered_price=${encodeURIComponent(newPrice)}`
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('Offer sent! The provider will review it.');
+            setTimeout(() => window.location.reload(), 500);
+        } else {
+            alert('Error: ' + (data.message || 'Failed to send offer'));
+        }
+    })
+    .catch(err => {
+        console.error('Offer error:', err);
+        alert('Error sending offer');
+    });
+}
+
+function acceptOfferDirect(btn, serviceId) {
+    const providerId = <?php echo $with; ?>;
+    window.location.href = `booking.php?provider_id=${providerId}&service_id=${serviceId}`;
+}
+
 // Polling for new messages every 3 seconds
 const pollUser = <?php echo $with; ?>;
 if (pollUser) {
@@ -1465,15 +1624,24 @@ if (pollUser) {
                     let voiceBadgeHtml = '';
                     const attachmentPath = m.file_path || m.attachment_path;
                     const messageType = m.message_type || m.attachment_type;
+                    const isSent = m.sender_id == <?php echo $me; ?>;
+                    
+                    // Handle service offer and service messages
+                    if (messageType === 'service_offer' || messageType === 'service') {
+                        try {
+                            const serviceData = JSON.parse(m.message);
+                            if (messageType === 'service_offer') {
+                                const negotiableTag = serviceData.negotiable ? '<span style="background: rgba(255,255,255,0.2); padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.7rem; display: inline-block; margin-top: 0.5rem;">NEGOTIABLE</span>' : '';\n                                const minPrice = serviceData.min_price ? parseFloat(serviceData.min_price).toFixed(0) : parseFloat(serviceData.price).toFixed(0);\n                                const maxPrice = serviceData.max_price ? parseFloat(serviceData.max_price).toFixed(0) : parseFloat(serviceData.price).toFixed(0);\n                                const priceText = minPrice === maxPrice ? `RWF ${minPrice}` : `RWF ${minPrice} - ${maxPrice}`;\n                                const offerBtn = isSent ? '' : `<div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;"><button onclick="negotiateOfferPrice(this, '${serviceData.service_id}');" style="flex: 1; padding: 0.5rem; background: var(--accent-light); border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">Make Offer</button><button onclick="acceptOfferDirect(this, '${serviceData.service_id}');" style="flex: 1; padding: 0.5rem; background: var(--accent); border: none; color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">Accept</button></div>`;\n                                group.innerHTML = `<div class="message ${isSent ? 'sent' : 'received'}"><div class="message-bubble" style="padding: 0.875rem;"><div style="font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem;"><i class="fas fa-gift"></i> ${serviceData.service_name}</div>${serviceData.description ? `<div style="font-size: 0.85rem; margin-bottom: 0.5rem; opacity: 0.95;">${serviceData.description}</div>` : ''}<div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 0.5rem; color: ${isSent ? 'rgba(255,255,255,0.95)' : 'var(--text-primary)'};">Base Price: ${priceText}</div>${negotiableTag}${offerBtn}</div></div><div class="message-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>`;\n                            } else if (messageType === 'service') {\n                                const bookBtn = isSent ? '' : `<button onclick="bookService(this, '${serviceData.service_id}');" style="width: 100%; padding: 0.65rem; background: var(--accent); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">Book Service</button>`;\n                                group.innerHTML = `<div class="message ${isSent ? 'sent' : 'received'}"><div class="message-bubble" style="padding: 0.875rem;"><div style="font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem;"><i class="fas fa-briefcase"></i> ${serviceData.service_name}</div>${serviceData.description ? `<div style="font-size: 0.85rem; margin-bottom: 0.5rem; opacity: 0.95;">${serviceData.description}</div>` : ''}<div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 0.75rem; color: ${isSent ? 'rgba(255,255,255,0.95)' : 'var(--text-primary)'};">Starting: RWF ${parseFloat(serviceData.price).toFixed(0)}</div>${bookBtn}</div></div><div class="message-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>`;\n                            }\n                            messagesArea.appendChild(group);\n                        } catch (e) {\n                            console.error('Service message parse error:', e);\n                        }\n                        return;\n                    }
+                    
                     if (attachmentPath) {
                         const isImage = /\.(jpg|jpeg|png|gif)$/i.test(attachmentPath);
                         const isAudio = /\.(webm|ogg|mp3|wav)$/i.test(attachmentPath);
                         if (isImage) {
-                            attachmentHtml += `<div class="attachment-preview"><img src="../${attachmentPath}" alt="Attachment preview" style="max-width:180px;max-height:180px;border-radius:8px;margin-top:6px;" /></div>`;
+                            attachmentHtml += `<div class="attachment-preview"><img src="../${attachmentPath}" alt="Attachment preview" class="attach-img" /></div>`;
                         } else if (isAudio) {
                             const mimeType = attachmentPath.match(/\.(webm|ogg|mp3|wav)$/i)[1].toLowerCase();
                             const audioType = mimeType === 'mp3' ? 'mpeg' : mimeType;
-                            attachmentHtml += `<div class="attachment-preview" style="margin-top:6px;"><audio controls style="width:100%; max-width:250px;"><source src="../${attachmentPath}" type="audio/${audioType}">Your browser does not support audio playback.</audio></div>`;
+                            attachmentHtml += `<div class="attachment-preview"><audio controls class="attach-audio"><source src="../${attachmentPath}" type="audio/${audioType}">Your browser does not support audio playback.</audio></div>`;
                         }
                         if (messageType === 'audio') {
                             voiceBadgeHtml = '<div class="voice-badge">Voice note</div>';

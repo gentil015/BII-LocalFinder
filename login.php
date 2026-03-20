@@ -197,161 +197,437 @@ if (isset($_REQUEST['next'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - <?php echo htmlspecialchars($platform_name); ?></title>
+    <title>Sign In - <?php echo htmlspecialchars($platform_name); ?></title>
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-..." crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #0d6efd;
-            --secondary: #6c757d;
-            --success: #198754;
-            --danger: #dc3545;
-            --warning: #ffc107;
-            --light: #f8f9fa;
-            --dark: #212529;
+            --primary: #2563eb;
+            --primary-dark: #1e40af;
+            --primary-light: #dbeafe;
+            --secondary: #64748b;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #0f172a;
+            --border: #e2e8f0;
+            --border-light: #f1f5f9;
+            --surface: #ffffff;
+            --surface-2: #f8fafc;
+            --text-muted: #94a3b8;
+            --radius-sm: 8px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+            --shadow-sm: 0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
+            --shadow-md: 0 4px 16px rgba(15,23,42,0.08), 0 2px 6px rgba(15,23,42,0.05);
+            --shadow-lg: 0 20px 60px rgba(15,23,42,0.12), 0 8px 20px rgba(15,23,42,0.07);
+            --shadow-primary: 0 8px 24px rgba(37,99,235,0.28);
         }
-        
+
+        *, *::before, *::after { box-sizing: border-box; }
+
         body {
-            background-color: #f8f9fa;
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--dark);
+            background: var(--surface-2);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            -webkit-font-smoothing: antialiased;
         }
-        
+
+        h1,h2,h3,h4,h5,h6,.navbar-brand,.login-title {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        /* ── NAVBAR ── */
         .navbar {
-            box-shadow: 0 2px 4px rgba(0,0,0,.1);
+            background: rgba(255,255,255,0.95) !important;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(226,232,240,0.8);
+            padding: 0.85rem 0;
         }
-        
-        .login-container {
+
+        .navbar-brand {
+            font-size: 1.35rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.02em;
+            text-decoration: none;
+        }
+
+        .navbar .nav-link {
+            font-weight: 500;
+            font-size: 0.93rem;
+            color: var(--secondary) !important;
+            padding: 0.5rem 0.9rem !important;
+            border-radius: var(--radius-sm);
+            transition: all 0.2s ease;
+        }
+
+        .navbar .nav-link:hover, .navbar .nav-link.active {
+            color: var(--primary) !important;
+            background: var(--primary-light);
+        }
+
+        .navbar .btn-primary {
+            font-size: 0.9rem;
+            font-weight: 700;
+            padding: 0.5rem 1.3rem;
+            border-radius: var(--radius-sm);
+            box-shadow: var(--shadow-primary);
+            border: none;
+            transition: all 0.25s ease;
+        }
+
+        .navbar .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 28px rgba(37,99,235,0.30);
+        }
+
+        .navbar-toggler {
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 0.4rem 0.65rem;
+        }
+
+        /* ── LOGIN LAYOUT ── */
+        .login-wrapper {
             flex: 1;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 2rem 0;
+            padding: 3rem 1rem;
         }
-        
-        .login-card {
-            border: none;
-            border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0,0,0,.08);
-            overflow: hidden;
+
+        .login-panel {
             width: 100%;
-            max-width: 400px;
+            max-width: 460px;
+            animation: slideUp 0.55s cubic-bezier(0.16,1,0.3,1) both;
         }
-        
-        .login-header {
-            background: linear-gradient(135deg, var(--primary), #0a58ca);
-            color: white;
-            padding: 2rem;
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(24px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── BRAND MARK (above card) ── */
+        .login-brand {
             text-align: center;
+            margin-bottom: 2rem;
         }
-        
-        .login-body {
-            padding: 2rem;
-        }
-        
-        .form-control {
-            padding: 0.75rem 1rem;
-            border-radius: 8px;
-            border: 1px solid #dee2e6;
-            transition: all 0.3s;
-        }
-        
-        .form-control:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
-        }
-        
-        .input-group-text {
-            background-color: #f8f9fa;
-            border-radius: 8px 0 0 8px;
-        }
-        
-        .btn-login {
-            padding: 0.75rem;
-            border-radius: 8px;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        
-        .footer {
-            margin-top: auto;
-        }
-        
-        .alert {
-            border-radius: 8px;
-            border: none;
-        }
-        
-        .form-label {
-            font-weight: 500;
-            margin-bottom: 0.5rem;
-        }
-        
-        .brand-icon {
-            font-size: 2rem;
+
+        .login-brand-icon {
+            width: 56px;
+            height: 56px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: var(--radius-md);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+            box-shadow: var(--shadow-primary);
             margin-bottom: 1rem;
         }
-        
-        .login-info {
-            background-color: #e7f3ff;
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-            border-left: 4px solid var(--primary);
+
+        .login-title {
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            color: var(--dark);
+            margin-bottom: 0.35rem;
         }
-        
-        .login-info p {
-            margin-bottom: 0.5rem;
+
+        .login-subtitle {
+            font-size: 0.92rem;
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+
+        /* ── LOGIN CARD ── */
+        .login-card {
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
+        }
+
+        .login-body {
+            padding: 2.25rem 2.25rem 2rem;
+        }
+
+        /* ── FORM ELEMENTS ── */
+        .form-label {
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--secondary);
+            margin-bottom: 0.45rem;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
             font-size: 0.9rem;
+            z-index: 5;
+            pointer-events: none;
         }
-        
-        .maintenance-warning {
-            background: linear-gradient(135deg, #ffc107, #e0a800);
-            color: #856404;
+
+        .form-control {
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 0.82rem 1rem 0.82rem 2.75rem;
+            font-size: 0.95rem;
+            font-weight: 500;
+            background: var(--surface-2);
+            color: var(--dark);
+            transition: all 0.22s ease;
+            width: 100%;
+        }
+
+        .form-control:hover {
+            border-color: #cbd5e1;
+            background: var(--surface);
+        }
+
+        .form-control:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+            background: var(--surface);
+            outline: none;
+        }
+
+        .form-control.is-invalid {
+            border-color: var(--danger);
+        }
+
+        .form-control.is-invalid:focus {
+            box-shadow: 0 0 0 3px rgba(239,68,68,0.12);
+        }
+
+        /* password toggle */
+        .password-toggle {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 0.88rem;
+            cursor: pointer;
+            z-index: 5;
+            transition: color 0.2s ease;
+            background: none;
             border: none;
+            padding: 0;
+        }
+
+        .password-toggle:hover { color: var(--primary); }
+
+        /* ── SUBMIT BUTTON ── */
+        .btn-login {
+            width: 100%;
+            padding: 0.9rem;
+            border-radius: var(--radius-md);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-weight: 700;
+            font-size: 0.97rem;
+            letter-spacing: 0.01em;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border: none;
+            color: white;
+            transition: all 0.25s ease;
+            box-shadow: var(--shadow-primary);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-login::after {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%;
+            width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 30px rgba(37,99,235,0.35);
+            color: white;
+        }
+
+        .btn-login:hover::after { left: 100%; }
+
+        .btn-login:active { transform: translateY(0); }
+
+        .btn-login:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* ── DIVIDER ── */
+        .form-divider {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin: 1.5rem 0;
+            color: var(--text-muted);
+            font-size: 0.78rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+        }
+
+        .form-divider::before,
+        .form-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        /* ── LINKS ── */
+        .login-link {
+            color: var(--primary);
+            font-weight: 700;
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .login-link:hover { color: var(--primary-dark); text-decoration: underline; }
+
+        .login-footer-text {
+            font-size: 0.88rem;
+            color: var(--secondary);
+            text-align: center;
+            margin-bottom: 0.6rem;
+        }
+
+        .login-footer-text:last-child { margin-bottom: 0; }
+
+        /* ── ALERTS ── */
+        .alert {
+            border-radius: var(--radius-md);
+            border: none;
+            padding: 0.9rem 1.1rem;
+            font-size: 0.9rem;
+            line-height: 1.55;
+            margin-bottom: 1.25rem;
+        }
+
+        .alert p { margin-bottom: 0.3rem; }
+        .alert p:last-child { margin-bottom: 0; }
+
+        .alert-danger {
+            background: rgba(239,68,68,0.08);
+            border: 1.5px solid rgba(239,68,68,0.22);
+            color: #b91c1c;
+        }
+
+        .alert-info {
+            background: rgba(37,99,235,0.07);
+            border: 1.5px solid rgba(37,99,235,0.2);
+            color: var(--primary-dark);
+        }
+
+        .maintenance-warning {
+            background: rgba(245,158,11,0.1);
+            border: 1.5px solid rgba(245,158,11,0.28);
+            color: #92400e;
+        }
+
+        /* ── TRUST BADGES ── */
+        .trust-badges {
+            display: flex;
+            justify-content: center;
+            gap: 1.25rem;
+            margin-top: 1.75rem;
+            flex-wrap: wrap;
+        }
+
+        .trust-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .trust-badge i { color: var(--success); font-size: 0.82rem; }
+
+        /* ── FOOTER ── */
+        .footer {
+            background: var(--dark) !important;
+            padding: 1.75rem 0;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            margin-top: 0;
+        }
+
+        .footer h5 {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 0.25rem;
+        }
+
+        .footer .text-muted { color: #64748b !important; font-size: 0.85rem; }
+
+        /* ── RESPONSIVE ── */
+        @media (max-width: 480px) {
+            .login-body { padding: 1.75rem 1.5rem; }
+            .login-title { font-size: 1.4rem; }
         }
     </style>
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-white">
+    <nav class="navbar navbar-expand-lg navbar-light sticky-top">
         <div class="container">
-            <a class="navbar-brand d-flex align-items-center fw-bold text-primary" href="index.php">
-                <i class="fas fa-map-marked-alt me-2"></i>
+            <a class="navbar-brand d-flex align-items-center gap-2" href="index.php">
+                <span style="width:32px;height:32px;background:linear-gradient(135deg,var(--primary),var(--primary-dark));border-radius:9px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-map-marked-alt text-white" style="font-size:0.85rem;"></i>
+                </span>
                 <?php echo htmlspecialchars($platform_name); ?>
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="index.php">Home</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="services.php">Services</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="providers.php">Find Providers</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="about.php">About</a>
-                    </li>
+                <ul class="navbar-nav ms-auto align-items-center gap-1">
+                    <li class="nav-item"><a class="nav-link" href="index.php">Home</a></li>
+                    <li class="nav-item"><a class="nav-link" href="services.php">Services</a></li>
+                    <li class="nav-item"><a class="nav-link" href="providers.php">Find Providers</a></li>
+                    <li class="nav-item"><a class="nav-link" href="about.php">About</a></li>
                     <?php if (isLoggedIn()): ?>
                         <li class="nav-item">
                             <a class="nav-link" href="<?php echo isProvider() ? 'provider/dashboard.php' : 'client/dashboard.php'; ?>">Dashboard</a>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="logout.php">Logout</a>
-                        </li>
+                        <li class="nav-item"><a class="nav-link" href="logout.php">Logout</a></li>
                     <?php else: ?>
-                        <li class="nav-item">
-                            <a class="nav-link active" href="login.php">Login</a>
-                        </li>
-                        <li class="nav-item ms-2">
-                            <a class="btn btn-primary" href="register.php">Register</a>
+                        <li class="nav-item"><a class="nav-link active" href="login.php">Sign In</a></li>
+                        <li class="nav-item ms-1">
+                            <a class="btn btn-primary" href="register.php">Get Started &rarr;</a>
                         </li>
                     <?php endif; ?>
                 </ul>
@@ -360,110 +636,139 @@ if (isset($_REQUEST['next'])) {
     </nav>
 
     <!-- Login Form -->
-    <div class="login-container">
-        <div class="login-card">
-            <div class="login-header">
-                <div class="brand-icon">
+    <div class="login-wrapper">
+        <div class="login-panel">
+
+            <!-- Brand mark -->
+            <div class="login-brand">
+                <div class="login-brand-icon">
                     <i class="fas fa-map-marked-alt"></i>
                 </div>
-                <h4 class="mb-0">Login to Your Account</h4>
+                <h1 class="login-title">Welcome back</h1>
+                <p class="login-subtitle">Sign in to your <?php echo htmlspecialchars($platform_name); ?> account</p>
             </div>
-            
-            <div class="login-body">
-                <?php if (isset($maintenance_warning) && $maintenance_warning): ?>
-                    <div class="alert maintenance-warning">
-                        <i class="fas fa-tools me-2"></i>
-                        <strong>Maintenance Mode</strong>
-                        <p class="mb-0 mt-2">The platform is currently under maintenance. Some features may be unavailable.</p>
-                    </div>
-                <?php endif; ?>
 
-                <?php if (!empty($errors)): ?>
-                    <div class="alert alert-danger">
-                        <?php foreach ($errors as $error): ?>
-                            <p class="mb-1"><i class="fas fa-exclamation-circle me-2"></i> <?php echo $error; ?></p>
-                        <?php endforeach; ?>
-                    </div>
-                <?php endif; ?>
+            <!-- Card -->
+            <div class="login-card">
+                <div class="login-body">
 
-                <?php if (!$client_registration_enabled && !$provider_registration_enabled): ?>
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle me-2"></i>
-                        <strong>Registration Notice</strong>
-                        <p class="mb-0 mt-2">New account registration is currently disabled. Existing users can still login.</p>
-                    </div>
-                <?php endif; ?>
-
-                <?php if ($email_verification_enabled && $show_verify_notice): ?>
-                    <div class="alert alert-info">
-                        <i class="fas fa-envelope me-2"></i>
-                        <strong>Email Verification Required</strong>
-                        <p class="mb-0 mt-2">Your email is not verified. Please check your email for the verification link.</p>
-                    </div>
-                <?php endif; ?>
-
-                <form method="POST" id="loginForm">
-                    <input type="hidden" name="next" value="<?php echo isset($_GET['next']) ? htmlspecialchars($_GET['next']) : (isset($nextParam) ? htmlspecialchars($nextParam) : ''); ?>">
-                    <div class="mb-3">
-                        <label for="email" class="form-label">Email Address</label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="fas fa-envelope"></i></span>
-                            <input type="email" class="form-control" id="email" name="email" 
-                                   placeholder="your@email.com" 
-                                   value="<?php echo isset($email) ? htmlspecialchars($email) : ''; ?>" 
-                                   required
-                                   <?php echo isMaintenanceMode() && !isAdmin() ? 'disabled' : ''; ?>>
+                    <?php if (isset($maintenance_warning) && $maintenance_warning): ?>
+                        <div class="alert maintenance-warning">
+                            <i class="fas fa-tools me-2"></i>
+                            <strong>Maintenance Mode Active</strong>
+                            <p class="mb-0 mt-1">The platform is under maintenance. Some features may be unavailable.</p>
                         </div>
-                    </div>
+                    <?php endif; ?>
 
-                    <div class="mb-4">
-                        <label for="password" class="form-label">Password</label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="fas fa-lock"></i></span>
-                            <input type="password" class="form-control" id="password" name="password" 
-                                   placeholder="Enter your password" 
-                                   required
-                                   <?php echo isMaintenanceMode() && !isAdmin() ? 'disabled' : ''; ?>>
+                    <?php if (!empty($errors)): ?>
+                        <div class="alert alert-danger">
+                            <?php foreach ($errors as $error): ?>
+                                <p class="mb-1"><i class="fas fa-exclamation-circle me-2"></i><?php echo $error; ?></p>
+                            <?php endforeach; ?>
                         </div>
-                    </div>
+                    <?php endif; ?>
 
-                    <button type="submit" class="btn btn-primary btn-login w-100 mb-3" 
-                        <?php echo isMaintenanceMode() && !isAdmin() ? 'disabled' : ''; ?>>
-                        <i class="fas fa-sign-in-alt me-2"></i> 
-                        <?php echo isMaintenanceMode() && !isAdmin() ? 'Login Disabled' : 'Login'; ?>
-                    </button>
-                </form>
+                    <?php if (!$client_registration_enabled && !$provider_registration_enabled): ?>
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Registration closed</strong>
+                            <p class="mb-0 mt-1">New account registration is currently disabled. Existing users can still sign in.</p>
+                        </div>
+                    <?php endif; ?>
 
-                <div class="text-center">
-                    <p class="mb-2">
-                        Don't have an account? 
+                    <?php if ($email_verification_enabled && $show_verify_notice): ?>
+                        <div class="alert alert-info">
+                            <i class="fas fa-envelope me-2"></i>
+                            <strong>Check your inbox</strong>
+                            <p class="mb-0 mt-1">Your email isn't verified yet. Please click the verification link we sent you.</p>
+                        </div>
+                    <?php endif; ?>
+
+                    <form method="POST" id="loginForm" novalidate>
+                        <input type="hidden" name="next" value="<?php echo isset($_GET['next']) ? htmlspecialchars($_GET['next']) : (isset($nextParam) ? htmlspecialchars($nextParam) : ''); ?>">
+
+                        <!-- Email -->
+                        <div class="mb-4">
+                            <label for="email" class="form-label">Email Address</label>
+                            <div class="input-wrapper">
+                                <i class="fas fa-envelope input-icon"></i>
+                                <input type="email" class="form-control" id="email" name="email"
+                                       placeholder="your@email.com"
+                                       value="<?php echo isset($email) ? htmlspecialchars($email) : ''; ?>"
+                                       required autocomplete="email"
+                                       <?php echo isMaintenanceMode() && !isAdmin() ? 'disabled' : ''; ?>>
+                            </div>
+                        </div>
+
+                        <!-- Password -->
+                        <div class="mb-1">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label for="password" class="form-label mb-0">Password</label>
+                                <a href="forgot-password.php" class="login-link" style="font-size:0.8rem;">Forgot password?</a>
+                            </div>
+                            <div class="input-wrapper">
+                                <i class="fas fa-lock input-icon"></i>
+                                <input type="password" class="form-control" id="password" name="password"
+                                       placeholder="Enter your password"
+                                       required autocomplete="current-password"
+                                       <?php echo isMaintenanceMode() && !isAdmin() ? 'disabled' : ''; ?>>
+                                <button type="button" class="password-toggle" id="togglePassword" tabindex="-1" aria-label="Toggle password visibility">
+                                    <i class="fas fa-eye" id="toggleIcon"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="mb-4" style="margin-top:1.5rem;">
+                            <button type="submit" class="btn-login"
+                                <?php echo isMaintenanceMode() && !isAdmin() ? 'disabled' : ''; ?>>
+                                <?php if (isMaintenanceMode() && !isAdmin()): ?>
+                                    <i class="fas fa-ban me-2"></i>Login Disabled During Maintenance
+                                <?php else: ?>
+                                    <i class="fas fa-arrow-right-to-bracket me-2"></i>Sign In
+                                <?php endif; ?>
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Footer links -->
+                    <div class="form-divider">or</div>
+
+                    <p class="login-footer-text">
+                        Don't have an account?
                         <?php if ($client_registration_enabled || $provider_registration_enabled): ?>
-                            <a href="register.php" class="text-primary text-decoration-none fw-semibold">Register</a>
+                            <a href="register.php" class="login-link">Create one free &rarr;</a>
                         <?php else: ?>
-                            <span class="text-muted">Registration temporarily closed</span>
+                            <span style="color:var(--text-muted);">Registration temporarily closed</span>
                         <?php endif; ?>
                     </p>
-                    <p class="mb-0">
-                        Forgot your password? 
-                        <a href="forgot-password.php" class="text-primary text-decoration-none fw-semibold">Reset it</a>
-                    </p>
+
                 </div>
             </div>
+
+            <!-- Trust badges -->
+            <div class="trust-badges">
+                <span class="trust-badge"><i class="fas fa-shield-alt"></i> Secure Login</span>
+                <span class="trust-badge"><i class="fas fa-lock"></i> Encrypted</span>
+                <span class="trust-badge"><i class="fas fa-check-circle"></i> Verified Platform</span>
+            </div>
+
         </div>
     </div>
 
     <!-- Footer -->
-    <footer class="footer bg-dark text-white py-4 mt-5">
+    <footer class="footer">
         <div class="container">
-            <div class="row">
-                <div class="col-md-6">
-                    <h5 class="mb-3"><?php echo htmlspecialchars($platform_name); ?></h5>
-                    <p class="text-muted mb-0"><?php echo htmlspecialchars($platform_description); ?></p>
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-center gap-2">
+                <div>
+                    <h5 class="mb-1"><?php echo htmlspecialchars($platform_name); ?></h5>
+                    <p class="text-muted mb-0" style="font-size:0.82rem;"><?php echo htmlspecialchars($copyright_text); ?></p>
                 </div>
-                <div class="col-md-6 text-md-end">
-                    <p class="text-muted mb-0"><?php echo htmlspecialchars($copyright_text); ?></p>
+                <div class="text-muted" style="font-size:0.82rem; text-align:right;">
+                    <a href="index.php" style="color:#64748b;text-decoration:none;margin-right:1rem;">Home</a>
+                    <a href="about.php" style="color:#64748b;text-decoration:none;margin-right:1rem;">About</a>
+                    <a href="contact.php" style="color:#64748b;text-decoration:none;">Contact</a>
                     <?php if (isDebugMode()): ?>
-                        <small class="text-muted">Debug Mode: ON | IP: <?php echo htmlspecialchars($ip); ?></small>
+                        <br><small class="text-muted">Debug Mode: ON | IP: <?php echo htmlspecialchars($ip); ?></small>
                     <?php endif; ?>
                 </div>
             </div>
@@ -473,30 +778,60 @@ if (isset($_REQUEST['next'])) {
     <!-- Bootstrap JS -->
     <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-..." crossorigin="anonymous"></script>
     <script>
-        // Auto-dismiss alerts after 5 seconds
-        setTimeout(() => {
-            const alerts = document.querySelectorAll('.alert');
-            alerts.forEach(alert => {
-                const bsAlert = new bootstrap.Alert(alert);
-                bsAlert.close();
+        // Navbar scroll shadow
+        const navbar = document.querySelector('.navbar');
+        window.addEventListener('scroll', () => {
+            navbar.style.boxShadow = window.scrollY > 10
+                ? '0 4px 24px rgba(15,23,42,0.10)'
+                : 'none';
+        }, { passive: true });
+
+        // Password visibility toggle
+        const toggleBtn = document.getElementById('togglePassword');
+        const passwordInput = document.getElementById('password');
+        const toggleIcon = document.getElementById('toggleIcon');
+
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', function () {
+                const isPassword = passwordInput.type === 'password';
+                passwordInput.type = isPassword ? 'text' : 'password';
+                toggleIcon.className = isPassword ? 'fas fa-eye-slash' : 'fas fa-eye';
             });
-        }, 5000);
-        
-        // Focus on email field when page loads (if not in maintenance mode)
-        document.addEventListener('DOMContentLoaded', function() {
+        }
+
+        // Focus email on load
+        document.addEventListener('DOMContentLoaded', function () {
             <?php if (!isMaintenanceMode() || isAdmin()): ?>
-                document.getElementById('email').focus();
+                const emailField = document.getElementById('email');
+                if (emailField && !emailField.value) emailField.focus();
             <?php endif; ?>
         });
 
-        // Login attempt limiting disabled
+        // Auto-dismiss alerts after 6 seconds
+        setTimeout(() => {
+            document.querySelectorAll('.alert').forEach(alert => {
+                alert.style.transition = 'opacity 0.5s ease, transform 0.5s ease, max-height 0.5s ease';
+                alert.style.opacity = '0';
+                alert.style.transform = 'translateY(-6px)';
+                setTimeout(() => alert.remove(), 500);
+            });
+        }, 6000);
 
-        // Prevent form submission if in maintenance mode (for non-admins)
-        document.getElementById('loginForm')?.addEventListener('submit', function(e) {
+        // Prevent maintenance mode submission
+        document.getElementById('loginForm')?.addEventListener('submit', function (e) {
             <?php if (isMaintenanceMode() && !isAdmin()): ?>
                 e.preventDefault();
-                alert('Login is temporarily disabled during maintenance. Please try again later.');
             <?php endif; ?>
+        });
+
+        // Subtle button loading state
+        document.getElementById('loginForm')?.addEventListener('submit', function () {
+            const btn = this.querySelector('.btn-login');
+            if (btn && !btn.disabled) {
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Signing in…';
+                btn.style.opacity = '0.8';
+                btn.style.pointerEvents = 'none';
+            }
         });
     </script>
 </body>

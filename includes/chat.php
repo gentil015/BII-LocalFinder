@@ -192,9 +192,9 @@ function toggleMuteChat(int $userId, int $otherId): bool
     }
 }
 
-function sendMessage(int $sender_id, int $receiver_id, string $message, string $attachment_path = null, string $attachment_type = null): bool
+function sendMessage(int $sender_id, int $receiver_id, string $message, string $attachment_path = null, string $attachment_type = null, string $message_type = 'text'): bool
 {
-    if (trim($message) === '' && empty($attachment_path)) {
+    if (trim($message) === '' && empty($attachment_path) && $message_type === 'text') {
         return false;
     }
 
@@ -207,8 +207,9 @@ function sendMessage(int $sender_id, int $receiver_id, string $message, string $
             return false;
         }
 
-        if ($attachment_path !== null || $attachment_type !== null) {
+        if ($attachment_path !== null || $attachment_type !== null || $message_type !== 'text') {
             ensureMessagesAttachmentColumnExists();
+            ensureMessagesAudioColumnsExist();
         }
 
         $sql = "INSERT INTO messages (sender_id, receiver_id, message";
@@ -224,11 +225,19 @@ function sendMessage(int $sender_id, int $receiver_id, string $message, string $
             $params[] = sanitize($attachment_type);
         }
 
+        if ($message_type !== 'text') {
+            $sql .= ", message_type";
+            $params[] = sanitize($message_type);
+        }
+
         $sql .= ") VALUES (?, ?, ?";
         if ($attachment_path !== null) {
             $sql .= ", ?";
         }
         if ($attachment_type !== null) {
+            $sql .= ", ?";
+        }
+        if ($message_type !== 'text') {
             $sql .= ", ?";
         }
         $sql .= ")";

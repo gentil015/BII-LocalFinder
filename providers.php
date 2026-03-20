@@ -776,246 +776,694 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_favorites'])) 
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-..." crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #0d6efd;
-            --secondary: #6c757d;
-            --success: #198754;
-            --danger: #dc3545;
-            --warning: #ffc107;
-            --light: #f8f9fa;
-            --dark: #212529;
+            --primary: #2563eb;
+            --primary-dark: #1e40af;
+            --primary-light: #dbeafe;
+            --secondary: #64748b;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --light: #f8fafc;
+            --dark: #0f172a;
+            --border: #e2e8f0;
+            --border-light: #f1f5f9;
+            --surface: #ffffff;
+            --surface-2: #f8fafc;
+            --text-muted: #94a3b8;
+            --radius-sm: 8px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+            --radius-xl: 28px;
+            --shadow-sm: 0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
+            --shadow-md: 0 4px 16px rgba(15,23,42,0.08), 0 2px 6px rgba(15,23,42,0.05);
+            --shadow-lg: 0 12px 40px rgba(15,23,42,0.10), 0 4px 12px rgba(15,23,42,0.06);
+            --shadow-primary: 0 8px 24px rgba(37,99,235,0.22);
         }
-        
+
+        *, *::before, *::after { box-sizing: border-box; }
+
+        body {
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--dark);
+            background: #fff;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        h1,h2,h3,h4,h5,h6,.navbar-brand {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+        /* ── NAVBAR ── */
+        .navbar {
+            background: rgba(255,255,255,0.95) !important;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(226,232,240,0.8);
+            padding: 0.85rem 0;
+        }
+
+        .navbar-brand {
+            font-size: 1.35rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.02em;
+            text-decoration: none;
+        }
+
+        .navbar .nav-link {
+            font-weight: 500;
+            font-size: 0.93rem;
+            color: var(--secondary) !important;
+            padding: 0.5rem 0.9rem !important;
+            border-radius: var(--radius-sm);
+            transition: all 0.2s ease;
+        }
+
+        .navbar .nav-link:hover, .navbar .nav-link.active {
+            color: var(--primary) !important;
+            background: var(--primary-light);
+        }
+
+        .navbar .btn-primary {
+            font-size: 0.9rem;
+            font-weight: 700;
+            padding: 0.5rem 1.3rem;
+            border-radius: var(--radius-sm);
+            box-shadow: var(--shadow-primary);
+            border: none;
+            transition: all 0.25s ease;
+        }
+
+        .navbar .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 28px rgba(37,99,235,0.30);
+        }
+
+        .navbar-toggler {
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 0.4rem 0.65rem;
+        }
+
+        /* ── HERO ── */
         .hero {
-            background: linear-gradient(135deg, var(--primary), #0a58ca);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
             position: relative;
             overflow: hidden;
+            isolation: isolate;
         }
-        
+
         .hero::before {
             content: '';
+            position: absolute; inset: 0;
+            background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.06) 1px, transparent 0);
+            background-size: 32px 32px;
+            z-index: -1;
+        }
+
+        .hero::after {
+            content: '';
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><polygon fill="rgba(255,255,255,0.05)" points="0,1000 1000,0 1000,1000"/></svg>');
-            background-size: cover;
+            top: -100px; right: -100px;
+            width: 400px; height: 400px;
+            background: radial-gradient(circle, rgba(255,255,255,0.07) 0%, transparent 65%);
+            z-index: -1;
         }
-        
-        .search-box {
-            margin-top: 2rem;
-            position: relative;
-            z-index: 2;
+
+        .hero h1 {
+            font-size: clamp(1.8rem, 4vw, 2.8rem);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.2;
         }
-        
+
+        .hero .lead {
+            font-size: 1.05rem;
+            opacity: 0.88;
+            line-height: 1.65;
+        }
+
+        .location-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(255,255,255,0.14);
+            border: 1px solid rgba(255,255,255,0.22);
+            backdrop-filter: blur(8px);
+            color: rgba(255,255,255,0.95);
+            padding: 0.5rem 1.1rem;
+            border-radius: 100px;
+            font-size: 0.88rem;
+            font-weight: 600;
+        }
+
+        .real-time-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.78rem;
+            padding: 3px 8px;
+            border-radius: 100px;
+            background: rgba(16,185,129,0.2);
+            border: 1px solid rgba(16,185,129,0.35);
+            color: #6ee7b7;
+        }
+
+        /* ── SEARCH SECTION ── */
+        .search-filter-section {
+            background: var(--surface-2);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .search-filter-section form {
+            background: var(--surface) !important;
+            border: 1.5px solid var(--border) !important;
+            border-radius: var(--radius-lg) !important;
+            box-shadow: var(--shadow-md) !important;
+        }
+
+        .form-label {
+            font-size: 0.78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--secondary);
+            margin-bottom: 0.4rem;
+        }
+
+        .form-control, .form-select {
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 0.75rem 1rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+            background: var(--surface-2);
+            color: var(--dark);
+            transition: all 0.22s ease;
+        }
+
+        .form-control:hover, .form-select:hover { border-color: #cbd5e1; background: #fff; }
+
+        .form-control:focus, .form-select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
+            background: #fff;
+            outline: none;
+        }
+
+        /* search suggestions */
+        .search-suggestions {
+            position: absolute;
+            top: 100%; left: 0; right: 0;
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-top: none;
+            border-radius: 0 0 var(--radius-md) var(--radius-md);
+            box-shadow: var(--shadow-lg);
+            z-index: 1000;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .search-suggestions.active { display: block; }
+
+        .suggestion-item {
+            padding: 0.7rem 1rem;
+            border-bottom: 1px solid var(--border-light);
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.18s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .suggestion-item::before { content: '🔍'; font-size: 0.75rem; }
+        .suggestion-item:hover { background: var(--primary-light); color: var(--primary); }
+        .suggestion-item:last-child { border-bottom: none; }
+
+        /* quick filter chips */
+        .filter-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.4rem 0.9rem;
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-radius: 100px;
+            color: var(--secondary);
+            text-decoration: none;
+            margin: 0.2rem;
+            font-size: 0.82rem;
+            font-weight: 600;
+            transition: all 0.22s ease;
+        }
+
+        .filter-chip:hover, .filter-chip.active {
+            background: var(--primary-light);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* ── RESULTS BAR ── */
+        .results-bar {
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 1rem 1.5rem;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .results-count {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--dark);
+            letter-spacing: -0.01em;
+        }
+
+        .results-count span {
+            color: var(--primary);
+        }
+
+        /* ── PROVIDER CARDS ── */
         .provider-card {
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            border: none;
-            border-radius: 16px;
+            transition: all 0.32s cubic-bezier(0.34,1.56,0.64,1);
+            border: 1.5px solid var(--border) !important;
+            border-radius: var(--radius-lg) !important;
             overflow: hidden;
-            background: white;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            background: var(--surface) !important;
+            box-shadow: var(--shadow-sm) !important;
             position: relative;
         }
-        
+
         .provider-card:hover {
-            transform: translateY(-8px) scale(1.02);
-            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+            transform: translateY(-8px);
+            box-shadow: var(--shadow-lg) !important;
+            border-color: var(--primary) !important;
         }
-        
+
         .provider-card::before {
             content: '';
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, var(--primary), var(--success));
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--primary-dark));
             transform: scaleX(0);
             transition: transform 0.3s ease;
+            z-index: 2;
         }
-        
-        .provider-card:hover::before {
-            transform: scaleX(1);
-        }
-        
-        .distance-badge {
-            position: absolute;
-            top: 12px;
-            left: 12px;
-            background: rgba(0,0,0,0.85);
-            color: white;
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.2);
-        }
-        
-        .status-indicator {
-            position: absolute;
-            top: 12px;
-            right: 12px;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            border: 2px solid white;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        }
-        
-        .status-indicator.available {
-            background: var(--success);
-            animation: pulse-green 2s infinite;
-        }
-        
-        .status-indicator.busy {
-            background: var(--warning);
-            animation: pulse-orange 2s infinite;
-        }
-        
-        .status-indicator.unavailable {
-            background: var(--danger);
-        }
-        
-        @keyframes pulse-green {
-            0% { box-shadow: 0 0 0 0 rgba(25, 135, 84, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(25, 135, 84, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(25, 135, 84, 0); }
-        }
-        
-        @keyframes pulse-orange {
-            0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(255, 193, 7, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
-        }
-        
+
+        .provider-card:hover::before { transform: scaleX(1); }
+
         .provider-image {
             height: 200px;
             overflow: hidden;
             position: relative;
+            background: linear-gradient(135deg, #334155, #475569);
         }
-        
+
         .provider-image img {
-            width: 100%;
-            height: 100%;
+            width: 100%; height: 100%;
             object-fit: cover;
-            transition: transform 0.4s ease;
+            transition: transform 0.45s cubic-bezier(0.25,0.46,0.45,0.94);
         }
-        
-        .provider-card:hover .provider-image img {
-            transform: scale(1.1);
-        }
-        
+
+        .provider-card:hover .provider-image img { transform: scale(1.08); }
+
         .avatar {
-            width: 100%;
-            height: 200px;
-            background: linear-gradient(135deg, var(--primary), #0a58ca);
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            width: 100%; height: 200px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex; align-items: center; justify-content: center;
             color: white;
-            font-size: 4rem;
-            font-weight: bold;
-            transition: transform 0.4s ease;
+            font-size: 3.5rem;
+            font-weight: 800;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            transition: transform 0.45s ease;
         }
-        
-        .provider-card:hover .avatar {
-            transform: scale(1.1);
-        }
-        
-        .quick-book-btn {
-            width: 100%;
-            margin-top: 12px;
-            background: linear-gradient(135deg, var(--success), #157347);
-            color: white;
-            border: none;
-            padding: 12px;
-            border-radius: 10px;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .quick-book-btn::before {
-            content: '';
+
+        .provider-card:hover .avatar { transform: scale(1.06); }
+
+        .distance-badge {
             position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-            transition: left 0.5s;
+            top: 10px; left: 10px;
+            background: rgba(15,23,42,0.82);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 100px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.15);
+            display: flex; align-items: center; gap: 0.3rem;
         }
-        
-        .quick-book-btn:hover::before {
-            left: 100%;
+
+        .status-indicator {
+            position: absolute;
+            top: 10px; right: 10px;
+            width: 11px; height: 11px;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
         }
-        
-        .quick-book-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(25, 135, 84, 0.3);
+
+        .status-indicator.available {
+            background: var(--success);
+            animation: pulse-green 2s infinite;
         }
-        
+
+        .status-indicator.busy {
+            background: var(--warning);
+            animation: pulse-orange 2s infinite;
+        }
+
+        .status-indicator.unavailable { background: var(--danger); }
+
+        @keyframes pulse-green {
+            0%   { box-shadow: 0 0 0 0 rgba(16,185,129,0.7); }
+            70%  { box-shadow: 0 0 0 8px rgba(16,185,129,0); }
+            100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+        }
+
+        @keyframes pulse-orange {
+            0%   { box-shadow: 0 0 0 0 rgba(245,158,11,0.7); }
+            70%  { box-shadow: 0 0 0 8px rgba(245,158,11,0); }
+            100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+        }
+
+        /* hover action buttons */
         .action-buttons {
             position: absolute;
-            bottom: 12px;
-            right: 12px;
-            display: flex;
-            gap: 8px;
+            bottom: 10px; right: 10px;
+            display: flex; gap: 6px;
             opacity: 0;
-            transform: translateY(10px);
-            transition: all 0.3s ease;
+            transform: translateY(8px);
+            transition: all 0.28s ease;
         }
-        
+
         .provider-card:hover .action-buttons {
             opacity: 1;
             transform: translateY(0);
         }
-        
+
         .action-btn {
-            width: 36px;
-            height: 36px;
+            width: 34px; height: 34px;
             border-radius: 50%;
-            border: none;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            border: 1px solid rgba(255,255,255,0.25);
+            display: flex; align-items: center; justify-content: center;
             color: white;
-            font-size: 0.9rem;
-            transition: all 0.3s ease;
+            font-size: 0.8rem;
+            transition: all 0.22s ease;
             backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.2);
+            cursor: pointer;
         }
-        
-        .action-btn:hover {
-            transform: scale(1.1);
+
+        .action-btn:hover { transform: scale(1.12); }
+
+        .btn-emergency { background: rgba(239,68,68,0.88); }
+        .btn-complaint  { background: rgba(245,158,11,0.88); }
+        .btn-favorite   { background: rgba(100,116,139,0.88); }
+
+        /* card body */
+        .provider-card .card-body-inner {
+            padding: 1.2rem;
         }
-        
-        .btn-emergency {
-            background: rgba(220, 53, 69, 0.9);
+
+        .provider-card .card-title {
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            margin-bottom: 0.3rem;
+            color: var(--dark);
+            display: flex; align-items: center; flex-wrap: wrap; gap: 0.35rem;
         }
-        
-        .btn-complaint {
-            background: rgba(255, 193, 7, 0.9);
+
+        .provider-card .text-muted {
+            font-size: 0.87rem;
+            color: var(--secondary) !important;
         }
-        
-        .btn-favorite {
-            background: rgba(108, 117, 125, 0.9);
+
+        .provider-card .rating { display: flex; align-items: center; gap: 0.35rem; }
+
+        .provider-rate {
+            font-size: 1rem;
+            font-weight: 800;
+            color: var(--success);
+            letter-spacing: -0.01em;
         }
-        
+
+        /* verification badges */
+        .verification-badge {
+            font-size: 0.67rem;
+            padding: 0.2rem 0.55rem;
+            border-radius: 100px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            display: inline-flex; align-items: center; gap: 0.2rem;
+        }
+
+        .badge-verified { background: #d1fae5; color: #065f46; }
+        .badge-gold     { background: #fef3c7; color: #92400e; }
+        .badge-premium  { background: #e0e7ff; color: #3730a3; }
+        .badge-featured { background: #fee2e2; color: #991b1b; }
+
+        /* buttons inside card */
+        .btn-view-profile {
+            width: 100%;
+            padding: 0.6rem;
+            border-radius: var(--radius-sm);
+            font-weight: 700;
+            font-size: 0.87rem;
+            transition: all 0.22s ease;
+            border: 1.5px solid var(--primary);
+            color: var(--primary);
+            background: transparent;
+        }
+
+        .btn-view-profile:hover {
+            background: var(--primary);
+            color: white;
+            box-shadow: var(--shadow-primary);
+            transform: translateY(-1px);
+        }
+
+        .quick-book-btn {
+            width: 100%;
+            margin-top: 8px;
+            background: linear-gradient(135deg, var(--success), #059669);
+            color: white;
+            border: none;
+            padding: 0.6rem;
+            border-radius: var(--radius-sm);
+            font-weight: 700;
+            font-size: 0.87rem;
+            transition: all 0.25s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .quick-book-btn::after {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%;
+            width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+            transition: left 0.5s;
+        }
+
+        .quick-book-btn:hover::after { left: 100%; }
+
+        .quick-book-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(16,185,129,0.32);
+        }
+
+        /* ── SECTION HEADERS ── */
+        .section-eyebrow {
+            display: inline-flex;
+            align-items: center; gap: 0.5rem;
+            font-size: 0.73rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--primary);
+            background: var(--primary-light);
+            padding: 0.4rem 1rem;
+            border-radius: 100px;
+            margin-bottom: 0.85rem;
+        }
+
+        .section-header { text-align: center; margin-bottom: 2.5rem; }
+
+        .section-title {
+            font-size: clamp(1.5rem, 3vw, 2.1rem);
+            font-weight: 800;
+            color: var(--dark);
+            margin-bottom: 0.6rem;
+            letter-spacing: -0.03em;
+            line-height: 1.2;
+            display: block;
+        }
+
+        .section-title::after { display: none; }
+
+        .section-subtitle {
+            font-size: 1rem;
+            color: var(--secondary);
+            margin-top: 0;
+            line-height: 1.65;
+        }
+
+        /* ── POPULAR SERVICES CARDS ── */
+        .service-card-popular {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            border: 1.5px solid var(--border);
+            box-shadow: var(--shadow-sm);
+            transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+            position: relative;
+            display: flex; flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .service-card-popular::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--primary-dark));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .service-card-popular:hover {
+            transform: translateY(-6px);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--primary);
+        }
+
+        .service-card-popular:hover::before { opacity: 1; }
+
+        .service-card-header {
+            padding: 1.4rem 1.4rem 0;
+            display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;
+        }
+
+        .service-icon-popular {
+            width: 52px; height: 52px;
+            border-radius: var(--radius-md);
+            background: linear-gradient(135deg, rgba(37,99,235,0.1), rgba(30,64,175,0.06));
+            display: flex; align-items: center; justify-content: center;
+            color: var(--primary);
+            font-size: 1.4rem;
+            flex-shrink: 0;
+            transition: all 0.3s ease;
+        }
+
+        .service-card-popular:hover .service-icon-popular {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            transform: scale(1.08) rotate(-3deg);
+            box-shadow: 0 8px 20px rgba(37,99,235,0.28);
+        }
+
+        .service-badge-popular { display: flex; gap: 0.4rem; }
+
+        .service-badge-popular .badge {
+            font-size: 0.67rem;
+            padding: 0.28rem 0.65rem;
+            font-weight: 700;
+            border-radius: 100px;
+            letter-spacing: 0.04em;
+        }
+
+        .service-card-body {
+            padding: 1.1rem 1.4rem 0.8rem;
+            flex-grow: 1;
+        }
+
+        .service-title-popular {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--dark);
+            margin-bottom: 0.45rem;
+            letter-spacing: -0.01em;
+            line-height: 1.35;
+        }
+
+        .service-description-popular {
+            font-size: 0.85rem;
+            color: var(--secondary);
+            line-height: 1.6;
+            margin-bottom: 0;
+        }
+
+        .service-card-footer {
+            padding: 0.9rem 1.4rem;
+            border-top: 1px solid var(--border-light);
+            display: flex; flex-direction: column; gap: 0.8rem;
+        }
+
+        .price-amount {
+            font-size: 1.25rem;
+            font-weight: 800;
+            color: var(--success);
+            letter-spacing: -0.02em;
+        }
+
+        .price-unit { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; }
+
+        .service-availability { display: flex; gap: 0.8rem; font-size: 0.82rem; flex-wrap: wrap; }
+
+        .provider-count-popular, .service-rating-popular {
+            display: inline-flex; align-items: center; gap: 0.35rem;
+            color: var(--secondary); font-weight: 600;
+        }
+
+        .provider-count-popular i { color: var(--primary); }
+
+        .service-view-link {
+            display: none;
+            padding: 0.65rem 1.25rem;
+            background: linear-gradient(135deg, var(--success), #059669);
+            color: white;
+            border-radius: var(--radius-sm);
+            font-weight: 700;
+            font-size: 0.87rem;
+            text-decoration: none;
+            text-align: center;
+            transition: all 0.25s ease;
+        }
+
+        .service-card-popular:hover .service-view-link { display: block; }
+
+        .service-view-link:hover {
+            color: white;
+            text-decoration: none;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(16,185,129,0.3);
+        }
+
+        /* ── MODALS ── */
         .modal-overlay {
             display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            backdrop-filter: blur(5px);
+            position: fixed; inset: 0;
+            background: rgba(15,23,42,0.55);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
             z-index: 1050;
             align-items: center;
             justify-content: center;
@@ -1027,516 +1475,244 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_favorites'])) 
             display: flex;
             opacity: 1;
         }
-        
+
         .modal-content {
-            background: white;
-            border-radius: 16px;
+            background: var(--surface);
+            border-radius: var(--radius-lg);
             width: 90%;
             max-width: 500px;
             max-height: 90vh;
             overflow-y: auto;
-            transform: scale(0.9);
+            transform: scale(0.92);
             opacity: 0;
-            transition: all 0.3s ease;
+            transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+            box-shadow: var(--shadow-lg);
         }
-        
+
         .modal-overlay.active .modal-content {
             transform: scale(1);
             opacity: 1;
         }
-        
+
         .modal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 1.5rem;
-            border-bottom: 1px solid #e9ecef;
-            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            padding: 1.4rem 1.6rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface-2);
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
         }
-        
+
+        .modal-header h5 {
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            margin: 0;
+        }
+
+        .modal-body { padding: 1.5rem; }
+
         .close-modal {
             background: none;
             border: none;
-            font-size: 1.5rem;
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem;
             cursor: pointer;
             color: var(--secondary);
-            transition: color 0.3s ease;
+            transition: all 0.2s ease;
+            border: 1.5px solid var(--border);
         }
-        
+
         .close-modal:hover {
-            color: var(--dark);
-        }
-        
-        .verification-badge {
-            font-size: 0.7rem;
-            padding: 0.3rem 0.8rem;
-            border-radius: 20px;
-            margin-left: 0.5rem;
-            font-weight: 600;
-            border: 1px solid;
-        }
-        
-        .badge-verified {
-            background: #d1fae5;
-            color: #065f46;
-            border-color: #a7f3d0;
-        }
-        
-        .badge-gold {
-            background: #fef3c7;
-            color: #92400e;
-            border-color: #fde68a;
-        }
-        
-        .badge-premium {
-            background: #e0e7ff;
-            color: #3730a3;
-            border-color: #c7d2fe;
-        }
-        
-        .badge-featured {
-            background: #fecaca;
-            color: #991b1b;
-            border-color: #fca5a5;
-        }
-        
-        .real-time-indicator {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 0.8rem;
-            padding: 4px 10px;
-            border-radius: 12px;
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-        }
-        
-        .filter-tags {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 1rem;
-        }
-        
-        .filter-tag {
-            background: white;
-            border: 1px solid #dee2e6;
-            border-radius: 20px;
-            padding: 6px 12px;
-            font-size: 0.8rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        
-        .filter-tag:hover {
-            background: var(--primary);
+            background: var(--danger);
             color: white;
-            border-color: var(--primary);
+            border-color: var(--danger);
         }
         
-        .filter-tag.active {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-        }
-        
-        .stats-card {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            border-left: 4px solid var(--primary);
-            transition: transform 0.3s ease;
-        }
-        
-        .stats-card:hover {
-            transform: translateY(-5px);
-        }
-        
+        /* ── FAB ── */
         .floating-action {
             position: fixed;
-            bottom: 30px;
-            right: 30px;
+            bottom: 28px; right: 28px;
             z-index: 1000;
         }
-        
+
         .fab-btn {
-            width: 60px;
-            height: 60px;
+            width: 56px; height: 56px;
             border-radius: 50%;
             border: none;
-            background: var(--primary);
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
             color: white;
-            font-size: 1.5rem;
-            box-shadow: 0 8px 25px rgba(13, 110, 253, 0.3);
+            font-size: 1.3rem;
+            box-shadow: var(--shadow-primary);
             transition: all 0.3s ease;
             cursor: pointer;
         }
-        
+
         .fab-btn:hover {
-            transform: scale(1.1);
-            box-shadow: 0 12px 35px rgba(13, 110, 253, 0.4);
+            transform: scale(1.08);
+            box-shadow: 0 12px 32px rgba(37,99,235,0.38);
         }
-        
+
         .fab-menu {
             position: absolute;
-            bottom: 70px;
-            right: 0;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
+            bottom: 68px; right: 0;
+            display: flex; flex-direction: column; gap: 10px;
             opacity: 0;
-            transform: translateY(20px);
-            transition: all 0.3s ease;
+            transform: translateY(16px);
+            transition: all 0.28s cubic-bezier(0.34,1.56,0.64,1);
             pointer-events: none;
         }
-        
+
         .fab-menu.active {
             opacity: 1;
             transform: translateY(0);
             pointer-events: all;
         }
-        
+
         .fab-menu-item {
-            width: 50px;
-            height: 50px;
+            width: 46px; height: 46px;
             border-radius: 50%;
-            border: none;
-            background: white;
+            border: 1.5px solid var(--border);
+            background: var(--surface);
             color: var(--dark);
-            font-size: 1.2rem;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            transition: all 0.3s ease;
+            font-size: 1.1rem;
+            box-shadow: var(--shadow-md);
+            transition: all 0.25s ease;
             cursor: pointer;
         }
-        
+
         .fab-menu-item:hover {
             transform: scale(1.1);
             background: var(--primary);
             color: white;
+            border-color: var(--primary);
         }
-        
+
+        /* ── FOOTER ── */
+        .footer {
+            background: var(--dark) !important;
+            padding: 4.5rem 0 2rem;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .footer h5 {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.82rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: white;
+            margin-bottom: 1.2rem;
+        }
+
+        .footer a.text-muted, .footer .text-muted { color: #64748b !important; }
+        .footer a.text-muted:hover { color: white !important; }
+
+        .footer .footer-bottom {
+            border-top: 1px solid rgba(255,255,255,0.07) !important;
+            color: #475569;
+            font-size: 0.88rem;
+        }
+
+        .social-links { display: flex; gap: 0.6rem; margin-top: 1rem; }
+
+        .social-links a {
+            width: 36px; height: 36px;
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: var(--radius-sm);
+            color: #94a3b8;
+            display: flex; align-items: center; justify-content: center;
+            text-decoration: none;
+            font-size: 0.88rem;
+            transition: all 0.25s ease;
+        }
+
+        .social-links a:hover {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        /* ── SKELETON ── */
         .skeleton-loader {
-            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background: linear-gradient(90deg, var(--border-light) 25%, var(--border) 50%, var(--border-light) 75%);
             background-size: 200% 100%;
-            animation: loading 1.5s infinite;
-            border-radius: 8px;
+            animation: shimmer 1.5s infinite;
+            border-radius: var(--radius-sm);
         }
-        
-        @keyframes loading {
-            0% { background-position: 200% 0; }
+
+        @keyframes shimmer {
+            0%   { background-position: 200% 0; }
             100% { background-position: -200% 0; }
         }
-        
-        .search-suggestions {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background: white;
-            border-radius: 0 0 12px 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-            z-index: 1000;
-            max-height: 200px;
-            overflow-y: auto;
-            display: none;
-        }
-        
-        .search-suggestions.active {
-            display: block;
-        }
-        
-        .suggestion-item {
-            padding: 12px 16px;
-            border-bottom: 1px solid #f1f3f4;
-            cursor: pointer;
-            transition: background 0.2s ease;
-        }
-        
-        .suggestion-item:hover {
-            background: #f8f9fa;
-        }
-        
-        .suggestion-item:last-child {
-            border-bottom: none;
-        }
 
-        /* Popular Services Section Styles */
-        .section-header {
-            text-align: center;
-            margin-bottom: 3rem;
-        }
-
-        .section-title {
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: var(--dark);
-            margin-bottom: 0.5rem;
-            position: relative;
-            display: inline-block;
-        }
-
-        .section-title::after {
-            content: '';
-            position: absolute;
-            bottom: -10px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 80px;
-            height: 4px;
-            background: linear-gradient(90deg, var(--primary), var(--success));
-            border-radius: 2px;
-        }
-
-        .section-subtitle {
-            font-size: 1.1rem;
-            color: var(--secondary);
-            margin-top: 1.5rem;
-        }
-
-        .service-card-popular {
-            background: white;
-            border-radius: 16px;
-            overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            border: 1px solid rgba(0,0,0,0.05);
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-
-        .service-card-popular::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, var(--primary), var(--success));
-            transform: scaleX(0);
-            transition: transform 0.3s ease;
-            z-index: 1;
-        }
-
-        .service-card-popular:hover {
-            transform: translateY(-10px) scale(1.02);
-            box-shadow: 0 20px 50px rgba(0,0,0,0.15);
-        }
-
-        .service-card-popular:hover::before {
-            transform: scaleX(1);
-        }
-
-        .service-card-header {
-            padding: 1.5rem 1.5rem 0 1.5rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 1rem;
-        }
-
-        .service-icon-popular {
-            width: 60px;
-            height: 60px;
-            border-radius: 12px;
-            background: linear-gradient(135deg, var(--primary), #0a58ca);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 1.8rem;
-            flex-shrink: 0;
-            box-shadow: 0 4px 15px rgba(13, 110, 253, 0.2);
-        }
-
-        .service-badge-popular {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .service-badge-popular .badge {
-            font-size: 0.7rem;
-            padding: 0.4rem 0.8rem;
-            font-weight: 600;
-            border-radius: 20px;
-        }
-
-        .service-card-body {
-            padding: 1.5rem 1.5rem 1rem 1.5rem;
-            flex-grow: 1;
-        }
-
-        .service-title-popular {
-            font-size: 1.1rem;
-            font-weight: 700;
-            color: var(--dark);
-            margin-bottom: 0.5rem;
-            line-height: 1.4;
-        }
-
-        .service-description-popular {
-            font-size: 0.85rem;
-            color: var(--secondary);
-            margin-bottom: 0;
-            line-height: 1.5;
-        }
-
-        .service-card-footer {
-            padding: 1rem 1.5rem;
-            border-top: 1px solid rgba(0,0,0,0.05);
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
-
-        .service-price-popular {
-            display: flex;
-            flex-direction: column;
-            gap: 0.3rem;
-        }
-
-        .price-amount {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: var(--primary);
-        }
-
-        .price-unit {
-            font-size: 0.75rem;
-            color: var(--secondary);
-            font-weight: 500;
-        }
-
-        .service-availability {
-            display: flex;
-            gap: 1rem;
-            font-size: 0.85rem;
-            flex-wrap: wrap;
-        }
-
-        .provider-count-popular {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            color: var(--secondary);
-            font-weight: 500;
-        }
-
-        .provider-count-popular i {
-            color: var(--primary);
-        }
-
-        .service-rating-popular {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            color: var(--secondary);
-            font-weight: 500;
-        }
-
-        .service-view-link {
-            display: none;
-            padding: 0.75rem 1.5rem;
-            background: linear-gradient(135deg, var(--success), #157347);
-            color: white;
-            border-radius: 10px;
-            font-weight: 600;
-            font-size: 0.9rem;
-            text-decoration: none;
-            margin-top: auto;
-            transition: all 0.3s ease;
-            text-align: center;
-        }
-
-        .service-card-popular:hover .service-view-link {
-            display: block;
-        }
-
-        .service-view-link:hover {
-            background: linear-gradient(135deg, #157347, #0f5132);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(25, 135, 84, 0.3);
-            color: white;
-            text-decoration: none;
-        }
-
-        /* Responsive adjustments */
+        /* ── RESPONSIVE ── */
         @media (max-width: 768px) {
-            .section-title {
-                font-size: 1.8rem;
-            }
+            .service-view-link { display: block !important; }
+            .service-card-popular { margin-bottom: 0.5rem; }
+        }
 
-            .section-subtitle {
-                font-size: 0.95rem;
-            }
-
-            .service-card-popular {
-                margin-bottom: 1rem;
-            }
-
-            .service-view-link {
-                display: block;
-            }
+        @media (max-width: 576px) {
+            .hero h1 { font-size: 1.6rem; }
         }
     </style>
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm py-3 sticky-top">
+    <nav class="navbar navbar-expand-lg navbar-light sticky-top">
         <div class="container">
-            <a class="navbar-brand d-flex align-items-center fw-bold text-primary" href="index.php">
-                <i class="fas fa-map-marked-alt me-2"></i>
+            <a class="navbar-brand d-flex align-items-center gap-2" href="index.php">
+                <span style="width:32px;height:32px;background:linear-gradient(135deg,var(--primary),var(--primary-dark));border-radius:9px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-map-marked-alt text-white" style="font-size:0.85rem;"></i>
+                </span>
                 <?php echo htmlspecialchars($platform_name); ?>
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="index.php">Home</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="services.php">Services</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="providers.php">Find Providers</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="about.php">About</a>
-                    </li>
+                <ul class="navbar-nav ms-auto align-items-center gap-1">
+                    <li class="nav-item"><a class="nav-link" href="index.php">Home</a></li>
+                    <li class="nav-item"><a class="nav-link" href="services.php">Services</a></li>
+                    <li class="nav-item"><a class="nav-link active" href="providers.php">Find Providers</a></li>
+                    <li class="nav-item"><a class="nav-link" href="about.php">About</a></li>
                     <?php if ($isLoggedIn): ?>
                         <li class="nav-item">
-                            <a class="nav-link" href="<?php echo $isProvider ? 'provider/dashboard.php' : 'client/dashboard.php'; ?>">Dashboard</a>
+                            <a class="nav-link" href="<?php echo $isProvider ? 'provider/dashboard.php' : 'client/dashboard.php'; ?>">
+                                <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                            </a>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="logout.php">Logout</a>
+                        <li class="nav-item"><a class="nav-link" href="logout.php">Logout</a></li>
+                    <?php else: ?>
+                        <li class="nav-item"><a class="nav-link" href="login.php">Sign In</a></li>
+                        <?php if ($client_registration): ?>
+                        <li class="nav-item ms-1">
+                            <a class="btn btn-primary" href="register.php">Get Started &rarr;</a>
                         </li>
-                     <?php else: ?>
-                         <li class="nav-item">
-                             <a class="nav-link" href="login.php">Login</a>
-                         </li>
-                         <?php if ($client_registration): ?>
-                         <li class="nav-item ms-2">
-                             <a class="btn btn-primary" href="register.php">Register</a>
-                         </li>
-                         <?php endif; ?>
-                     <?php endif; ?>
+                        <?php endif; ?>
+                    <?php endif; ?>
                 </ul>
             </div>
         </div>
     </nav>
 
     <!-- Page Header -->
-    <section class="hero bg-primary text-white py-5">
-        <div class="container py-4">
+    <section class="hero text-white py-5">
+        <div class="container py-3">
             <div class="row justify-content-center text-center">
-                <div class="col-lg-10">
-                    <h1 class="display-5 fw-bold mb-3">
+                <div class="col-lg-9">
+                    <div class="d-inline-flex align-items-center gap-2 mb-3" style="background:rgba(255,255,255,0.13);border:1px solid rgba(255,255,255,0.22);border-radius:100px;padding:0.38rem 1rem;backdrop-filter:blur(8px);">
+                        <span style="width:7px;height:7px;background:#10b981;border-radius:50%;display:inline-block;box-shadow:0 0 0 3px rgba(16,185,129,0.28);"></span>
+                        <span style="font-size:0.78rem;font-weight:700;letter-spacing:0.05em;color:rgba(255,255,255,0.92);">LIVE SEARCH</span>
+                    </div>
+                    <h1 class="fw-bold mb-2">
                         <?php if (!empty($searchQuery)): ?>
-                            Search Results for "<?php echo htmlspecialchars($searchQuery); ?>"
+                            Results for &ldquo;<?php echo htmlspecialchars($searchQuery); ?>&rdquo;
                         <?php elseif ($categoryId): ?>
                             <?php
                                 $catName = '';
@@ -1550,11 +1726,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_favorites'])) 
                         <?php endif; ?>
                     </h1>
                     <p class="lead mb-4">Find skilled professionals near you — plumbers, electricians, cleaners, and more</p>
-                    <div class="location-badge d-inline-flex align-items-center">
-                        <i class="fas fa-map-marker-alt me-2"></i>
-                        Your location: <?php echo htmlspecialchars($userCity); ?>
-                        <span class="real-time-indicator ms-2">
-                            <i class="fas fa-circle text-success" style="font-size: 8px;"></i>
+                    <div class="location-badge">
+                        <i class="fas fa-map-marker-alt"></i>
+                        Your location: <strong><?php echo htmlspecialchars($userCity); ?></strong>
+                        <span class="real-time-indicator">
+                            <i class="fas fa-circle" style="font-size:7px;color:#6ee7b7;"></i>
                             Live
                         </span>
                     </div>
@@ -1664,14 +1840,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_favorites'])) 
                 </div>
                 
                 <div class="row mt-3">
-                    <div class="col-12 d-flex justify-content-center gap-2">
-                        <button type="submit" class="btn btn-primary">
+                    <div class="col-12 d-flex justify-content-center gap-2 flex-wrap">
+                        <button type="submit" class="btn btn-primary px-4" style="font-weight:700;border-radius:var(--radius-md);padding:0.75rem 1.5rem;">
                             <i class="fas fa-search me-2"></i>Search Providers
                         </button>
-                        <button type="button" class="btn btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#advancedFilters">
+                        <button type="button" class="btn btn-outline-secondary" style="font-weight:600;border-radius:var(--radius-md);padding:0.75rem 1.25rem;border-width:1.5px;" data-bs-toggle="collapse" data-bs-target="#advancedFilters">
                             <i class="fas fa-sliders-h me-2"></i>Advanced Filters
                         </button>
-                        <button type="button" class="btn btn-outline-secondary" onclick="window.location.href='providers.php'">
+                        <button type="button" class="btn btn-outline-danger" style="font-weight:600;border-radius:var(--radius-md);padding:0.75rem 1.25rem;border-width:1.5px;" onclick="window.location.href='providers.php'">
                             <i class="fas fa-redo me-1"></i> Reset
                         </button>
                     </div>
@@ -1717,13 +1893,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_favorites'])) 
             <?php endif; ?>
 
             <?php if (!empty($providers)): ?>
-                <div class="d-flex justify-content-between align-items-center mb-4 p-4 bg-white rounded-3 shadow-sm">
-                    <div class="fs-5 fw-semibold">
-                        <i class="fas fa-users me-2"></i> <?php echo count($providers); ?> provider<?php echo count($providers) != 1 ? 's' : ''; ?> found
+                <div class="results-bar d-flex justify-content-between align-items-center mb-4">
+                    <div class="results-count">
+                        <i class="fas fa-users me-2" style="color:var(--primary);"></i>
+                        <span><?php echo count($providers); ?></span> provider<?php echo count($providers) != 1 ? 's' : ''; ?> found
                     </div>
-                    <div>
-                        <label class="me-2 fw-semibold">Sort by:</label>
-                        <select class="form-select form-select-sm d-inline-block w-auto" onchange="window.location.href='?<?php echo http_build_query(array_merge($_GET, ['sort' => ''])); ?>&sort=' + this.value">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="form-label mb-0" style="white-space:nowrap;font-size:0.78rem;">Sort by:</label>
+                        <select class="form-select form-select-sm" style="width:auto;min-width:150px;" onchange="window.location.href='?<?php echo http_build_query(array_merge($_GET, ['sort' => ''])); ?>&sort=' + this.value">
                             <option value="nearest" <?php echo $sortBy === 'nearest' ? 'selected' : ''; ?>>Nearest First</option>
                             <option value="rating" <?php echo $sortBy === 'rating' ? 'selected' : ''; ?>>Highest Rated</option>
                             <option value="reviews" <?php echo $sortBy === 'reviews' ? 'selected' : ''; ?>>Most Reviews</option>
@@ -1780,45 +1957,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_favorites'])) 
                                         </button>
                                     </div>
                                 </div>
-                                <div class="p-3">
-                                    <h5 class="card-title mb-2">
+                                <div class="card-body-inner">
+                                    <h5 class="card-title">
                                         <?php echo htmlspecialchars($provider['full_name']); ?>
                                         <?php if ($provider['verification_level'] && $provider['verification_level'] !== 'none'): ?>
                                             <span class="badge-<?php echo $provider['verification_level']; ?> verification-badge">
-                                                <i class="fas fa-shield-alt me-1"></i><?php echo ucfirst($provider['verification_level']); ?>
+                                                <i class="fas fa-shield-alt"></i><?php echo ucfirst($provider['verification_level']); ?>
                                             </span>
                                         <?php endif; ?>
                                         <?php if ($provider['is_featured']): ?>
                                             <span class="badge-featured verification-badge">
-                                                <i class="fas fa-star me-1"></i>Featured
+                                                <i class="fas fa-star"></i>Featured
                                             </span>
                                         <?php endif; ?>
                                     </h5>
-                                    <p class="text-muted mb-2"><?php echo htmlspecialchars($provider['profession']); ?></p>
-                                    <p class="text-muted mb-2">
-                                        <i class="fas fa-map-marker-alt me-1"></i> 
+                                    <p class="text-muted mb-1" style="font-size:0.87rem;font-weight:500;"><?php echo htmlspecialchars($provider['profession']); ?></p>
+                                    <p class="text-muted mb-2" style="font-size:0.82rem;">
+                                        <i class="fas fa-map-marker-alt me-1" style="color:var(--primary);font-size:0.78rem;"></i>
                                         <?php echo htmlspecialchars($provider['location']); ?>
                                     </p>
-                                    <div class="rating mb-3">
+                                    <div class="rating mb-2">
                                         <?php 
                                         $rating = $provider['average_rating'];
                                         for ($i = 1; $i <= 5; $i++): 
                                             if ($i <= $rating): ?>
-                                                <i class="fas fa-star text-warning"></i>
+                                                <i class="fas fa-star text-warning" style="font-size:0.8rem;"></i>
                                             <?php else: ?>
-                                                <i class="far fa-star text-warning"></i>
+                                                <i class="far fa-star text-warning" style="font-size:0.8rem;"></i>
                                             <?php endif;
                                         endfor; ?>
-                                        <span class="text-muted ms-1">(<?php echo $provider['total_reviews']; ?> reviews)</span>
+                                        <span class="text-muted ms-1" style="font-size:0.8rem;">(<?php echo $provider['total_reviews']; ?>)</span>
                                     </div>
                                     
                                     <?php if ($provider['hourly_rate']): ?>
-                                        <p class="fw-semibold text-primary mb-3">
-                                            RWF <?php echo number_format($provider['hourly_rate']); ?>/hour
+                                        <p class="provider-rate mb-3">
+                                            <?php echo number_format($provider['hourly_rate']); ?> <span style="font-size:0.78rem;font-weight:500;color:var(--secondary);">RWF/hr</span>
                                         </p>
                                     <?php endif; ?>
                                     
-                                    <a href="provider-profile.php?id=<?php echo $provider['id']; ?>" class="btn btn-outline-primary w-100">
+                                    <a href="provider-profile.php?id=<?php echo $provider['id']; ?>" class="btn-view-profile d-block text-center text-decoration-none">
                                         <i class="fas fa-eye me-1"></i> View Profile
                                     </a>
                                     
@@ -1828,14 +2005,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_favorites'])) 
                                         </button>
                                     <?php else: ?>
                                         <?php
-                                            // Build return URL that will reopen booking modal after login
                                             $currentRequest = $_SERVER['REQUEST_URI'] ?? '/providers.php';
-                                            // Append open_booking parameter safely (if REQUEST_URI already has ? it'll be fine)
                                             $returnUrl = $currentRequest . (strpos($currentRequest, '?') === false ? '?' : '&') . 'open_booking=' . urlencode($provider['id']);
                                             $loginUrl = 'login.php?next=' . urlencode($returnUrl);
                                         ?>
-                                        <a href="<?php echo $loginUrl; ?>" class="btn btn-primary w-100">
-                                            <i class="fas fa-sign-in-alt me-1"></i> Login to Quick Book
+                                        <a href="<?php echo $loginUrl; ?>" class="quick-book-btn d-block text-center text-decoration-none">
+                                            <i class="fas fa-sign-in-alt me-1"></i> Login to Book
                                         </a>
                                     <?php endif; ?>
                                 </div>
@@ -1846,19 +2021,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_favorites'])) 
                 </div>
             <?php else: ?>
                 <div class="text-center py-5">
-                    <i class="fas fa-search fa-4x text-muted mb-4"></i>
-                    <h2 class="mb-3">No providers found</h2>
-                    <p class="text-muted mb-4">Try adjusting your search criteria</p>
-                    <a href="providers.php" class="btn btn-primary"><i class="fas fa-users me-1"></i> Browse All Providers</a>
+                    <div style="width:90px;height:90px;background:var(--primary-light);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 1.5rem;">
+                        <i class="fas fa-search fa-2x" style="color:var(--primary);"></i>
+                    </div>
+                    <h2 class="fw-bold mb-2" style="letter-spacing:-0.02em;">No providers found</h2>
+                    <p class="text-muted mb-4" style="max-width:380px;margin:0 auto 1.5rem;">Try adjusting your search criteria or browse all available providers.</p>
+                    <?php if (!empty($suggestions)): ?>
+                        <div class="mb-4">
+                            <p class="fw-semibold mb-2" style="font-size:0.9rem;">Did you mean:</p>
+                            <div class="d-flex flex-wrap justify-content-center gap-2">
+                                <?php foreach ($suggestions as $suggestion): ?>
+                                    <a href="providers.php?query=<?php echo urlencode($suggestion); ?>" class="filter-chip">
+                                        <?php echo htmlspecialchars($suggestion); ?>
+                                    </a>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                    <a href="providers.php" class="btn btn-primary px-5" style="font-weight:700;border-radius:var(--radius-md);">
+                        <i class="fas fa-users me-2"></i>Browse All Providers
+                    </a>
                 </div>
             <?php endif; ?>
         </div>
     </section>
 
     <!-- Popular Services Near You -->
-    <section class="py-5 bg-light">
+    <section class="py-5" style="background:var(--surface-2);">
         <div class="container">
             <div class="section-header">
+                <div class="section-eyebrow"><i class="fas fa-fire"></i> Trending Near You</div>
                 <h2 class="section-title">Popular Services Near You</h2>
                 <p class="section-subtitle">Most requested services in your area</p>
             </div>
@@ -1975,9 +2167,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_favorites'])) 
                 <form method="POST">
                     <input type="hidden" name="provider_id" id="modalProviderId">
                     
-                    <div class="alert alert-light mb-4">
-                        <strong id="modalProviderName"></strong>
-                        <p class="text-primary mb-0" id="modalProviderProfession"></p>
+                    <div class="mb-4 p-3" style="background:var(--primary-light);border-radius:var(--radius-md);border:1.5px solid rgba(37,99,235,0.18);">
+                        <p class="fw-bold mb-0" style="font-size:1rem;letter-spacing:-0.01em;" id="modalProviderName"></p>
+                        <p class="mb-0" style="font-size:0.87rem;color:var(--primary);font-weight:600;" id="modalProviderProfession"></p>
                     </div>
                     
                     <div class="mb-4">
@@ -2082,45 +2274,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_favorites'])) 
     </div>
 
     <!-- Footer -->
-    <footer class="footer bg-dark text-white py-5">
+    <footer class="footer">
         <div class="container">
             <div class="row g-4">
                 <div class="col-md-6 col-lg-3">
-                    <h5 class="mb-3"><?php echo htmlspecialchars($platform_name); ?></h5>
-                    <p class="text-muted">Connecting skilled professionals with clients across Rwanda</p>
-                </div>
-                <div class="col-md-6 col-lg-3">
-                    <h5 class="mb-3">Quick Links</h5>
-                    <ul class="list-unstyled">
-                        <li class="mb-2"><a href="about.php" class="text-decoration-none text-muted">About Us</a></li>
-                        <li class="mb-2"><a href="services.php" class="text-decoration-none text-muted">Services</a></li>
-                        <li class="mb-2"><a href="providers.php" class="text-decoration-none text-muted">Find Providers</a></li>
-                        <li class="mb-2"><a href="contact.php" class="text-decoration-none text-muted">Contact</a></li>
-                    </ul>
-                </div>
-                <div class="col-md-6 col-lg-3">
-                    <h5 class="mb-3">For Providers</h5>
-                    <ul class="list-unstyled">
-                        <?php if ($provider_registration_enabled): ?>
-                            <li class="mb-2"><a href="register.php?type=provider" class="text-decoration-none text-muted">Register</a></li>
-                        <?php endif; ?>
-                        <li class="mb-2"><a href="login.php" class="text-decoration-none text-muted">Login</a></li>
-                        <li class="mb-2"><a href="how-it-works.php" class="text-decoration-none text-muted">How It Works</a></li>
-                    </ul>
-                </div>
-                <div class="col-md-6 col-lg-3">
-                    <h5 class="mb-3">Contact Us</h5>
-                    <p class="text-muted mb-2"><i class="fas fa-envelope me-2"></i> <?php echo htmlspecialchars($contact_email); ?></p>
-                    <p class="text-muted mb-3"><i class="fas fa-phone me-2"></i> <?php echo htmlspecialchars($contact_phone); ?></p>
+                    <h5><?php echo htmlspecialchars($platform_name); ?></h5>
+                    <p class="text-muted" style="font-size:0.9rem;line-height:1.65;">Connecting skilled professionals with clients across Rwanda</p>
                     <div class="social-links">
-                        <a href="facebook.com" class="text-white me-3"><i class="fab fa-facebook fa-lg"></i></a>
-                        <a href="x.com" class="text-white me-3"><i class="fab fa-twitter fa-lg"></i></a>
-                        <a href="instagram.com" class="text-white"><i class="fab fa-instagram fa-lg"></i></a>
+                        <a href="facebook.com"><i class="fab fa-facebook-f"></i></a>
+                        <a href="x.com"><i class="fab fa-twitter"></i></a>
+                        <a href="instagram.com"><i class="fab fa-instagram"></i></a>
                     </div>
                 </div>
+                <div class="col-md-6 col-lg-3">
+                    <h5>Quick Links</h5>
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><a href="about.php" class="text-muted text-decoration-none">About Us</a></li>
+                        <li class="mb-2"><a href="services.php" class="text-muted text-decoration-none">Services</a></li>
+                        <li class="mb-2"><a href="providers.php" class="text-muted text-decoration-none">Find Providers</a></li>
+                        <li class="mb-2"><a href="contact.php" class="text-muted text-decoration-none">Contact</a></li>
+                    </ul>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <h5>For Providers</h5>
+                    <ul class="list-unstyled">
+                        <?php if ($provider_registration_enabled): ?>
+                            <li class="mb-2"><a href="register.php?type=provider" class="text-muted text-decoration-none">Register</a></li>
+                        <?php endif; ?>
+                        <li class="mb-2"><a href="login.php" class="text-muted text-decoration-none">Login</a></li>
+                        <li class="mb-2"><a href="how-it-works.php" class="text-muted text-decoration-none">How It Works</a></li>
+                    </ul>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <h5>Contact Us</h5>
+                    <p class="text-muted mb-2" style="font-size:0.9rem;"><i class="fas fa-envelope me-2"></i><?php echo htmlspecialchars($contact_email); ?></p>
+                    <p class="text-muted" style="font-size:0.9rem;"><i class="fas fa-phone me-2"></i><?php echo htmlspecialchars($contact_phone); ?></p>
+                </div>
             </div>
-            <div class="footer-bottom border-top pt-4 mt-4 text-center text-muted">
-                <p><?php echo htmlspecialchars($copyright_text); ?></p>
+            <div class="footer-bottom border-top pt-4 mt-4 text-center">
+                <p class="mb-0"><?php echo htmlspecialchars($copyright_text); ?></p>
             </div>
         </div>
     </footer>
@@ -2128,6 +2320,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_favorites'])) 
     <!-- Bootstrap JS -->
     <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-..." crossorigin="anonymous"></script>
     <script>
+        // Navbar scroll effect
+        const navbar = document.querySelector('.navbar');
+        window.addEventListener('scroll', () => {
+            navbar.style.boxShadow = window.scrollY > 20
+                ? '0 4px 24px rgba(15,23,42,0.10)'
+                : 'none';
+        }, { passive: true });
+
+        // Scroll-reveal for provider cards
+        document.addEventListener('DOMContentLoaded', function() {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.style.opacity = '1';
+                        entry.target.style.transform = 'translateY(0)';
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, { threshold: 0.1 });
+
+            document.querySelectorAll('.provider-card, .service-card-popular').forEach((el, i) => {
+                el.style.opacity = '0';
+                el.style.transform = 'translateY(16px)';
+                el.style.transition = `opacity 0.45s cubic-bezier(0.16,1,0.3,1) ${(i % 4) * 0.07}s, transform 0.45s cubic-bezier(0.16,1,0.3,1) ${(i % 4) * 0.07}s`;
+                observer.observe(el);
+            });
+        });
+
         // Modal functions
         function openBookingModal(providerId, providerName, profession) {
             document.getElementById('modalProviderId').value = providerId;

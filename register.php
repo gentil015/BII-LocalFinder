@@ -242,240 +242,626 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register - <?php echo htmlspecialchars($platform_name); ?></title>
+    <title>Create Account - <?php echo htmlspecialchars($platform_name); ?></title>
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #0d6efd;
-            --secondary: #6c757d;
-            --success: #198754;
-            --danger: #dc3545;
-            --warning: #ffc107;
-            --light: #f8f9fa;
-            --dark: #212529;
+            --primary: #2563eb;
+            --primary-dark: #1e40af;
+            --primary-light: #dbeafe;
+            --secondary: #64748b;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #0f172a;
+            --border: #e2e8f0;
+            --border-light: #f1f5f9;
+            --surface: #ffffff;
+            --surface-2: #f8fafc;
+            --text-muted: #94a3b8;
+            --radius-sm: 8px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+            --radius-xl: 28px;
+            --shadow-sm: 0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
+            --shadow-md: 0 4px 16px rgba(15,23,42,0.08);
+            --shadow-lg: 0 20px 60px rgba(15,23,42,0.12), 0 8px 20px rgba(15,23,42,0.07);
+            --shadow-primary: 0 8px 24px rgba(37,99,235,0.28);
         }
-        
+
+        *, *::before, *::after { box-sizing: border-box; }
+
         body {
-            background-color: #f8f9fa;
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--dark);
+            background: var(--surface-2);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            -webkit-font-smoothing: antialiased;
         }
-        
+
+        h1,h2,h3,h4,h5,h6,.navbar-brand {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        /* ── NAVBAR ── */
         .navbar {
-            box-shadow: 0 2px 4px rgba(0,0,0,.1);
+            background: rgba(255,255,255,0.95) !important;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(226,232,240,0.8);
+            padding: 0.85rem 0;
         }
-        
-        .register-container {
+
+        .navbar-brand {
+            font-size: 1.35rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.02em;
+            text-decoration: none;
+        }
+
+        .navbar .nav-link {
+            font-weight: 500;
+            font-size: 0.93rem;
+            color: var(--secondary) !important;
+            padding: 0.5rem 0.9rem !important;
+            border-radius: var(--radius-sm);
+            transition: all 0.2s ease;
+        }
+
+        .navbar .nav-link:hover, .navbar .nav-link.active {
+            color: var(--primary) !important;
+            background: var(--primary-light);
+        }
+
+        .navbar .btn-primary {
+            font-size: 0.9rem;
+            font-weight: 700;
+            padding: 0.5rem 1.3rem;
+            border-radius: var(--radius-sm);
+            box-shadow: var(--shadow-primary);
+            border: none;
+            transition: all 0.25s ease;
+        }
+
+        .navbar .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 28px rgba(37,99,235,0.30);
+        }
+
+        .navbar-toggler {
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 0.4rem 0.65rem;
+        }
+
+        /* ── REGISTER LAYOUT ── */
+        .register-wrapper {
             flex: 1;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
-            padding: 2rem 0;
+            padding: 3rem 1rem 4rem;
         }
-        
-        .register-card {
-            border: none;
-            border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0,0,0,.08);
-            overflow: hidden;
+
+        .register-panel {
             width: 100%;
-            max-width: 500px;
+            max-width: 520px;
+            animation: slideUp 0.55s cubic-bezier(0.16,1,0.3,1) both;
         }
-        
-        .register-header {
-            background: linear-gradient(135deg, var(--primary), #0a58ca);
-            color: white;
-            padding: 2rem;
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(24px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── BRAND MARK ── */
+        .register-brand {
             text-align: center;
-        }
-        
-        .register-body {
-            padding: 2rem;
-        }
-        
-        .form-control {
-            padding: 0.75rem 1rem;
-            border-radius: 8px;
-            border: 1px solid #dee2e6;
-            transition: all 0.3s;
-        }
-        
-        .form-control:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
-        }
-        
-        .form-select {
-            padding: 0.75rem 1rem;
-            border-radius: 8px;
-        }
-        
-        .form-select:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
-        }
-        
-        .btn-register {
-            padding: 0.75rem;
-            border-radius: 8px;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        
-        .footer {
-            margin-top: auto;
-        }
-        
-        .alert {
-            border-radius: 8px;
-            border: none;
-        }
-        
-        .form-label {
-            font-weight: 500;
-            margin-bottom: 0.5rem;
-        }
-        
-        .brand-icon {
-            font-size: 2rem;
-            margin-bottom: 1rem;
-        }
-        
-        .provider-fields {
-            background-color: #f8f9fa;
-            border-radius: 8px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            border-left: 4px solid var(--primary);
-        }
-        
-        .user-type-badge {
-            background-color: rgba(13, 110, 253, 0.1);
-            color: var(--primary);
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            font-weight: 600;
-            display: inline-block;
-            margin-bottom: 1rem;
-        }
-        
-        .registration-disabled {
-            opacity: 0.6;
-            pointer-events: none;
-        }
-        
-        .account-type-selector {
-            display: flex;
-            gap: 1rem;
             margin-bottom: 2rem;
         }
-        
-        .account-type-card {
-            flex: 1;
-            text-align: center;
-            padding: 2rem 1rem;
-            border: 2px solid #dee2e6;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: all 0.3s;
+
+        .register-brand-icon {
+            width: 56px;
+            height: 56px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: var(--radius-md);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+            box-shadow: var(--shadow-primary);
+            margin-bottom: 1rem;
         }
-        
+
+        .register-title {
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            color: var(--dark);
+            margin-bottom: 0.35rem;
+        }
+
+        .register-subtitle {
+            font-size: 0.92rem;
+            color: var(--text-muted);
+        }
+
+        /* ── REGISTER CARD ── */
+        .register-card {
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
+        }
+
+        .register-body {
+            padding: 2.25rem 2.25rem 2rem;
+        }
+
+        /* ── ACCOUNT TYPE SELECTOR ── */
+        .account-type-selector {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.75rem;
+        }
+
+        .account-type-card {
+            text-align: center;
+            padding: 1.75rem 1rem;
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-lg);
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+            background: var(--surface-2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .account-type-card::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--primary-dark));
+            opacity: 0;
+            transition: opacity 0.25s ease;
+        }
+
         .account-type-card:hover {
             border-color: var(--primary);
-            transform: translateY(-5px);
-            box-shadow: 0 5px 15px rgba(0,0,0,.1);
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-md), 0 0 0 1px rgba(37,99,235,0.08);
+            background: var(--surface);
         }
-        
+
+        .account-type-card:hover::before { opacity: 1; }
+
         .account-type-card.selected {
             border-color: var(--primary);
-            background-color: rgba(13, 110, 253, 0.05);
-            box-shadow: 0 5px 15px rgba(13, 110, 253, 0.1);
+            background: var(--primary-light);
+            box-shadow: var(--shadow-primary);
         }
-        
+
+        .account-type-card.selected::before { opacity: 1; }
+
         .account-type-card.disabled {
-            opacity: 0.5;
+            opacity: 0.48;
             cursor: not-allowed;
         }
-        
+
         .account-type-card.disabled:hover {
-            border-color: #dee2e6;
             transform: none;
             box-shadow: none;
+            border-color: var(--border);
+            background: var(--surface-2);
         }
-        
+
+        .account-type-card.disabled:hover::before { opacity: 0; }
+
         .account-type-icon {
-            font-size: 2.5rem;
-            margin-bottom: 1rem;
+            width: 52px; height: 52px;
+            background: linear-gradient(135deg, rgba(37,99,235,0.1), rgba(30,64,175,0.06));
+            border-radius: var(--radius-md);
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 1rem;
+            font-size: 1.4rem;
             color: var(--primary);
+            transition: all 0.3s ease;
         }
-        
-        .account-type-card.disabled .account-type-icon {
+
+        .account-type-card:hover .account-type-icon,
+        .account-type-card.selected .account-type-icon {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            transform: scale(1.08);
+            box-shadow: 0 6px 16px rgba(37,99,235,0.28);
+        }
+
+        .account-type-card h5 {
+            font-size: 0.97rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            margin-bottom: 0.3rem;
+            color: var(--dark);
+        }
+
+        .account-type-card p {
+            font-size: 0.82rem;
             color: var(--secondary);
+            margin-bottom: 0.4rem;
         }
-        
-        .registration-form {
-            display: none;
+
+        .account-type-card small { font-size: 0.78rem; color: var(--text-muted); }
+
+        /* ── FORM ELEMENTS ── */
+        .form-label {
+            font-size: 0.78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--secondary);
+            margin-bottom: 0.4rem;
         }
-        
-        .registration-form.active {
-            display: block;
+
+        .input-wrapper { position: relative; }
+
+        .input-icon {
+            position: absolute;
+            left: 1rem; top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 0.88rem;
+            z-index: 5;
+            pointer-events: none;
         }
-        
-        .back-to-selection {
-            color: var(--primary);
+
+        .input-icon-top {
+            position: absolute;
+            left: 1rem; top: 0.88rem;
+            color: var(--text-muted);
+            font-size: 0.88rem;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        .form-control, .form-select {
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 0.8rem 1rem 0.8rem 2.75rem;
+            font-size: 0.92rem;
+            font-weight: 500;
+            background: var(--surface-2);
+            color: var(--dark);
+            transition: all 0.22s ease;
+            width: 100%;
+        }
+
+        .form-control:not(.has-icon),
+        .form-select:not(.has-icon) {
+            padding-left: 1rem;
+        }
+
+        .form-control:hover, .form-select:hover { border-color: #cbd5e1; background: var(--surface); }
+
+        .form-control:focus, .form-select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+            background: var(--surface);
+            outline: none;
+        }
+
+        textarea.form-control {
+            padding-left: 2.75rem;
+            resize: vertical;
+        }
+
+        /* password toggle */
+        .password-toggle {
+            position: absolute;
+            right: 1rem; top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 0.88rem;
             cursor: pointer;
-            margin-bottom: 1rem;
+            z-index: 5;
+            background: none; border: none; padding: 0;
+            transition: color 0.2s ease;
+        }
+
+        .password-toggle:hover { color: var(--primary); }
+
+        .form-text {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-top: 0.35rem;
+        }
+
+        /* file upload */
+        input[type="file"].form-control {
+            padding: 0.65rem 1rem;
+            font-size: 0.88rem;
+        }
+
+        /* ── PROVIDER FIELDS SECTION ── */
+        .provider-fields {
+            background: linear-gradient(135deg, rgba(37,99,235,0.04), rgba(30,64,175,0.02));
+            border: 1.5px solid rgba(37,99,235,0.16);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .provider-fields-header {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.88rem;
+            font-weight: 700;
+            color: var(--primary);
+            letter-spacing: 0.02em;
+            margin-bottom: 1.25rem;
+            text-transform: uppercase;
+        }
+
+        .provider-fields-header i {
+            width: 28px; height: 28px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: 7px;
+            display: flex; align-items: center; justify-content: center;
+            color: white;
+            font-size: 0.78rem;
+        }
+
+        /* ── USER TYPE BADGE ── */
+        .user-type-badge {
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
+            background: var(--primary-light);
+            color: var(--primary);
+            padding: 0.45rem 1rem;
+            border-radius: 100px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            letter-spacing: 0.01em;
         }
-        
-        .back-to-selection:hover {
-            text-decoration: underline;
+
+        /* ── BACK LINK ── */
+        .back-to-selection {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            color: var(--secondary);
+            cursor: pointer;
+            margin-bottom: 1.25rem;
+            font-size: 0.87rem;
+            font-weight: 600;
+            transition: color 0.2s ease;
+            background: none;
+            border: none;
+            padding: 0;
+        }
+
+        .back-to-selection:hover { color: var(--primary); }
+
+        /* ── SUBMIT BUTTON ── */
+        .btn-register {
+            width: 100%;
+            padding: 0.9rem;
+            border-radius: var(--radius-md);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-weight: 700;
+            font-size: 0.97rem;
+            letter-spacing: 0.01em;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border: none;
+            color: white;
+            transition: all 0.25s ease;
+            box-shadow: var(--shadow-primary);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-register::after {
+            content: '';
+            position: absolute; top: 0; left: -100%;
+            width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .btn-register:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 30px rgba(37,99,235,0.35);
+            color: white;
+        }
+
+        .btn-register:hover::after { left: 100%; }
+
+        /* ── REGISTRATION FORM TOGGLE ── */
+        .registration-form { display: none; }
+        .registration-form.active { display: block; animation: slideUp 0.4s cubic-bezier(0.16,1,0.3,1) both; }
+
+        /* ── ALERTS ── */
+        .alert {
+            border-radius: var(--radius-md);
+            border: none;
+            padding: 0.9rem 1.1rem;
+            font-size: 0.9rem;
+            line-height: 1.55;
+            margin-bottom: 1.25rem;
+        }
+
+        .alert p { margin-bottom: 0.3rem; }
+        .alert p:last-child { margin-bottom: 0; }
+
+        .alert-danger {
+            background: rgba(239,68,68,0.08);
+            border: 1.5px solid rgba(239,68,68,0.22);
+            color: #b91c1c;
+        }
+
+        .alert-success {
+            background: rgba(16,185,129,0.08);
+            border: 1.5px solid rgba(16,185,129,0.22);
+            color: #065f46;
+        }
+
+        .alert-warning {
+            background: rgba(245,158,11,0.08);
+            border: 1.5px solid rgba(245,158,11,0.25);
+            color: #92400e;
+        }
+
+        .alert-info {
+            background: rgba(37,99,235,0.07);
+            border: 1.5px solid rgba(37,99,235,0.2);
+            color: var(--primary-dark);
+        }
+
+        /* ── DIVIDER & LINKS ── */
+        .form-divider {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin: 1.5rem 0;
+            color: var(--text-muted);
+            font-size: 0.78rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+        }
+
+        .form-divider::before, .form-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        .register-link {
+            color: var(--primary);
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        .register-link:hover { color: var(--primary-dark); text-decoration: underline; }
+
+        .register-footer-text {
+            font-size: 0.88rem;
+            color: var(--secondary);
+            text-align: center;
+        }
+
+        /* ── TRUST BADGES ── */
+        .trust-badges {
+            display: flex;
+            justify-content: center;
+            gap: 1.25rem;
+            margin-top: 1.75rem;
+            flex-wrap: wrap;
+        }
+
+        .trust-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .trust-badge i { color: var(--success); font-size: 0.82rem; }
+
+        /* ── FOOTER ── */
+        .footer {
+            background: var(--dark) !important;
+            padding: 1.75rem 0;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .footer h5 {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 0.25rem;
+        }
+
+        .footer .text-muted { color: #64748b !important; font-size: 0.85rem; }
+
+        /* ── STEP INDICATOR ── */
+        .step-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 1.75rem;
+        }
+
+        .step-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--border);
+            transition: all 0.3s ease;
+        }
+
+        .step-dot.active {
+            width: 24px;
+            border-radius: 4px;
+            background: var(--primary);
+        }
+
+        /* ── RESPONSIVE ── */
+        @media (max-width: 480px) {
+            .register-body { padding: 1.75rem 1.5rem; }
+            .register-title { font-size: 1.4rem; }
+            .account-type-selector { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-white">
+    <nav class="navbar navbar-expand-lg navbar-light sticky-top">
         <div class="container">
-            <a class="navbar-brand d-flex align-items-center fw-bold text-primary" href="index.php">
-                <i class="fas fa-map-marked-alt me-2"></i>
+            <a class="navbar-brand d-flex align-items-center gap-2" href="index.php">
+                <span style="width:32px;height:32px;background:linear-gradient(135deg,var(--primary),var(--primary-dark));border-radius:9px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-map-marked-alt text-white" style="font-size:0.85rem;"></i>
+                </span>
                 <?php echo htmlspecialchars($platform_name); ?>
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="index.php">Home</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="services.php">Services</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="providers.php">Find Providers</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="about.php">About</a>
-                    </li>
+                <ul class="navbar-nav ms-auto align-items-center gap-1">
+                    <li class="nav-item"><a class="nav-link" href="index.php">Home</a></li>
+                    <li class="nav-item"><a class="nav-link" href="services.php">Services</a></li>
+                    <li class="nav-item"><a class="nav-link" href="providers.php">Find Providers</a></li>
+                    <li class="nav-item"><a class="nav-link" href="about.php">About</a></li>
                     <?php if (isLoggedIn()): ?>
                         <li class="nav-item">
                             <a class="nav-link" href="<?php echo isProvider() ? 'provider/dashboard.php' : 'client/dashboard.php'; ?>">Dashboard</a>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="logout.php">Logout</a>
-                        </li>
+                        <li class="nav-item"><a class="nav-link" href="logout.php">Logout</a></li>
                     <?php else: ?>
-                        <li class="nav-item">
-                            <a class="nav-link" href="login.php">Login</a>
-                        </li>
-                        <li class="nav-item ms-2">
-                            <a class="btn btn-primary" href="register.php">Register</a>
+                        <li class="nav-item"><a class="nav-link" href="login.php">Sign In</a></li>
+                        <li class="nav-item ms-1">
+                            <a class="btn btn-primary" href="register.php">Get Started &rarr;</a>
                         </li>
                     <?php endif; ?>
                 </ul>
@@ -484,287 +870,350 @@ try {
     </nav>
 
     <!-- Register Form -->
-    <div class="register-container">
-        <div class="register-card">
-            <div class="register-header">
-                <div class="brand-icon">
+    <div class="register-wrapper">
+        <div class="register-panel">
+
+            <!-- Brand mark -->
+            <div class="register-brand">
+                <div class="register-brand-icon">
                     <i class="fas fa-map-marked-alt"></i>
                 </div>
-                <h4 class="mb-2">Create Your Account</h4>
+                <h1 class="register-title">Create your account</h1>
+                <p class="register-subtitle">Join <?php echo htmlspecialchars($platform_name); ?> — free forever</p>
             </div>
-            
-            <div class="register-body">
-                <?php if (!$client_registration_enabled && !$provider_registration_enabled): ?>
-                    <div class="alert alert-warning text-center">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        <strong>Registration Temporarily Closed</strong>
-                        <p class="mb-0 mt-2">New account registration is currently disabled. Please check back later.</p>
-                    </div>
-                <?php else: ?>
 
-                <?php if (!empty($errors)): ?>
-                    <div class="alert alert-danger">
-                        <?php foreach ($errors as $error): ?>
-                            <p class="mb-1"><i class="fas fa-exclamation-circle me-2"></i> <?php echo $error; ?></p>
-                        <?php endforeach; ?>
-                    </div>
-                <?php endif; ?>
+            <!-- Card -->
+            <div class="register-card">
+                <div class="register-body">
 
-                <?php if ($success): ?>
-                    <div class="alert alert-success">
-                        <i class="fas fa-check-circle me-2"></i> <?php echo $success; ?>
-                        <?php if ($email_verification_enabled): ?>
-                            <div class="mt-3">
-                                <a href="verify_otp.php" class="btn btn-primary">
-                                    <i class="fas fa-shield-alt me-2"></i> Verify Account
-                                </a>
-                            </div>
-                        <?php else: ?>
-                            <div class="mt-3">
-                                <a href="login.php" class="btn btn-primary">
-                                    <i class="fas fa-sign-in-alt me-2"></i> Login Now
-                                </a>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                <?php else: ?>
+                    <?php if (!$client_registration_enabled && !$provider_registration_enabled): ?>
+                        <div class="alert alert-warning text-center">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Registration Temporarily Closed</strong>
+                            <p class="mb-0 mt-1">New account registration is currently disabled. Please check back later.</p>
+                        </div>
+                    <?php else: ?>
 
-                <!-- Account Type Selection (First Step) -->
-                <div id="accountTypeSelection" class="<?php echo isset($_POST['user_type']) ? 'd-none' : ''; ?>">
-                    <h5 class="text-center mb-4">Choose Your Account Type</h5>
-                    
-                    <div class="account-type-selector">
-                        <!-- Client Card -->
-                        <div class="account-type-card <?php echo !$client_registration_enabled ? 'disabled' : ''; ?>" 
-                             onclick="<?php echo $client_registration_enabled ? 'selectAccountType(\'client\')' : ''; ?>"
-                             id="clientCard">
-                            <div class="account-type-icon">
-                                <i class="fas fa-user-tie"></i>
-                            </div>
-                            <h5>Client</h5>
-                            <p class="text-muted mb-2">Looking for Services</p>
-                            <small class="text-muted">
-                                Browse and hire service providers
-                            </small>
-                            <?php if (!$client_registration_enabled): ?>
-                                <div class="badge bg-warning mt-2">Currently Unavailable</div>
+                    <?php if (!empty($errors)): ?>
+                        <div class="alert alert-danger">
+                            <?php foreach ($errors as $error): ?>
+                                <p class="mb-1"><i class="fas fa-exclamation-circle me-2"></i><?php echo $error; ?></p>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if ($success): ?>
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle me-2"></i><?php echo $success; ?>
+                            <?php if ($email_verification_enabled): ?>
+                                <div class="mt-3">
+                                    <a href="verify_otp.php" class="btn btn-primary" style="border-radius:var(--radius-md);font-weight:700;font-size:0.9rem;">
+                                        <i class="fas fa-shield-alt me-2"></i>Verify Account
+                                    </a>
+                                </div>
+                            <?php else: ?>
+                                <div class="mt-3">
+                                    <a href="login.php" class="btn btn-primary" style="border-radius:var(--radius-md);font-weight:700;font-size:0.9rem;">
+                                        <i class="fas fa-sign-in-alt me-2"></i>Sign In Now
+                                    </a>
+                                </div>
                             <?php endif; ?>
                         </div>
-                        
-                        <!-- Provider Card -->
-                        <div class="account-type-card <?php echo !$provider_registration_enabled ? 'disabled' : ''; ?>" 
-                             onclick="<?php echo $provider_registration_enabled ? 'selectAccountType(\'provider\')' : ''; ?>"
-                             id="providerCard">
-                            <div class="account-type-icon">
-                                <i class="fas fa-tools"></i>
-                            </div>
-                            <h5>Service Provider</h5>
-                            <p class="text-muted mb-2">Offering Services</p>
-                            <small class="text-muted">
-                                List your services and get hired
-                            </small>
-                            <?php if (!$provider_registration_enabled): ?>
-                                <div class="badge bg-warning mt-2">Currently Unavailable</div>
-                            <?php endif; ?>
-                        </div>
+                    <?php else: ?>
+
+                    <!-- Step indicator -->
+                    <div class="step-indicator" id="stepIndicator">
+                        <div class="step-dot active" id="step1dot"></div>
+                        <div class="step-dot" id="step2dot"></div>
                     </div>
-                    
-                    <div class="text-center mt-4">
-                        <p class="text-muted">
-                            Already have an account? 
-                            <a href="login.php" class="text-primary text-decoration-none fw-semibold">Login here</a>
+
+                    <!-- Account Type Selection -->
+                    <div id="accountTypeSelection" class="<?php echo isset($_POST['user_type']) ? 'd-none' : ''; ?>">
+                        <p class="text-center fw-bold mb-3" style="font-size:0.9rem;color:var(--dark);letter-spacing:-0.01em;">Choose your account type</p>
+
+                        <div class="account-type-selector">
+                            <!-- Client Card -->
+                            <div class="account-type-card <?php echo !$client_registration_enabled ? 'disabled' : ''; ?>"
+                                 onclick="<?php echo $client_registration_enabled ? "selectAccountType('client')" : ''; ?>"
+                                 id="clientCard">
+                                <div class="account-type-icon">
+                                    <i class="fas fa-user-tie"></i>
+                                </div>
+                                <h5>Client</h5>
+                                <p class="text-muted mb-1">Looking for Services</p>
+                                <small>Hire skilled professionals</small>
+                                <?php if (!$client_registration_enabled): ?>
+                                    <div class="mt-2"><span class="badge" style="background:rgba(245,158,11,0.12);color:#92400e;font-size:0.7rem;padding:0.3rem 0.65rem;border-radius:100px;">Unavailable</span></div>
+                                <?php endif; ?>
+                            </div>
+
+                            <!-- Provider Card -->
+                            <div class="account-type-card <?php echo !$provider_registration_enabled ? 'disabled' : ''; ?>"
+                                 onclick="<?php echo $provider_registration_enabled ? "selectAccountType('provider')" : ''; ?>"
+                                 id="providerCard">
+                                <div class="account-type-icon">
+                                    <i class="fas fa-tools"></i>
+                                </div>
+                                <h5>Provider</h5>
+                                <p class="text-muted mb-1">Offering Services</p>
+                                <small>Grow your client base</small>
+                                <?php if (!$provider_registration_enabled): ?>
+                                    <div class="mt-2"><span class="badge" style="background:rgba(245,158,11,0.12);color:#92400e;font-size:0.7rem;padding:0.3rem 0.65rem;border-radius:100px;">Unavailable</span></div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <div class="form-divider">or</div>
+                        <p class="register-footer-text">
+                            Already have an account? <a href="login.php" class="register-link">Sign in &rarr;</a>
                         </p>
                     </div>
-                </div>
 
-                <!-- Registration Forms (Second Step) -->
-                <div id="registrationForms">
-                    <!-- Client Registration Form -->
-                    <form method="POST" enctype="multipart/form-data" id="clientForm" class="registration-form" data-user-type="client">
-                        <div class="back-to-selection" onclick="goBackToSelection()">
-                            <i class="fas fa-arrow-left"></i> Choose Different Account Type
-                        </div>
-                        
-                        <div class="user-type-badge mb-3">
-                            <i class="fas fa-user-tie me-2"></i> Registering as Client
-                        </div>
-                        
-                        <input type="hidden" name="user_type" value="client">
-                        
-                        <div class="mb-3">
-                            <label for="client_full_name" class="form-label">Full Name</label>
-                            <input type="text" class="form-control" id="client_full_name" name="full_name" 
-                                   required placeholder="Enter your full name">
-                        </div>
+                    <!-- Registration Forms -->
+                    <div id="registrationForms">
 
-                        <div class="mb-3">
-                            <label for="client_email" class="form-label">Email Address</label>
-                            <input type="email" class="form-control" id="client_email" name="email" 
-                                   required placeholder="your@email.com">
-                        </div>
+                        <!-- ── CLIENT FORM ── -->
+                        <form method="POST" enctype="multipart/form-data" id="clientForm" class="registration-form" data-user-type="client">
+                            <button type="button" class="back-to-selection" onclick="goBackToSelection()">
+                                <i class="fas fa-arrow-left"></i> Back
+                            </button>
 
-                        <div class="mb-3">
-                            <label for="client_phone" class="form-label">Phone Number</label>
-                            <input type="tel" class="form-control" id="client_phone" name="phone" 
-                                   required placeholder="+250 7XX XXX XXX">
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="client_profile_image" class="form-label">Profile Image (optional)</label>
-                            <input type="file" class="form-control" id="client_profile_image" name="profile_image" accept="image/*">
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="client_password" class="form-label">Password</label>
-                            <input type="password" class="form-control" id="client_password" name="password" 
-                                   required placeholder="Minimum <?php echo $min_password_length; ?> characters">
-                            <div class="form-text">
-                                Password must be at least <?php echo $min_password_length; ?> characters long.
-                                <?php if ($require_special_chars): ?>
-                                    Must include at least one special character.
-                                <?php endif; ?>
+                            <div class="user-type-badge">
+                                <i class="fas fa-user-tie"></i> Client Account
                             </div>
-                        </div>
 
-                        <div class="mb-4">
-                            <label for="client_confirm_password" class="form-label">Confirm Password</label>
-                            <input type="password" class="form-control" id="client_confirm_password" name="confirm_password" 
-                                   required placeholder="Re-enter your password">
-                        </div>
+                            <input type="hidden" name="user_type" value="client">
 
-                        <button type="submit" class="btn btn-primary btn-register w-100 mb-3">
-                            <i class="fas fa-user-plus me-2"></i> Create Client Account
-                        </button>
-                    </form>
-
-                    <!-- Provider Registration Form -->
-                    <form method="POST" enctype="multipart/form-data" id="providerForm" class="registration-form" data-user-type="provider">
-                        <div class="back-to-selection" onclick="goBackToSelection()">
-                            <i class="fas fa-arrow-left"></i> Choose Different Account Type
-                        </div>
-                        
-                        <div class="user-type-badge mb-3">
-                            <i class="fas fa-tools me-2"></i> Registering as Service Provider
-                        </div>
-                        
-                        <input type="hidden" name="user_type" value="provider">
-                        
-                        <div class="mb-3">
-                            <label for="provider_full_name" class="form-label">Full Name</label>
-                            <input type="text" class="form-control" id="provider_full_name" name="full_name" 
-                                   required placeholder="Enter your full name">
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="provider_email" class="form-label">Email Address</label>
-                            <input type="email" class="form-control" id="provider_email" name="email" 
-                                   required placeholder="your@email.com">
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="provider_phone" class="form-label">Phone Number</label>
-                            <input type="tel" class="form-control" id="provider_phone" name="phone" 
-                                   required placeholder="+250 7XX XXX XXX">
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="provider_profile_image" class="form-label">Profile Image (required)</label>
-                            <input type="file" class="form-control" id="provider_profile_image" name="profile_image" accept="image/*" required>
-                        </div>
-
-                        <div class="provider-fields">
-                            <h6 class="mb-3 text-primary"><i class="fas fa-tools me-2"></i> Provider Information</h6>
-                            
                             <div class="mb-3">
-                                <label for="profession" class="form-label">Profession *</label>
-                                <input type="text" class="form-control" id="profession" name="profession" 
-                                       required placeholder="e.g., Electrician, Plumber, Cleaner">
+                                <label for="client_full_name" class="form-label">Full Name</label>
+                                <div class="input-wrapper">
+                                    <i class="fas fa-user input-icon"></i>
+                                    <input type="text" class="form-control has-icon" id="client_full_name" name="full_name"
+                                           required placeholder="Your full name"
+                                           value="<?php echo isset($_POST['full_name']) && isset($_POST['user_type']) && $_POST['user_type']==='client' ? htmlspecialchars($_POST['full_name']) : ''; ?>">
+                                </div>
                             </div>
 
                             <div class="mb-3">
-                                <label for="location" class="form-label">Location *</label>
-                                <input type="text" class="form-control" id="location" name="location" 
-                                       required placeholder="e.g., Kigali, Rubavu, Musanze">
+                                <label for="client_email" class="form-label">Email Address</label>
+                                <div class="input-wrapper">
+                                    <i class="fas fa-envelope input-icon"></i>
+                                    <input type="email" class="form-control has-icon" id="client_email" name="email"
+                                           required placeholder="your@email.com" autocomplete="email"
+                                           value="<?php echo isset($_POST['email']) && isset($_POST['user_type']) && $_POST['user_type']==='client' ? htmlspecialchars($_POST['email']) : ''; ?>">
+                                </div>
                             </div>
 
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
+                            <div class="mb-3">
+                                <label for="client_phone" class="form-label">Phone Number</label>
+                                <div class="input-wrapper">
+                                    <i class="fas fa-phone input-icon"></i>
+                                    <input type="tel" class="form-control has-icon" id="client_phone" name="phone"
+                                           required placeholder="+250 7XX XXX XXX">
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="client_profile_image" class="form-label">Profile Photo <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0;">(optional)</span></label>
+                                <input type="file" class="form-control" id="client_profile_image" name="profile_image" accept="image/*">
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="client_password" class="form-label">Password</label>
+                                <div class="input-wrapper">
+                                    <i class="fas fa-lock input-icon"></i>
+                                    <input type="password" class="form-control has-icon" id="client_password" name="password"
+                                           required placeholder="Min <?php echo $min_password_length; ?> characters" autocomplete="new-password">
+                                    <button type="button" class="password-toggle" onclick="togglePw('client_password', this)" tabindex="-1">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                                <div class="form-text">At least <?php echo $min_password_length; ?> characters<?php if ($require_special_chars): ?> with a special character<?php endif; ?></div>
+                            </div>
+
+                            <div class="mb-4">
+                                <label for="client_confirm_password" class="form-label">Confirm Password</label>
+                                <div class="input-wrapper">
+                                    <i class="fas fa-lock input-icon"></i>
+                                    <input type="password" class="form-control has-icon" id="client_confirm_password" name="confirm_password"
+                                           required placeholder="Re-enter password" autocomplete="new-password">
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn-register">
+                                <i class="fas fa-user-plus me-2"></i>Create Client Account
+                            </button>
+                        </form>
+
+                        <!-- ── PROVIDER FORM ── -->
+                        <form method="POST" enctype="multipart/form-data" id="providerForm" class="registration-form" data-user-type="provider">
+                            <button type="button" class="back-to-selection" onclick="goBackToSelection()">
+                                <i class="fas fa-arrow-left"></i> Back
+                            </button>
+
+                            <div class="user-type-badge">
+                                <i class="fas fa-tools"></i> Service Provider Account
+                            </div>
+
+                            <input type="hidden" name="user_type" value="provider">
+
+                            <div class="mb-3">
+                                <label for="provider_full_name" class="form-label">Full Name</label>
+                                <div class="input-wrapper">
+                                    <i class="fas fa-user input-icon"></i>
+                                    <input type="text" class="form-control has-icon" id="provider_full_name" name="full_name"
+                                           required placeholder="Your full name"
+                                           value="<?php echo isset($_POST['full_name']) && isset($_POST['user_type']) && $_POST['user_type']==='provider' ? htmlspecialchars($_POST['full_name']) : ''; ?>">
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="provider_email" class="form-label">Email Address</label>
+                                <div class="input-wrapper">
+                                    <i class="fas fa-envelope input-icon"></i>
+                                    <input type="email" class="form-control has-icon" id="provider_email" name="email"
+                                           required placeholder="your@email.com" autocomplete="email"
+                                           value="<?php echo isset($_POST['email']) && isset($_POST['user_type']) && $_POST['user_type']==='provider' ? htmlspecialchars($_POST['email']) : ''; ?>">
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="provider_phone" class="form-label">Phone Number</label>
+                                <div class="input-wrapper">
+                                    <i class="fas fa-phone input-icon"></i>
+                                    <input type="tel" class="form-control has-icon" id="provider_phone" name="phone"
+                                           required placeholder="+250 7XX XXX XXX">
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="provider_profile_image" class="form-label">Profile Photo <span style="color:var(--danger);font-size:0.85em;">*</span></label>
+                                <input type="file" class="form-control" id="provider_profile_image" name="profile_image" accept="image/*" required>
+                            </div>
+
+                            <!-- Provider details section -->
+                            <div class="provider-fields">
+                                <div class="provider-fields-header">
+                                    <i class="fas fa-tools"></i>
+                                    Provider Details
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="profession" class="form-label">Profession <span style="color:var(--danger);font-size:0.85em;">*</span></label>
+                                    <div class="input-wrapper">
+                                        <i class="fas fa-briefcase input-icon"></i>
+                                        <input type="text" class="form-control has-icon" id="profession" name="profession"
+                                               required placeholder="e.g., Electrician, Plumber, Cleaner">
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="location" class="form-label">Location <span style="color:var(--danger);font-size:0.85em;">*</span></label>
+                                    <div class="input-wrapper">
+                                        <i class="fas fa-map-marker-alt input-icon"></i>
+                                        <input type="text" class="form-control has-icon" id="location" name="location"
+                                               required placeholder="e.g., Kigali, Rubavu, Musanze">
+                                    </div>
+                                </div>
+
+                                <div class="row g-3">
+                                    <div class="col-md-6">
                                         <label for="district" class="form-label">District</label>
-                                        <input list="districtsList" class="form-control" id="district" name="district" 
-                                               placeholder="Type to search district">
-                                        <datalist id="districtsList">
-                                            <?php foreach ($districts as $district): ?>
-                                                <option value="<?php echo htmlspecialchars($district['name']); ?>"></option>
-                                            <?php endforeach; ?>
-                                        </datalist>
+                                        <div class="input-wrapper">
+                                            <i class="fas fa-city input-icon"></i>
+                                            <input list="districtsList" class="form-control has-icon" id="district" name="district"
+                                                   placeholder="Type to search…">
+                                            <datalist id="districtsList">
+                                                <?php foreach ($districts as $district): ?>
+                                                    <option value="<?php echo htmlspecialchars($district['name']); ?>"></option>
+                                                <?php endforeach; ?>
+                                            </datalist>
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="mb-3">
+                                    <div class="col-md-6">
                                         <label for="sector" class="form-label">Sector</label>
-                                        <input type="text" class="form-control" id="sector" name="sector" 
-                                               placeholder="Enter your sector">
+                                        <div class="input-wrapper">
+                                            <i class="fas fa-map-pin input-icon"></i>
+                                            <input type="text" class="form-control has-icon" id="sector" name="sector"
+                                                   placeholder="Your sector">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-3 mb-0">
+                                    <label for="bio" class="form-label">Bio <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0;">(optional)</span></label>
+                                    <div class="input-wrapper">
+                                        <i class="fas fa-align-left input-icon-top"></i>
+                                        <textarea class="form-control has-icon" id="bio" name="bio" rows="3"
+                                                  placeholder="Briefly describe your experience and skills…"></textarea>
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="mb-0">
-                                <label for="bio" class="form-label">Bio (Optional)</label>
-                                <textarea class="form-control" id="bio" name="bio" rows="3" 
-                                          placeholder="Tell us about your experience and skills..."></textarea>
+                            <div class="mb-3">
+                                <label for="provider_password" class="form-label">Password</label>
+                                <div class="input-wrapper">
+                                    <i class="fas fa-lock input-icon"></i>
+                                    <input type="password" class="form-control has-icon" id="provider_password" name="password"
+                                           required placeholder="Min <?php echo $min_password_length; ?> characters" autocomplete="new-password">
+                                    <button type="button" class="password-toggle" onclick="togglePw('provider_password', this)" tabindex="-1">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                                <div class="form-text">At least <?php echo $min_password_length; ?> characters<?php if ($require_special_chars): ?> with a special character<?php endif; ?></div>
                             </div>
-                        </div>
 
-                        <!-- Provider-specific profile details collected in the setup wizard after registration -->
-
-                        <div class="mb-3">
-                            <label for="provider_password" class="form-label">Password</label>
-                            <input type="password" class="form-control" id="provider_password" name="password" 
-                                   required placeholder="Minimum <?php echo $min_password_length; ?> characters">
-                            <div class="form-text">
-                                Password must be at least <?php echo $min_password_length; ?> characters long.
-                                <?php if ($require_special_chars): ?>
-                                    Must include at least one special character.
-                                <?php endif; ?>
+                            <div class="mb-4">
+                                <label for="provider_confirm_password" class="form-label">Confirm Password</label>
+                                <div class="input-wrapper">
+                                    <i class="fas fa-lock input-icon"></i>
+                                    <input type="password" class="form-control has-icon" id="provider_confirm_password" name="confirm_password"
+                                           required placeholder="Re-enter password" autocomplete="new-password">
+                                </div>
                             </div>
-                        </div>
 
-                        <div class="mb-4">
-                            <label for="provider_confirm_password" class="form-label">Confirm Password</label>
-                            <input type="password" class="form-control" id="provider_confirm_password" name="confirm_password" 
-                                   required placeholder="Re-enter your password">
-                        </div>
+                            <button type="submit" class="btn-register">
+                                <i class="fas fa-tools me-2"></i>Create Provider Account
+                            </button>
+                        </form>
 
-                        <button type="submit" class="btn btn-primary btn-register w-100 mb-3">
-                            <i class="fas fa-user-plus me-2"></i> Create Provider Account
-                        </button>
-                    </form>
-                </div>
+                    </div><!-- /registrationForms -->
 
-                <div class="text-center mt-3" id="loginLink">
-                    <p class="mb-0">
-                        Already have an account? 
-                        <a href="login.php" class="text-primary text-decoration-none fw-semibold">Login here</a>
-                    </p>
-                </div>
+                    <div class="mt-3" id="loginLink">
+                        <div class="form-divider">already have an account?</div>
+                        <p class="register-footer-text">
+                            <a href="login.php" class="register-link">Sign in to your account &rarr;</a>
+                        </p>
+                    </div>
 
-                <?php endif; ?>
-                <?php endif; ?>
+                    <?php endif; ?>
+                    <?php endif; ?>
+
+                </div><!-- /register-body -->
+            </div><!-- /register-card -->
+
+            <!-- Trust badges -->
+            <div class="trust-badges">
+                <span class="trust-badge"><i class="fas fa-shield-alt"></i> Secure Registration</span>
+                <span class="trust-badge"><i class="fas fa-lock"></i> Data Encrypted</span>
+                <span class="trust-badge"><i class="fas fa-check-circle"></i> Free to Join</span>
             </div>
+
         </div>
     </div>
 
     <!-- Footer -->
-    <footer class="footer bg-dark text-white py-4 mt-5">
+    <footer class="footer">
         <div class="container">
-            <div class="row">
-                <div class="col-md-6">
-                    <h5 class="mb-3"><?php echo htmlspecialchars($platform_name); ?></h5>
-                    <p class="text-muted mb-0"><?php echo htmlspecialchars($platform_description); ?></p>
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-center gap-2">
+                <div>
+                    <h5 class="mb-1"><?php echo htmlspecialchars($platform_name); ?></h5>
+                    <p class="text-muted mb-0" style="font-size:0.82rem;"><?php echo htmlspecialchars($copyright_text); ?></p>
                 </div>
-                <div class="col-md-6 text-md-end">
-                    <p class="text-muted mb-0"><?php echo htmlspecialchars($copyright_text); ?></p>
+                <div class="text-muted" style="font-size:0.82rem;">
+                    <a href="index.php" style="color:#64748b;text-decoration:none;margin-right:1rem;">Home</a>
+                    <a href="about.php" style="color:#64748b;text-decoration:none;margin-right:1rem;">About</a>
+                    <a href="contact.php" style="color:#64748b;text-decoration:none;">Contact</a>
                 </div>
             </div>
         </div>
@@ -773,112 +1222,103 @@ try {
     <!-- Bootstrap JS -->
     <script src="bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Check if coming from POST (form submission with errors)
-        const userType = '<?php echo $_POST['user_type'] ?? ''; ?>';
-        
-        // If there's a POST error, show the appropriate form
+        // Restore form on POST error
+        const userType = '<?php echo addslashes($_POST['user_type'] ?? ''); ?>';
         if (userType) {
             document.getElementById('accountTypeSelection').classList.add('d-none');
+            document.getElementById('loginLink').classList.add('d-none');
             showRegistrationForm(userType);
         }
-        
+
         function selectAccountType(type) {
-            // Remove selected class from all cards
             document.getElementById('clientCard').classList.remove('selected');
             document.getElementById('providerCard').classList.remove('selected');
-            
-            // Add selected class to clicked card
             document.getElementById(type + 'Card').classList.add('selected');
-            
-            // Hide selection, show registration form
             document.getElementById('accountTypeSelection').classList.add('d-none');
+            document.getElementById('loginLink').classList.add('d-none');
             showRegistrationForm(type);
         }
-        
+
         function showRegistrationForm(type) {
-            // Hide all forms
-            const forms = document.querySelectorAll('.registration-form');
-            forms.forEach(form => {
-                form.classList.remove('active');
-            });
-            
-            // Show selected form
+            document.querySelectorAll('.registration-form').forEach(f => f.classList.remove('active'));
             document.getElementById(type + 'Form').classList.add('active');
-            
-            // Hide login link when form is shown
-            document.getElementById('loginLink').classList.add('d-none');
+            // advance step indicator
+            document.getElementById('step1dot').classList.remove('active');
+            document.getElementById('step2dot').classList.add('active');
+            // focus first field
+            setTimeout(() => {
+                const first = document.getElementById(type + '_full_name');
+                if (first) first.focus();
+            }, 80);
         }
-        
+
         function goBackToSelection() {
-            // Hide all forms
-            const forms = document.querySelectorAll('.registration-form');
-            forms.forEach(form => {
-                form.classList.remove('active');
-            });
-            
-            // Show selection
+            document.querySelectorAll('.registration-form').forEach(f => f.classList.remove('active'));
             document.getElementById('accountTypeSelection').classList.remove('d-none');
-            
-            // Show login link
             document.getElementById('loginLink').classList.remove('d-none');
-            
-            // Remove selected class from cards
             document.getElementById('clientCard').classList.remove('selected');
             document.getElementById('providerCard').classList.remove('selected');
+            // reset step indicator
+            document.getElementById('step1dot').classList.add('active');
+            document.getElementById('step2dot').classList.remove('active');
         }
-        
-        // Load districts when provider form is shown
-        document.getElementById('providerForm').addEventListener('mouseenter', function() {
+
+        // Password show/hide
+        function togglePw(fieldId, btn) {
+            const field = document.getElementById(fieldId);
+            const icon = btn.querySelector('i');
+            const isHidden = field.type === 'password';
+            field.type = isHidden ? 'text' : 'password';
+            icon.className = isHidden ? 'fas fa-eye-slash' : 'fas fa-eye';
+        }
+
+        // Load districts lazily
+        document.getElementById('providerForm').addEventListener('mouseenter', function () {
             const datalist = document.getElementById('districtsList');
             if (datalist && datalist.options.length === 0) {
                 fetch('api/get-districts.php')
-                    .then(r => {
-                        if (!r.ok) throw new Error('Network response was not ok: ' + r.status);
-                        return r.json();
-                    })
+                    .then(r => r.ok ? r.json() : Promise.reject())
                     .then(data => {
-                        if (!Array.isArray(data)) throw new Error('Invalid JSON response');
+                        if (!Array.isArray(data)) return;
                         data.forEach(d => {
                             const opt = document.createElement('option');
                             opt.value = d.name;
                             datalist.appendChild(opt);
                         });
                     })
-                    .catch(err => {
-                        console.error('Failed to load districts:', err);
-                    });
+                    .catch(() => {});
             }
-        });
-        
-        // Auto-dismiss alerts after 5 seconds
+        }, { once: true });
+
+        // Auto-dismiss alerts
         setTimeout(() => {
-            const alerts = document.querySelectorAll('.alert');
-            alerts.forEach(alert => {
-                const bsAlert = new bootstrap.Alert(alert);
-                bsAlert.close();
+            document.querySelectorAll('.alert').forEach(alert => {
+                alert.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+                alert.style.opacity = '0';
+                alert.style.transform = 'translateY(-6px)';
+                setTimeout(() => alert.remove(), 500);
             });
-        }, 5000);
-        
-        // Focus on first field when form is shown
-        function focusOnFirstField(type) {
-            setTimeout(() => {
-                document.getElementById(type + '_full_name').focus();
-            }, 100);
-        }
-        
-        // Update selectAccountType to also focus on field
-        const originalSelectAccountType = selectAccountType;
-        selectAccountType = function(type) {
-            originalSelectAccountType(type);
-            focusOnFirstField(type);
-        };
-        
-        // If there's a POST error, focus on the first field
-        if (userType) {
-            setTimeout(() => {
-                focusOnFirstField(userType);
-            }, 100);
-        }
+        }, 6000);
+
+        // Navbar scroll shadow
+        const navbar = document.querySelector('.navbar');
+        window.addEventListener('scroll', () => {
+            navbar.style.boxShadow = window.scrollY > 10
+                ? '0 4px 24px rgba(15,23,42,0.10)'
+                : 'none';
+        }, { passive: true });
+
+        // Submit loading state
+        document.querySelectorAll('.registration-form').forEach(form => {
+            form.addEventListener('submit', function () {
+                const btn = this.querySelector('.btn-register');
+                if (btn) {
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Creating account…';
+                    btn.style.opacity = '0.8';
+                    btn.style.pointerEvents = 'none';
+                }
+            });
+        });
     </script>
 </body>
 </html>

@@ -67,6 +67,7 @@ function getNotificationCounts($db, $provider_id) {
 
 $notificationCounts = getNotificationCounts($db, $provider_id);
 $current = basename($_SERVER['PHP_SELF']);
+$sidebar_width = ($current === 'messages.php' || $current === 'settings.php') ? '60px' : '260px';
 
 // determine current settings subsection for label
 $settings_section = isset($_GET['section']) ? sanitize($_GET['section']) : 'identity';
@@ -92,357 +93,477 @@ $settings_labels = [
 $iconOnly = false;
 $hasSub = false;
 ?>
-<aside class="sidebar<?php echo $iconOnly ? ' icon-only' : ''; ?><?php echo $hasSub ? ' has-submenu' : ''; ?>" id="providerSidebar">
-    <div class="sidebar-header">
-        <h2 title="<?php echo htmlspecialchars($platform_name); ?>"><?php echo htmlspecialchars(substr($platform_name,0,1)); ?></h2>
-        <p>Panel</p>
+<style>:root { --sb-width: <?php echo $sidebar_width; ?>; }</style>
+<aside class="sidebar <?php echo ($current === 'messages.php' || $current === 'settings.php') ? 'icon-only' : ''; ?>" id="providerSidebar">
+
+    <!-- Brand Header -->
+    <div class="sidebar-brand">
+        <div class="sidebar-brand-icon">
+            <?php echo htmlspecialchars(substr($platform_name, 0, 1)); ?>
+        </div>
+        <div class="sidebar-brand-text">
+            <span class="sidebar-brand-name"><?php echo htmlspecialchars($platform_name); ?></span>
+            <span class="sidebar-brand-role">Provider Panel</span>
+        </div>
+        <button class="sidebar-toggle" id="sidebarToggle" title="Toggle Sidebar">
+            <i class="fas fa-bars"></i>
+        </button>
     </div>
 
-    <ul class="sidebar-menu">
-        <li>
-            <a href="dashboard.php" class="<?php echo $current === 'dashboard.php' ? 'active' : ''; ?>" title="Dashboard">
-                <i class="fas fa-home"></i>
-                <span class="menu-text">Dashboard</span>
-                <?php if ($notificationCounts['notifications'] > 0): ?>
-                    <span class="notification-badge"><?php echo $notificationCounts['notifications']; ?></span>
-                <?php endif; ?>
-            </a>
-        </li>
+    <!-- Navigation -->
+    <nav class="sidebar-nav">
+        <ul class="sidebar-menu">
 
-        <li>
-            <a href="services.php" class="<?php echo $current === 'services.php' ? 'active' : ''; ?>">
-                <i class="fas fa-briefcase"></i>
-                <span class="menu-text">My Services</span>
-            </a>
-        </li>
-
-        <li>
-            <a href="bookings.php" class="<?php echo $current === 'bookings.php' ? 'active' : ''; ?>">
-                <i class="fas fa-calendar-check"></i>
-                <span class="menu-text">Bookings</span>
-                <?php if ($notificationCounts['bookings'] > 0): ?>
-                    <span class="notification-badge"><?php echo $notificationCounts['bookings']; ?></span>
-                <?php endif; ?>
-            </a>
-        </li>
-
-        <li>
-            <a href="schedule.php" class="<?php echo $current === 'schedule.php' ? 'active' : ''; ?>">
-                <i class="fas fa-clock"></i>
-                <span class="menu-text">Schedule</span>
-            </a>
-        </li>
-
-        <li>
-            <a href="reviews.php" class="<?php echo $current === 'reviews.php' ? 'active' : ''; ?>">
-                <i class="fas fa-star"></i>
-                <span class="menu-text">Reviews</span>
-                <?php if ($notificationCounts['reviews'] > 0): ?>
-                    <span class="notification-badge"><?php echo $notificationCounts['reviews']; ?></span>
-                <?php endif; ?>
-            </a>
-        </li>
-
-        <li>
-            <a href="earnings.php" class="<?php echo $current === 'earnings.php' ? 'active' : ''; ?>">
-                <i class="fas fa-money-bill-wave"></i>
-                <span class="menu-text">Earnings</span>
-            </a>
-        </li>
-
-        <li>
-            <a href="complaints.php" class="<?php echo $current === 'complaints.php' ? 'active' : ''; ?>">
-                <i class="fas fa-flag"></i>
-                <span class="menu-text">Complaints</span>
-                <?php if ($notificationCounts['complaints'] > 0): ?>
-                    <span class="notification-badge"><?php echo $notificationCounts['complaints']; ?></span>
-                <?php endif; ?>
-            </a>
-        </li>
-
-        <li>
-            <a href="messages.php" class="<?php echo $current === 'messages.php' ? 'active' : ''; ?>">
-                <i class="fas fa-comments"></i>
-                <span class="menu-text">Messages</span>
-                <?php 
-                    $unread_msgs = 0;
-                    try {
-                        $stmt = $db->prepare("SELECT COUNT(*) as count FROM messages WHERE receiver_id = ? AND is_read = 0");
-                        $stmt->execute([$provider_id]);
-                        $result = $stmt->fetch();
-                        $unread_msgs = $result['count'] ?? 0;
-                    } catch (Exception $e) {}
-                    if ($unread_msgs > 0): 
-                ?>
-                    <span class="notification-badge"><?php echo $unread_msgs; ?></span>
-                <?php endif; ?>
-            </a>
-        </li>
-
-        <li>
-            <a href="settings.php" class="<?php echo $current === 'settings.php' ? 'active' : ''; ?>">
-                <i class="fas fa-cog"></i>
-                <span class="menu-text">Settings</span>
-            </a>
-        </li>
-    </ul>
-
-<?php if ($hasSub): ?>
-    <ul class="sidebar-submenu">
-        <?php foreach ($settings_labels as $key => $label): ?>
             <li>
-                <a href="settings.php?section=<?php echo $key; ?>" class="<?php echo $settings_section === $key ? 'active' : ''; ?>"><?php echo htmlspecialchars($label); ?></a>
+                <a href="dashboard.php" class="<?php echo $current === 'dashboard.php' ? 'active' : ''; ?>">
+                    <span class="nav-icon"><i class="fas fa-home"></i></span>
+                    <span class="nav-label">Dashboard</span>
+                    <?php if ($notificationCounts['notifications'] > 0): ?>
+                        <span class="nav-badge"><?php echo $notificationCounts['notifications']; ?></span>
+                    <?php endif; ?>
+                </a>
             </li>
-        <?php endforeach; ?>
-    </ul>
-<?php endif; ?>
 
+            <li>
+                <a href="services.php" class="<?php echo $current === 'services.php' ? 'active' : ''; ?>">
+                    <span class="nav-icon"><i class="fas fa-briefcase"></i></span>
+                    <span class="nav-label">My Services</span>
+                </a>
+            </li>
 
+            <li>
+                <a href="bookings.php" class="<?php echo $current === 'bookings.php' ? 'active' : ''; ?>">
+                    <span class="nav-icon"><i class="fas fa-calendar-check"></i></span>
+                    <span class="nav-label">Bookings</span>
+                    <?php if ($notificationCounts['bookings'] > 0): ?>
+                        <span class="nav-badge"><?php echo $notificationCounts['bookings']; ?></span>
+                    <?php endif; ?>
+                </a>
+            </li>
 
+            <li>
+                <a href="schedule.php" class="<?php echo $current === 'schedule.php' ? 'active' : ''; ?>">
+                    <span class="nav-icon"><i class="fas fa-clock"></i></span>
+                    <span class="nav-label">Schedule</span>
+                </a>
+            </li>
+
+            <li>
+                <a href="reviews.php" class="<?php echo $current === 'reviews.php' ? 'active' : ''; ?>">
+                    <span class="nav-icon"><i class="fas fa-star"></i></span>
+                    <span class="nav-label">Reviews</span>
+                    <?php if ($notificationCounts['reviews'] > 0): ?>
+                        <span class="nav-badge"><?php echo $notificationCounts['reviews']; ?></span>
+                    <?php endif; ?>
+                </a>
+            </li>
+
+            <li>
+                <a href="earnings.php" class="<?php echo $current === 'earnings.php' ? 'active' : ''; ?>">
+                    <span class="nav-icon"><i class="fas fa-money-bill-wave"></i></span>
+                    <span class="nav-label">Earnings</span>
+                </a>
+            </li>
+
+            <li>
+                <a href="complaints.php" class="<?php echo $current === 'complaints.php' ? 'active' : ''; ?>">
+                    <span class="nav-icon"><i class="fas fa-flag"></i></span>
+                    <span class="nav-label">Complaints</span>
+                    <?php if ($notificationCounts['complaints'] > 0): ?>
+                        <span class="nav-badge"><?php echo $notificationCounts['complaints']; ?></span>
+                    <?php endif; ?>
+                </a>
+            </li>
+
+            <li>
+                <a href="messages.php" class="<?php echo $current === 'messages.php' ? 'active' : ''; ?>">
+                    <span class="nav-icon"><i class="fas fa-comments"></i></span>
+                    <span class="nav-label">Messages</span>
+                    <?php
+                        $unread_msgs = 0;
+                        try {
+                            $stmt = $db->prepare("SELECT COUNT(*) as count FROM messages WHERE receiver_id = ? AND is_read = 0");
+                            $stmt->execute([$provider_id]);
+                            $result = $stmt->fetch();
+                            $unread_msgs = $result['count'] ?? 0;
+                        } catch (Exception $e) {}
+                        if ($unread_msgs > 0):
+                    ?>
+                        <span class="nav-badge"><?php echo $unread_msgs; ?></span>
+                    <?php endif; ?>
+                </a>
+            </li>
+
+            <li>
+                <a href="settings.php" class="<?php echo $current === 'settings.php' ? 'active' : ''; ?>">
+                    <span class="nav-icon"><i class="fas fa-cog"></i></span>
+                    <span class="nav-label">Settings</span>
+                </a>
+            </li>
+
+        </ul>
+    </nav>
+
+    <!-- Footer -->
     <div class="sidebar-footer">
-        <a href="../logout.php">
-            <i class="fas fa-sign-out-alt"></i>
-            <span>Logout</span>
+        <a href="profile.php" class="footer-profile <?php echo $current === 'profile.php' ? 'active' : ''; ?>">
+            <span class="nav-icon"><i class="fas fa-user-circle"></i></span>
+            <span class="nav-label">My Profile</span>
+        </a>
+        <a href="../logout.php" class="footer-logout">
+            <span class="nav-icon"><i class="fas fa-sign-out-alt"></i></span>
+            <span class="nav-label">Logout</span>
         </a>
     </div>
+
 </aside>
 
 <style>
-/* Provider sidebar styling */
+/* ═══════════════════════════════════════════
+   PROVIDER SIDEBAR — Modern Design System
+   Matches Plus Jakarta Sans design tokens
+═══════════════════════════════════════════ */
+
+:root {
+    --sb-width:        260px;
+    --sb-accent:       #0d6efd;
+    --sb-accent-dark:  #0a58ca;
+    --sb-accent-light: rgba(13,110,253,0.12);
+    --sb-surface:      #ffffff;
+    --sb-border:       #e8eaf0;
+    --sb-text:         #374151;
+    --sb-text-muted:   #9ca3af;
+    --sb-hover-bg:     #f7f8fc;
+    --sb-active-bg:    rgba(13,110,253,0.08);
+    --sb-radius:       8px;
+    --sb-transition:   all 0.18s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* ── SIDEBAR SHELL ── */
 .sidebar {
+    width: var(--sb-width);
+    background: var(--sb-surface);
+    border-right: 1px solid var(--sb-border);
+    position: fixed;
+    top: 0; left: 0;
+    height: 100vh;
     display: flex;
     flex-direction: column;
+    z-index: 1000;
     overflow: hidden;
-    background: #1e3a8a;
-    color: rgba(255, 255, 255, 0.8);
-    min-height: 100vh;
-    width: 240px; /* default with labels */
-}
-.sidebar.has-submenu {
-    flex-direction: row;
-    width: 320px; /* icons + submenu */
-}
-.sidebar.has-submenu .sidebar-menu {
-    flex: none;
-    width: 80px; /* keep icon column fixed */
-}
-.sidebar.has-submenu .sidebar-submenu {
-    flex: 1;
-}
-.sidebar.icon-only {
-    width: 80px; /* compact icon-only width */
-}
-.sidebar.icon-only.has-submenu {
-    /* fallback: treat as normal if misapplied */
-    width: 240px;
+    transition: var(--sb-transition);
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-.sidebar-header {
-    padding: 1.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    text-align: center;
+/* ── BRAND HEADER ── */
+.sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1.25rem 1.25rem 1rem;
+    border-bottom: 1px solid var(--sb-border);
+    flex-shrink: 0;
 }
 
-.sidebar-header h2 {
-    margin: 0;
-    font-size: 1.25rem;
+.sidebar-brand-icon {
+    width: 36px;
+    height: 36px;
+    background: var(--sb-accent);
     color: white;
-    font-weight: 600;
+    border-radius: var(--sb-radius);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 1rem;
+    flex-shrink: 0;
+    letter-spacing: -0.5px;
 }
 
-.sidebar-header p {
-    margin: 0.25rem 0 0 0;
-    font-size: 0.85rem;
-    color: rgba(255, 255, 255, 0.6);
+.sidebar-brand-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
 }
+
+.sidebar-brand-name {
+    font-weight: 800;
+    font-size: 0.875rem;
+    color: var(--sb-accent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: -0.3px;
+}
+
+.sidebar-brand-role {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--sb-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+/* ── SIDEBAR TOGGLE ── */
+.sidebar-toggle {
+    background: none;
+    border: none;
+    color: var(--sb-text-muted);
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: var(--sb-radius);
+    transition: var(--sb-transition);
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.sidebar-toggle:hover {
+    background: var(--sb-hover-bg);
+    color: var(--sb-accent);
+}
+
+.sidebar.icon-only .sidebar-toggle {
+    margin-left: auto;
+}
+
+.sidebar.icon-only .sidebar-brand-text { display: none; }
+.sidebar.icon-only .sidebar-brand { justify-content: center; padding: 1rem 0.5rem; }
+.sidebar.icon-only .nav-label { display: none; }
+.sidebar.icon-only .sidebar-menu a { justify-content: center; padding: 0.6rem; }
+.sidebar.icon-only .sidebar-footer { padding: 0.625rem 0.5rem; }
+.sidebar.icon-only .footer-profile,
+.sidebar.icon-only .footer-logout { justify-content: center; padding: 0.6rem; }
+.sidebar.icon-only .nav-badge { position: absolute; top: -5px; right: -5px; font-size: 0.6rem; min-width: 16px; height: 16px; }
+/* ── NAVIGATION ── */
+.sidebar-nav {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.75rem 0.75rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--sb-border) transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar { width: 3px; }
+.sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: var(--sb-border); border-radius: 99px; }
 
 .sidebar-menu {
     list-style: none;
     margin: 0;
     padding: 0;
-    flex: 1;
-    overflow-y: auto;
-    padding-right: 5px;
-}
-
-.sidebar-menu::-webkit-scrollbar {
-    width: 6px;
-}
-
-.sidebar-menu::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-}
-
-.sidebar-menu::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 3px;
-}
-
-.sidebar-menu::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.3);
-}
-
-.sidebar-menu li {
-    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
 .sidebar-menu a {
     display: flex;
     align-items: center;
-    padding: 0.8rem 1.5rem;
-    color: rgba(255, 255, 255, 0.8);
+    gap: 0.65rem;
+    padding: 0.625rem 0.875rem;
+    color: var(--sb-text);
     text-decoration: none;
-    transition: all 0.3s;
-    border-left: 3px solid transparent;
-}
-
-.sidebar-menu a i {
-    width: 25px;
-    margin-right: 10px;
-    font-size: 1.1rem;
-}
-
-/* remove right margin when icon-only (no text) */
-.sidebar.icon-only .sidebar-menu a i {
-    margin-right: 0;
-}
-
-.sidebar-menu a span {
-    flex: 1;
+    border-radius: var(--sb-radius);
+    transition: var(--sb-transition);
+    font-size: 0.875rem;
+    font-weight: 500;
+    position: relative;
 }
 
 .sidebar-menu a:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-    border-left-color: white;
+    background: var(--sb-hover-bg);
+    color: var(--sb-accent);
 }
 
 .sidebar-menu a.active {
-    background: rgba(255, 255, 255, 0.15);
-    color: white;
-    border-left-color: #60a5fa;
+    background: var(--sb-active-bg);
+    color: var(--sb-accent);
+    font-weight: 700;
 }
 
-.sidebar-footer {
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    padding: 1rem 0;
-}
-
-.sidebar-footer a {
-    color: rgba(255, 255, 255, 0.8);
-    text-decoration: none;
-    padding: 0.8rem 1.5rem;
+/* ── NAV ICON ── */
+.nav-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 7px;
     display: flex;
     align-items: center;
-    transition: all 0.3s;
-    border-left: 3px solid transparent;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 0.875rem;
+    color: var(--sb-text-muted);
+    background: transparent;
+    transition: var(--sb-transition);
 }
 
-.sidebar-footer a:hover {
-    background: rgba(255, 255, 255, 0.1);
+.sidebar-menu a:hover .nav-icon {
+    background: var(--sb-accent-light);
+    color: var(--sb-accent);
+}
+
+.sidebar-menu a.active .nav-icon {
+    background: var(--sb-accent);
     color: white;
-    border-left-color: white;
 }
 
-.sidebar-footer i {
-    width: 25px;
-    margin-right: 10px;
-    font-size: 1.1rem;
+/* ── NAV LABEL ── */
+.nav-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1;
 }
 
-/* Notification badge styling */
-.notification-badge {
+/* ── NOTIFICATION BADGE ── */
+.nav-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     background: #ef4444;
     color: white;
-    border-radius: 50%;
-    min-width: 24px;
-    height: 24px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    margin-left: auto;
-    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
-    animation: pulse 2s infinite;
+    border-radius: 100px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    font-size: 0.65rem;
+    font-weight: 800;
+    flex-shrink: 0;
+    letter-spacing: 0;
+    box-shadow: 0 1px 4px rgba(239,68,68,0.4);
+    animation: badgePulse 2.5s ease-in-out infinite;
 }
 
-@keyframes pulse {
-    0%, 100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.7;
-    }
+@keyframes badgePulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.85; transform: scale(0.95); }
 }
 
-.sidebar-menu a {
+/* ── FOOTER ── */
+.sidebar-footer {
+    flex-shrink: 0;
+    border-top: 1px solid var(--sb-border);
+    padding: 0.625rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.footer-profile,
+.footer-logout {
     display: flex;
     align-items: center;
-    justify-content: flex-start;
-}
-
-/* center icons when compact */
-.sidebar.icon-only .sidebar-menu a {
-    justify-content: center;
-}
-
-.sidebar-menu a span {
-    flex: 1;
-}
-
-/* Icon-only: hide textual labels permanently when class present */
-.sidebar.icon-only .menu-text {
-    display: none !important;
-}
-
-/* Submenu listing for settings page */
-.sidebar-submenu {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    background: #1e3a8a;
-    overflow-y: auto;
-    flex: 1;
-}
-
-.sidebar-submenu li { margin: 0; }
-
-.sidebar-submenu a {
-    display: block;
-    padding: 0.8rem 1rem;
-    color: rgba(255,255,255,0.8);
+    gap: 0.65rem;
+    padding: 0.6rem 0.875rem;
+    border-radius: var(--sb-radius);
     text-decoration: none;
-    transition: background 0.3s;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: var(--sb-transition);
+    color: var(--sb-text);
 }
 
-.sidebar-submenu a.active,
-.sidebar-submenu a:hover {
-    background: rgba(255,255,255,0.1);
-    color: white;
+.footer-profile:hover,
+.footer-profile.active {
+    background: var(--sb-hover-bg);
+    color: var(--sb-accent);
 }
 
-/* Ensure main content lines up with sidebar */
+.footer-profile .nav-icon { color: var(--sb-text-muted); }
+.footer-profile:hover .nav-icon,
+.footer-profile.active .nav-icon { background: var(--sb-accent-light); color: var(--sb-accent); }
+
+.footer-logout {
+    color: #6b7280;
+}
+
+.footer-logout:hover {
+    background: #fef2f2;
+    color: #dc2626;
+}
+
+.footer-logout .nav-icon { color: #9ca3af; }
+.footer-logout:hover .nav-icon { background: rgba(220,38,38,0.1); color: #dc2626; }
+
+/* ── MAIN CONTENT OFFSET ── */
 .main-content {
-    margin-left: 240px;
-}
-.sidebar.icon-only ~ .main-content {
-    margin-left: 80px !important;
-}
-.sidebar.has-submenu ~ .main-content {
-    margin-left: 320px; /* icons + submenu */
+    margin-left: var(--sb-width) !important;
+    transition: margin-left 0.18s cubic-bezier(0.4,0,0.2,1);
 }
 
-/* Sidebar hover rules only apply for icon-only mode (keep fixed width otherwise) */
-.sidebar.icon-only:hover { width: 80px; }
-.sidebar.icon-only:hover .sidebar-menu a { justify-content: center; padding: 0.8rem 1rem; }
-.sidebar.icon-only:hover .sidebar-header h2, .sidebar.icon-only:hover .sidebar-header p { display: block; }
+/* ── SECTION DIVIDER (optional utility) ── */
+.nav-section-label {
+    padding: 0.875rem 0.875rem 0.35rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--sb-text-muted);
+}
 
+/* ── MOBILE ── */
 @media (max-width: 768px) {
-    .sidebar { width: var(--sidebar-width); }
-    .sidebar:hover { width: var(--sidebar-width); }
-    .sidebar-menu a .tab-label { display: none !important; }
-    .sidebar-menu a .menu-text { display: inline-block; margin-left: 12px; }
-    .sidebar-submenu { display: none; }
+    .sidebar {
+        transform: translateX(-100%);
+        box-shadow: none;
+    }
+
+    .sidebar.mobile-open {
+        transform: translateX(0);
+        box-shadow: 4px 0 20px rgba(0,0,0,0.12);
+    }
+
+    .main-content {
+        margin-left: 0 !important;
+    }
 }
 </style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const sidebar = document.getElementById('providerSidebar');
+        const toggle = document.getElementById('sidebarToggle');
+        const isIconOnlyPage = <?php echo ($current === 'messages.php' || $current === 'settings.php') ? 'true' : 'false'; ?>;
+
+        function updateSidebarWidth() {
+            const width = sidebar.classList.contains('icon-only') ? '60px' : '260px';
+            document.documentElement.style.setProperty('--sb-width', width);
+        }
+
+        function updateTooltips() {
+            const isCollapsed = sidebar.classList.contains('icon-only');
+            const links = sidebar.querySelectorAll('.sidebar-menu a, .footer-profile, .footer-logout');
+            links.forEach(link => {
+                const label = link.querySelector('.nav-label');
+                if (isCollapsed && label) {
+                    link.title = label.textContent.trim();
+                } else {
+                    link.removeAttribute('title');
+                }
+            });
+        }
+
+        if (isIconOnlyPage) {
+            sidebar.classList.add('icon-only');
+            toggle.style.display = 'none';
+            updateSidebarWidth();
+            updateTooltips();
+        } else {
+            const collapsed = localStorage.getItem('providerSidebarCollapsed') === 'true';
+            if (collapsed) {
+                sidebar.classList.add('icon-only');
+            }
+            updateSidebarWidth();
+            updateTooltips();
+
+            toggle.addEventListener('click', function() {
+                sidebar.classList.toggle('icon-only');
+                updateSidebarWidth();
+                updateTooltips();
+                localStorage.setItem('providerSidebarCollapsed', sidebar.classList.contains('icon-only'));
+            });
+        }
+    });
+</script>

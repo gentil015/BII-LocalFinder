@@ -117,14 +117,19 @@ function saveChatAttachment(array $file): ?string
 }
 
 // handle new message form
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['receiver_id']) && (isset($_POST['message']) || !empty($_FILES['attachment']['name']))) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['receiver_id']) && (isset($_POST['message']) || !empty($_FILES['attachment']['name']) || isset($_POST['message_type']))) {
     $receiver_id = intval($_POST['receiver_id']);
-    $msg = isset($_POST['message']) ? sanitize($_POST['message']) : '';
+    $msg = sanitize($_POST['message'] ?? '');
     $booking_id = isset($_POST['booking_id']) ? intval($_POST['booking_id']) : 0;
+    $messageType = sanitize($_POST['message_type'] ?? 'text');
     $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || (isset($_POST['ajax']) && $_POST['ajax'] == '1');
 
     $attachmentPath = null;
     $attachmentType = null;
+    $offerInfo = null;
+    $serviceInfo = null;
+    
+    // Handle file attachment
     if (!empty($_FILES['attachment']['name'])) {
         $attachmentPath = saveChatAttachment($_FILES['attachment']);
         if ($attachmentPath !== null) {
@@ -140,53 +145,140 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['receiver_id']) && (is
     }
 
     $result = false;
-    if ($msg !== '' || $attachmentPath !== null) {
+    
+    // Handle service offer message
+    if ($messageType === 'service_offer' && isset($_POST['offer_service_id'])) {
+        $serviceId = intval($_POST['offer_service_id']);
+        $isNegotiable = isset($_POST['offer_negotiable']) && $_POST['offer_negotiable'] === '1';
+        
+        // Get provider ID first
+        $stmt = $db->prepare("SELECT id FROM service_providers WHERE user_id = ? LIMIT 1");
+        $stmt->execute([$me]);
+        $provider = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($provider) {
+            // Get service details from provider_services
+            $stmt = $db->prepare("SELECT id, name as service_name, description as service_description, price, min_price, max_price, negotiable FROM provider_services WHERE id = ? AND provider_id = ? LIMIT 1");
+            $stmt->execute([$serviceId, $provider['id']]);
+            $service = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($service) {
+                $offerInfo = [
+                    'service_name' => $service['service_name'],
+                    'description' => $service['service_description'],
+                    'price' => $service['price'],
+                    'min_price' => $service['min_price'],
+                    'max_price' => $service['max_price'],
+                    'negotiable' => $isNegotiable,
+                    'service_id' => $serviceId
+                ];
+                
+                // Send offer message with JSON data
+                $offerData = json_encode($offerInfo);
+                $result = sendMessage($me, $receiver_id, $offerData, null, null, 'service_offer');
+            }
+        }
+    }
+    // Handle service message
+    elseif ($messageType === 'service' && isset($_POST['service_id'])) {
+        $serviceId = intval($_POST['service_id']);
+        
+        // Get provider ID first
+        $stmt = $db->prepare("SELECT id FROM service_providers WHERE user_id = ? LIMIT 1");
+        $stmt->execute([$me]);
+        $provider = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($provider) {
+            // Get service details from provider_services
+            $stmt = $db->prepare("SELECT id, name as service_name, description as service_description, price FROM provider_services WHERE id = ? AND provider_id = ? LIMIT 1");
+            $stmt->execute([$serviceId, $provider['id']]);
+            $service = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($service) {
+                $serviceInfo = [
+                    'service_name' => $service['service_name'],
+                    'description' => $service['service_description'],
+                    'price' => $service['price'],
+                    'service_id' => $serviceId
+                ];
+                
+                // Send service message with JSON data
+                $serviceData = json_encode($serviceInfo);
+                $result = sendMessage($me, $receiver_id, $serviceData, null, null, 'service');
+            }
+        }
+    }
+    // Handle regular message with optional attachment
+    elseif ($msg !== '' || $attachmentPath !== null) {
         $result = sendMessage($me, $receiver_id, $msg, $attachmentPath, $attachmentType);
-        // optionally notify client by email
-        $stmt = $db->prepare("SELECT email FROM users WHERE id = ?");
-        $stmt->execute([$receiver_id]);
-        $cl = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($cl && !empty($cl['email'])) {
-            $providerStmt = $db->prepare("SELECT full_name FROM users WHERE id = ?");
-            $providerStmt->execute([$me]);
-            $provider = $providerStmt->fetch(PDO::FETCH_ASSOC);
-            $providerName = $provider['full_name'] ?? 'Your Provider';
+        // optionally notify provider via email/push/sms
+        if ($result && $attachmentPath === null) {
+            if (Mailer::isProviderNotificationEnabled($receiver_id, 'chat_message_email')) {
+                $stmt = $db->prepare("SELECT email FROM users WHERE id = ?");
+                $stmt->execute([$receiver_id]);
+                $prov = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($prov && !empty($prov['email'])) {
+                    $clientStmt = $db->prepare("SELECT full_name FROM users WHERE id = ?");
+                    $clientStmt->execute([$me]);
+                    $client = $clientStmt->fetch(PDO::FETCH_ASSOC);
+                    $clientName = $client['full_name'] ?? 'A client';
 
-            $serviceText = 'General chat';
-            if ($booking_id) {
-                $bstmt = $db->prepare("SELECT service_description, service_id FROM bookings WHERE id = ?");
-                $bstmt->execute([$booking_id]);
-                $booking = $bstmt->fetch(PDO::FETCH_ASSOC);
-                if ($booking) {
-                    $serviceText = trim($booking['service_description']) ?: 'Booked service';
+                    $serviceText = 'General inquiry';
+                    if ($booking_id) {
+                        $bstmt = $db->prepare("SELECT service_description FROM bookings WHERE id = ?");
+                        $bstmt->execute([$booking_id]);
+                        $booking = $bstmt->fetch(PDO::FETCH_ASSOC);
+                        if ($booking) {
+                            $serviceText = trim($booking['service_description']) ?: 'Booked service';
+                        }
+                    }
+
+                    $body = "Hello,\n\n";
+                    $body .= "You have received a new message from {$clientName}.\n";
+                    $body .= "Service: {$serviceText}.\n\n";
+                    $body .= "Message:\n{$msg}\n\n";
+                    $body .= "Please log in to BII LocalFinder to reply.\n";
+
+                    Mailer::send(
+                        $prov['email'],
+                        "New message from {$clientName}",
+                        $body,
+                        false
+                    );
                 }
             }
-
-            $body = "Hello,\n\n";
-            $body .= "You have received a new message from provider {$providerName}.\n";
-            $body .= "Service: {$serviceText}.\n\n";
-            $body .= "Message:\n{$msg}\n\n";
-            $body .= "Please log in to BII LocalFinder to reply.\n";
-
-            Mailer::send(
-                $cl['email'],
-                "New message from provider {$providerName}",
-                $body,
-                false
-            );
         }
     }
 
     if ($isAjax) {
         header('Content-Type: application/json');
+        $messageData = null;
+        if ($result) {
+            $messageData = [
+                'sender_id' => $me,
+                'receiver_id' => $receiver_id,
+                'message' => $msg,
+                'attachment_path' => $attachmentPath,
+                'attachment_type' => $attachmentType,
+                'created_at' => date('Y-m-d H:i:s'),
+                'message_type' => $messageType
+            ];
+            if ($offerInfo) {
+                $messageData['offer_info'] = $offerInfo;
+            }
+            if ($serviceInfo) {
+                $messageData['service_info'] = $serviceInfo;
+            }
+        }
         echo json_encode([
             'success' => $result,
-            'message' => $result ? ['sender_id' => $me, 'receiver_id' => $receiver_id, 'message' => $msg, 'attachment_path' => $attachmentPath, 'attachment_type' => $attachmentType, 'created_at' => date('Y-m-d H:i:s')] : null
+            'message' => $messageData
         ]);
         exit;
     }
 
+    // redirect to avoid form resubmission
     redirect('messages.php?with=' . $receiver_id . ($booking_id ? '&booking_id=' . $booking_id : ''));
 }
 
@@ -208,18 +300,22 @@ $messages = [];
 $otherUser = null;
 $bookingTimeline = [];
 if ($with) {
+    // fetch other user info
     $stmt = $db->prepare("SELECT id, full_name, profile_image FROM users WHERE id = ?");
     $stmt->execute([$with]);
     $otherUser = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($otherUser) {
+        // link provider profile for client page, or client profile for provider page
         $profileHref = isProvider() ? '../client/profile.php?id=' . $with : '../provider/profile.php?id=' . $with;
+        // mark incoming as read
         markMessagesRead($with, $me);
+        // load conversation
         $messages = getConversationMessages($me, $with);
         if ($booking_id) {
             $bookingTimeline = getBookingTimeline($booking_id);
         }
     } else {
-        $with = 0;
+        $with = 0; // invalid user
     }
 }
 
@@ -229,156 +325,197 @@ if ($with) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Messages - Chat</title>
+    <title>Messages</title>
     <link rel="stylesheet" href="../bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: #f5f5f5;
-            overflow: hidden;
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --accent:       #0d6efd;
+            --accent-dark:  #0a58ca;
+            --accent-light: #eff4ff;
+            --surface:      #ffffff;
+            --surface-2:    #f7f8fc;
+            --border:       #e8eaf0;
+            --border-subtle:#f0f2f7;
+            --text-primary: #0f1117;
+            --text-secondary:#6b7280;
+            --text-muted:   #9ca3af;
+            --sent-bg:      #0d6efd;
+            --recv-bg:      #f0f2f7;
+            --online:       #22c55e;
+            --radius-sm:    8px;
+            --radius-md:    12px;
+            --radius-lg:    16px;
+            --shadow-sm:    0 1px 4px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-md:    0 4px 16px rgba(0,0,0,0.08);
+            --transition:   all 0.18s cubic-bezier(0.4,0,0.2,1);
         }
 
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--surface-2);
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+            color: var(--text-primary);
+        }
+
+        /* ── SIDEBAR OFFSET ── */
+        .main-content {
+            margin-left: 260px;
+            transition: margin-left 0.3s ease;
+            min-height: 100vh;
+        }
+
+        /* ── CHAT SHELL ── */
         .chat-container {
             display: flex;
             height: 100vh;
-            background: white;
+            background: var(--surface);
+            overflow: hidden;
         }
 
-        /* Conversations Panel */
+        /* ══ CONVERSATIONS PANEL ══ */
         .conversations-panel {
-            width: 360px;
-            border-right: 1px solid #e5e5e5;
+            width: 320px;
+            min-width: 320px;
+            border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            background: white;
+            background: var(--surface);
         }
 
         .conversations-header {
-            padding: 16px 20px;
-            border-bottom: 1px solid #e5e5e5;
+            padding: 1.25rem 1.25rem 1rem;
+            border-bottom: 1px solid var(--border-subtle);
         }
 
         .conversations-header h2 {
-            font-size: 32px;
-            font-weight: 600;
-            margin: 0 0 16px 0;
-            color: #111;
+            font-size: 1.25rem;
+            font-weight: 800;
+            letter-spacing: -0.4px;
+            color: var(--text-primary);
+            margin-bottom: 0.875rem;
         }
 
-        .search-box {
-            position: relative;
-            margin-bottom: 0;
-        }
+        .search-box { position: relative; }
 
         .search-box input {
             width: 100%;
-            padding: 10px 16px 10px 40px;
-            border: 1px solid #e5e5e5;
-            border-radius: 24px;
-            font-size: 15px;
-            background: #f0f0f0;
+            padding: 0.55rem 1rem 0.55rem 2.25rem;
+            border: 1px solid var(--border);
+            border-radius: 100px;
+            font-size: 0.85rem;
+            font-family: inherit;
+            background: var(--surface-2);
+            color: var(--text-primary);
+            transition: var(--transition);
         }
 
         .search-box input:focus {
             outline: none;
-            background: white;
-            border-color: #1e3a8a;
+            background: var(--surface);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(13,110,253,0.08);
         }
 
         .search-box i {
             position: absolute;
-            left: 14px;
+            left: 0.75rem;
             top: 50%;
             transform: translateY(-50%);
-            color: #999;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            pointer-events: none;
         }
 
         .conversations-list {
             flex: 1;
             overflow-y: auto;
             list-style: none;
+            padding: 0.5rem 0.625rem;
         }
 
         .conversation-item {
-            padding: 8px 8px;
+            padding: 0.625rem 0.75rem;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: var(--transition);
             display: flex;
             align-items: center;
-            gap: 12px;
-            margin: 0 8px;
-            border-radius: 12px;
+            gap: 0.75rem;
+            border-radius: var(--radius-md);
             position: relative;
+            margin-bottom: 2px;
         }
 
-        .conversation-item:hover {
-            background: #f0f0f0;
-        }
-
-        .conversation-item.active {
-            background: #e0e7ff;
-        }
+        .conversation-item:hover { background: var(--surface-2); }
+        .conversation-item.active { background: var(--accent-light); }
 
         .conversation-avatar {
-            width: 56px;
-            height: 56px;
+            width: 48px;
+            height: 48px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+            background: linear-gradient(135deg, var(--accent), var(--accent-dark));
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            font-size: 20px;
-            font-weight: 600;
+            font-size: 1rem;
+            font-weight: 700;
             flex-shrink: 0;
             position: relative;
+            overflow: hidden;
         }
+
+        .conversation-avatar img { width: 100%; height: 100%; object-fit: cover; }
 
         .conversation-avatar.online::after {
             content: '';
             position: absolute;
-            width: 14px;
-            height: 14px;
-            background: #31a24c;
-            border: 3px solid white;
+            width: 11px; height: 11px;
+            background: var(--online);
+            border: 2px solid var(--surface);
             border-radius: 50%;
-            bottom: 0;
-            right: 0;
+            bottom: 1px; right: 1px;
         }
 
-        .conversation-info {
-            flex: 1;
-            min-width: 0;
-        }
+        .conversation-info { flex: 1; min-width: 0; }
 
         .conversation-name {
-            font-size: 15px;
-            font-weight: 500;
-            color: #111;
-            margin-bottom: 4px;
-        }
-
-        .conversation-preview {
-            font-size: 13px;
-            color: #65676b;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.2rem;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
+        .conversation-preview {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .conversation-item.active .conversation-name { color: var(--accent); }
+        .conversation-item.active .conversation-preview { color: var(--accent); opacity: 0.75; }
+
         .unread-badge {
-            background: #1e3a8a;
+            background: var(--accent);
             color: white;
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
+            border-radius: 100px;
+            min-width: 20px;
+            height: 20px;
+            padding: 0 5px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 12px;
+            font-size: 0.7rem;
             font-weight: 700;
             flex-shrink: 0;
         }
@@ -389,17 +526,23 @@ if ($with) {
             align-items: center;
             justify-content: center;
             height: 100%;
-            color: #65676b;
-            padding: 20px;
+            color: var(--text-muted);
+            padding: 2rem;
             text-align: center;
+            gap: 0.5rem;
         }
 
-        /* Chat Panel */
+        .empty-state i { font-size: 2.5rem; opacity: 0.3; }
+        .empty-state p { font-size: 0.9rem; font-weight: 600; color: var(--text-secondary); }
+        .empty-state small { font-size: 0.78rem; }
+
+        /* ══ CHAT PANEL ══ */
         .chat-panel {
             flex: 1;
             display: flex;
             flex-direction: column;
-            background: white;
+            background: var(--surface-2);
+            min-width: 0;
         }
 
         .chat-empty {
@@ -408,465 +551,511 @@ if ($with) {
             justify-content: center;
             height: 100%;
             text-align: center;
-            color: #65676b;
+            color: var(--text-muted);
+            background: var(--surface-2);
         }
 
-        .chat-empty i {
-            font-size: 80px;
-            color: #e5e5e5;
-            margin-bottom: 16px;
-        }
+        .chat-empty i { font-size: 3.5rem; opacity: 0.15; margin-bottom: 1rem; display: block; }
+        .chat-empty p { font-size: 1rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.25rem; }
+        .chat-empty small { font-size: 0.8rem; }
 
         /* Chat Header */
         .chat-header {
-            padding: 12px 20px;
-            border-bottom: 1px solid #e5e5e5;
+            padding: 0.875rem 1.25rem;
+            border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: white;
+            background: var(--surface);
+            box-shadow: var(--shadow-sm);
+            position: relative;
+            z-index: 5;
         }
 
-        .chat-header-info {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
+        .chat-header-info { display: flex; align-items: center; gap: 0.75rem; }
+        .chat-header-avatar-link { text-decoration: none; }
 
         .chat-header-avatar {
-            width: 40px;
-            height: 40px;
+            width: 38px; height: 38px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #1e3a8a, #3b82f6);
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+            display: flex; align-items: center; justify-content: center;
             color: white;
-            font-weight: 600;
+            font-weight: 700;
+            font-size: 0.9rem;
             position: relative;
+            overflow: hidden;
+            flex-shrink: 0;
         }
+
+        .chat-header-avatar img { width: 100%; height: 100%; object-fit: cover; }
 
         .chat-header-avatar.online::after {
             content: '';
             position: absolute;
-            width: 12px;
-            height: 12px;
-            background: #31a24c;
-            border: 2px solid white;
+            width: 10px; height: 10px;
+            background: var(--online);
+            border: 2px solid var(--surface);
             border-radius: 50%;
-            bottom: 0;
-            right: 0;
+            bottom: 0; right: 0;
         }
 
-        .chat-header-name {
-            font-weight: 500;
-            color: #111;
+        .chat-header-name { font-weight: 700; font-size: 0.9rem; color: var(--text-primary); }
+        .chat-header-status { font-size: 0.72rem; color: var(--online); font-weight: 500; }
+
+        .chat-header-actions { display: flex; gap: 0.25rem; position: relative; }
+
+        .header-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 50%;
+            transition: var(--transition);
+            display: flex; align-items: center; justify-content: center;
+            width: 36px; height: 36px;
         }
 
-        .chat-header-status {
-            font-size: 12px;
-            color: #65676b;
-        }
+        .header-btn:hover { background: var(--surface-2); color: var(--accent); }
 
-        .chat-header-actions {
-            display: flex;
-            gap: 12px;
-            position: relative;
-        }
-
+        /* Options dropdown */
         .chat-options-dropdown {
             position: absolute;
-            top: 48px;
+            top: calc(100% + 8px);
             right: 0;
-            min-width: 210px;
-            background: #fff;
-            border: 1px solid #e5e5e5;
-            border-radius: 10px;
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-            z-index: 10;
+            min-width: 200px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-md);
+            z-index: 50;
             display: none;
             flex-direction: column;
-            padding: 6px 0;
+            padding: 0.375rem 0;
+            overflow: hidden;
         }
 
-        .chat-options-dropdown.visible {
-            display: flex;
-        }
+        .chat-options-dropdown.visible { display: flex; }
 
         .chat-options-dropdown button {
             text-align: left;
             border: none;
             background: transparent;
             width: 100%;
-            padding: 10px 14px;
-            font-size: 14px;
-            color: #1a1a1a;
+            padding: 0.625rem 1rem;
+            font-size: 0.82rem;
+            font-family: inherit;
+            color: var(--text-primary);
             cursor: pointer;
+            font-weight: 500;
+            transition: var(--transition);
         }
 
-        .chat-options-dropdown button:hover {
-            background: #f6f6f8;
-        }
+        .chat-options-dropdown button:hover { background: var(--surface-2); color: var(--accent); }
 
+        /* Confirm modal */
         .chat-confirm-modal {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.35);
+            background: rgba(0,0,0,0.35);
+            backdrop-filter: blur(3px);
             display: none;
             align-items: center;
             justify-content: center;
             z-index: 100;
         }
 
-        .chat-confirm-modal.show {
-            display: flex;
-        }
+        .chat-confirm-modal.show { display: flex; }
 
         .chat-confirm-card {
-            background: #fff;
-            border-radius: 12px;
-            padding: 20px;
-            max-width: 420px;
-            width: 100%;
-            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            max-width: 400px;
+            width: calc(100% - 2rem);
+            box-shadow: 0 20px 48px rgba(0,0,0,0.18);
         }
 
-        .chat-confirm-card h3 {
-            margin-top: 0;
-            font-size: 18px;
-            margin-bottom: 10px;
-        }
+        .chat-confirm-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--text-primary); }
+        .chat-confirm-card p  { font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem; }
 
         .chat-confirm-card textarea {
             width: 100%;
             min-height: 80px;
-            border: 1px solid #dcdce0;
-            border-radius: 6px;
-            padding: 8px 10px;
-            margin-top: 8px;
-            margin-bottom: 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 0.625rem 0.75rem;
+            margin-bottom: 1rem;
             resize: vertical;
+            font-family: inherit;
+            font-size: 0.85rem;
+            color: var(--text-primary);
         }
 
-        .chat-confirm-actions {
-            display: flex;
-            justify-content: flex-end;
-            gap: 8px;
+        .chat-confirm-card textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(13,110,253,0.08);
         }
 
+        .chat-confirm-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+
+        /* Toast */
         .chat-action-toast {
             position: fixed;
-            bottom: 25px;
-            right: 25px;
-            background: #111;
-            color: #fff;
-            padding: 10px 14px;
-            border-radius: 8px;
+            bottom: 1.5rem; right: 1.5rem;
+            background: var(--text-primary);
+            color: white;
+            padding: 0.625rem 1rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.82rem;
+            font-weight: 500;
             opacity: 0;
-            transition: opacity 0.25s ease;
+            transition: opacity 0.22s ease;
             z-index: 110;
             pointer-events: none;
+            box-shadow: var(--shadow-md);
         }
 
-        .chat-action-toast.error {
-            background: #be1e2d;
-        }
+        .chat-action-toast.error   { background: #dc2626; }
+        .chat-action-toast.success { background: #16a34a; }
 
-        .chat-action-toast.success {
-            background: #1e733b;
-        }
-
-        .header-btn {
-            background: none;
-            border: none;
-            color: #1e3a8a;
-            font-size: 18px;
-            cursor: pointer;
-            padding: 8px;
-            border-radius: 50%;
-            transition: background 0.2s;
-        }
-
-        .header-btn:hover {
-            background: #f0f0f0;
-        }
-
-        /* Booking Info */
+        /* Booking info banner */
         .booking-info {
-            padding: 12px 20px;
-            background: #e0e7ff;
-            border-bottom: 1px solid #c7d2fe;
-            border-radius: 0;
-            margin: 0;
+            padding: 0.625rem 1.25rem;
+            background: var(--accent-light);
+            border-bottom: 1px solid #c7d9ff;
             display: flex;
             align-items: center;
-            gap: 12px;
-            font-size: 14px;
-            color: #1e40af;
+            gap: 0.625rem;
+            font-size: 0.8rem;
+            color: var(--accent-dark);
+            font-weight: 500;
         }
 
-        .booking-info i {
-            font-size: 18px;
-        }
+        .booking-info i { font-size: 0.9rem; flex-shrink: 0; }
+        .booking-info a { color: var(--accent); text-decoration: none; font-weight: 700; }
+        .booking-info a:hover { text-decoration: underline; }
 
+        /* Booking timeline */
         .booking-timeline {
-            padding: 12px 20px;
-            border: 1px solid #d7e8ff;
-            background: #f2f8ff;
-            margin: 0 0 8px 0;
-            border-radius: 10px;
+            padding: 0.875rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+            display: flex;
+            gap: 0;
+            flex-wrap: wrap;
         }
 
         .timeline-item {
             display: flex;
             align-items: flex-start;
-            gap: 8px;
-            margin-bottom: 8px;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            flex: 1;
+            min-width: 120px;
         }
 
         .timeline-dot {
-            width: 10px;
-            height: 10px;
+            width: 8px; height: 8px;
             border-radius: 50%;
-            margin-top: 6px;
-            background: #1e3a8a;
+            margin-top: 5px;
+            background: var(--accent);
             flex-shrink: 0;
         }
 
-        .timeline-content {
-            flex: 1;
-        }
+        .timeline-title { font-size: 0.78rem; font-weight: 600; color: var(--accent-dark); }
+        .timeline-time  { font-size: 0.7rem;  color: var(--text-muted); margin-top: 1px; }
 
-        .timeline-title {
-            font-size: 13px;
-            font-weight: 600;
-            color: #1e3a8a;
-        }
-
-        .timeline-time {
-            font-size: 12px;
-            color: #666;
-        }
-
-        .attachment-link {
-            margin-top: 8px;
-            font-size: 13px;
-        }
-
-        .voice-badge {
-            display: inline-block;
-            font-size: 12px;
-            color: #ffffff;
-            background: #1e40af;
-            border-radius: 12px;
-            padding: 2px 8px;
-            margin-bottom: 6px;
-            margin-top: 4px;
-            letter-spacing: 0.2px;
-        }
-
-        .attachment-link {
-            margin-top: 8px;
-            font-size: 13px;
-        }
-
-        .attachment-link a {
-            color: #1e3a8a;
-            text-decoration: none;
-        }
-
-        .attachment-link a:hover {
-            text-decoration: underline;
-        }
-
-        .booking-info a {
-            color: #1e3a8a;
-            text-decoration: none;
-            font-weight: 600;
-        }
-
-        .booking-info a:hover {
-            text-decoration: underline;
-        }
-
-        /* Messages Area */
+        /* Messages area */
         .messages-area {
             flex: 1;
             overflow-y: auto;
-            padding: 16px 20px;
+            padding: 1.25rem 1.5rem;
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            background: white;
+            gap: 0.5rem;
+            background: var(--surface-2);
         }
 
-        .message-group {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            margin-bottom: 8px;
+        .msg-empty { margin: auto; text-align: center; color: var(--text-muted); }
+        .msg-empty i { font-size: 2.5rem; opacity: 0.2; display: block; margin-bottom: 0.75rem; }
+        .msg-empty p { font-size: 0.875rem; font-weight: 500; }
+
+        .message-group { display: flex; flex-direction: column; gap: 2px; }
+
+        .message { display: flex; align-items: flex-end; gap: 0.5rem; }
+        .message.sent { justify-content: flex-end; }
+
+        .message-bubble {
+            max-width: 58%;
+            padding: 0.6rem 0.875rem;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            word-wrap: break-word;
+            animation: msgIn 0.2s ease-out;
         }
 
-        .message {
-            display: flex;
-            gap: 8px;
-            align-items: flex-end;
-            margin-bottom: 2px;
-        }
-
-        .message.sent {
-            justify-content: flex-end;
+        @keyframes msgIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
         }
 
         .message.sent .message-bubble {
-            background: #1e3a8a;
+            background: var(--sent-bg);
             color: white;
             border-radius: 18px 4px 18px 18px;
         }
 
         .message.received .message-bubble {
-            background: #e5e5ea;
-            color: #111;
+            background: var(--surface);
+            color: var(--text-primary);
             border-radius: 4px 18px 18px 18px;
-        }
-
-        .message-bubble {
-            max-width: 55%;
-            padding: 8px 12px;
-            border-radius: 18px;
-            font-size: 15px;
-            line-height: 1.4;
-            word-wrap: break-word;
-            animation: slideIn 0.3s ease-out;
-        }
-
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            border: 1px solid var(--border);
         }
 
         .message-time {
-            font-size: 12px;
-            color: #999;
-            margin-top: 4px;
-            padding: 0 8px;
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            padding: 0 0.5rem;
         }
 
-        .message.sent .message-time {
-            text-align: right;
+        .message-group > .message-time { text-align: right; }
+
+        /* Attachments */
+        .attachment-preview { margin-top: 0.4rem; }
+        .attach-img { max-width: 180px; max-height: 180px; border-radius: var(--radius-sm); display: block; }
+        .attach-audio { width: 100%; max-width: 240px; margin-top: 0.375rem; }
+
+        .attachment-link { margin-top: 0.4rem; font-size: 0.78rem; }
+        .attachment-link a { color: inherit; opacity: 0.85; text-decoration: none; }
+        .attachment-link a:hover { opacity: 1; text-decoration: underline; }
+        .message.sent .attachment-link a { color: white; }
+        .message.received .attachment-link a { color: var(--accent); }
+
+        /* Input menu dropdown */
+        .input-menu-dropdown {
+            position: absolute;
+            bottom: 100%;
+            left: 0.5rem;
+            min-width: 200px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-md);
+            z-index: 50;
+            display: none;
+            flex-direction: column;
+            padding: 0.375rem 0;
+            overflow: hidden;
+            margin-bottom: 0.5rem;
         }
 
-        /* Message Input Area */
+        .input-menu-dropdown.visible { display: flex; }
+
+        .input-menu-dropdown button {
+            text-align: left;
+            border: none;
+            background: transparent;
+            width: 100%;
+            padding: 0.625rem 1rem;
+            font-size: 0.82rem;
+            font-family: inherit;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-weight: 500;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .input-menu-dropdown button:hover { background: var(--surface-2); color: var(--accent); }
+        .input-menu-dropdown button i { width: 1rem; }
+
+        /* Service modal */
+        .service-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.35);
+            backdrop-filter: blur(3px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .service-modal.show { display: flex; }
+
+        .service-modal-content {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            max-width: 500px;
+            width: calc(100% - 2rem);
+            max-height: 70vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 48px rgba(0,0,0,0.18);
+        }
+
+        .service-modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; }
+        .service-modal-header h3 { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin: 0; }
+        .service-modal-close { background: none; border: none; font-size: 1.25rem; color: var(--text-muted); cursor: pointer; padding: 0; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; }
+        .service-modal-close:hover { color: var(--text-primary); }
+
+        .service-list { display: flex; flex-direction: column; gap: 0.625rem; margin-bottom: 1rem; }
+        .service-item { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1rem; cursor: pointer; transition: var(--transition); }
+        .service-item:hover { background: var(--surface-2); border-color: var(--accent); }
+        .service-item.selected { background: var(--accent-light); border-color: var(--accent); }
+        .service-name { font-weight: 600; font-size: 0.9rem; color: var(--text-primary); margin-bottom: 0.25rem; }
+        .service-desc { font-size: 0.78rem; color: var(--text-secondary); }
+        .service-price { font-size: 0.85rem; font-weight: 600; color: var(--accent); margin-top: 0.5rem; }
+
+        .negotiable-toggle { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; padding: 0.75rem; background: var(--surface-2); border-radius: var(--radius-sm); }
+        .negotiable-toggle label { flex: 1; font-size: 0.85rem; font-weight: 500; color: var(--text-primary); margin: 0; cursor: pointer; }
+        .negotiable-toggle input[type="checkbox"] { cursor: pointer; width: 18px; height: 18px; }
+
+        .service-modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+        .service-modal-actions button { padding: 0.625rem 1.125rem; border-radius: var(--radius-sm); border: none; font-family: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: var(--transition); }
+        .service-modal-actions .btn-cancel { background: var(--surface-2); color: var(--text-primary); }
+        .service-modal-actions .btn-cancel:hover { background: var(--border); }
+        .service-modal-actions .btn-send { background: var(--accent); color: white; }
+        .service-modal-actions .btn-send:hover { background: var(--accent-dark); }
+        .service-modal-actions .btn-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .voice-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            background: rgba(255,255,255,0.2);
+            border-radius: 100px;
+            padding: 0.15rem 0.5rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .message.received .voice-badge { background: var(--accent-light); color: var(--accent); }
+
+        /* Typing indicator */
+        .typing-indicator {
+            padding: 0.375rem 1.5rem;
+            font-size: 0.78rem;
+            color: var(--accent);
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
+            background: var(--surface-2);
+        }
+
+        /* Message input area */
         .message-input-area {
-            padding: 12px 20px 16px 20px;
-            border-top: 1px solid #e5e5e5;
-            display: flex;
-            gap: 12px;
-            align-items: flex-end;
-            background: white;
+            padding: 0.75rem 1.25rem 1rem;
+            border-top: 1px solid var(--border);
+            background: var(--surface);
         }
 
-        .input-form {
+        .input-form { width: 100%; }
+
+        .input-row {
             display: flex;
-            gap: 8px;
-            align-items: flex-end;
-            flex: 1;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 100px;
+            padding: 0.375rem 0.5rem 0.375rem 0.75rem;
+            transition: var(--transition);
+        }
+
+        .input-row:focus-within {
+            border-color: var(--accent);
+            background: var(--surface);
+            box-shadow: 0 0 0 3px rgba(13,110,253,0.07);
         }
 
         input[name="message"] {
             flex: 1;
-            border: 1px solid #e5e5e5;
-            border-radius: 24px;
-            padding: 10px 16px;
-            font-size: 15px;
+            border: none;
+            background: transparent;
+            padding: 0.3rem 0.25rem;
+            font-size: 0.875rem;
             font-family: inherit;
-            resize: none;
-            max-height: 100px;
+            color: var(--text-primary);
+            outline: none;
         }
 
-        input[name="message"]:focus {
-            outline: none;
-            border-color: #1e3a8a;
-            box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
+        input[name="message"]::placeholder { color: var(--text-muted); }
+
+        .record-status {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            padding: 0.3rem 0.75rem 0;
+            font-weight: 500;
+            min-height: 1.2rem;
         }
+
+        .record-status.recording { color: #dc2626; }
 
         .send-btn {
-            background: #1e3a8a;
+            background: var(--accent);
             color: white;
             border: none;
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            width: 34px; height: 34px;
+            display: flex; align-items: center; justify-content: center;
             cursor: pointer;
-            transition: background 0.2s;
-            font-size: 18px;
+            transition: var(--transition);
+            font-size: 0.85rem;
+            flex-shrink: 0;
         }
 
-        .send-btn:hover {
-            background: #1e3050;
-        }
+        .send-btn:hover  { background: var(--accent-dark); }
+        .send-btn:active { transform: scale(0.93); }
 
-        .send-btn:active {
-            transform: scale(0.95);
-        }
-
-        /* Scrollbar */
+        /* Scrollbars */
         .conversations-list::-webkit-scrollbar,
-        .messages-area::-webkit-scrollbar {
-            width: 8px;
-        }
-
+        .messages-area::-webkit-scrollbar { width: 4px; }
         .conversations-list::-webkit-scrollbar-track,
-        .messages-area::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
+        .messages-area::-webkit-scrollbar-track { background: transparent; }
         .conversations-list::-webkit-scrollbar-thumb,
-        .messages-area::-webkit-scrollbar-thumb {
-            background: #ddd;
-            border-radius: 4px;
-        }
+        .messages-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
 
-        .conversations-list::-webkit-scrollbar-thumb:hover,
-        .messages-area::-webkit-scrollbar-thumb:hover {
-            background: #999;
-        }
+        /* Utilities */
+        .conv-avatar-img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+
+        .header-btn.recording { background: #fef2f2; color: #dc2626; }
 
         /* Responsive */
         @media (max-width: 768px) {
             .conversations-panel {
                 width: 100%;
+                min-width: unset;
                 position: absolute;
                 height: 100%;
                 z-index: 10;
             }
-            .conversations-panel.hidden {
-                display: none;
-            }
-            .chat-panel {
-                width: 100%;
-            }
-            .message-bubble {
-                max-width: 85%;
-            }
-            .chat-header {
-                padding: 12px 16px;
-            }
+            .conversations-panel.hidden { display: none; }
+            .chat-panel { width: 100%; }
+            .message-bubble { max-width: 82%; }
+            .chat-header { padding: 0.75rem 1rem; }
+            .main-content { margin-left: 0 !important; }
         }
     </style>
 </head>
 <body>
-<div class="chat-container">
-    <!-- Conversations Panel -->
+    <!-- Sidebar -->
+    <?php include __DIR__ . '/includes/sidebar.php'; ?>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="chat-container">
+            <!-- Conversations Panel -->
     <div class="conversations-panel" id="conversationsPanel">
         <div class="conversations-header">
             <h2>Messages</h2>
@@ -883,7 +1072,7 @@ if ($with) {
                         <div class="conversation-avatar online">
                             <?php if (!empty($c['profile_image'])): ?>
                                 <?php $convProfile = '../uploads/profiles/' . htmlspecialchars($c['profile_image']); ?>
-                                <img src="<?php echo $convProfile; ?>" alt="<?php echo htmlspecialchars($c['full_name']); ?>" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.onerror=null;this.src='../uploads/<?php echo htmlspecialchars($c['profile_image']); ?>';" />
+                                <img src="<?php echo $convProfile; ?>" alt="<?php echo htmlspecialchars($c['full_name']); ?>" class="conv-avatar-img" onerror="this.onerror=null;this.src='../uploads/<?php echo htmlspecialchars($c['profile_image']); ?>';" />
                             <?php else: ?>
                                 <?php echo strtoupper(substr($c['full_name'], 0, 1)); ?>
                             <?php endif; ?>
@@ -893,9 +1082,9 @@ if ($with) {
                             <div class="conversation-preview">
                                 <?php 
                                     if ($c['unread_count'] > 0) {
-                                        echo 'New messages';
+                                        echo '📨 New messages';
                                     } elseif (!empty($c['last_message_type']) && $c['last_message_type'] === 'audio') {
-                                        echo ' Voice note';
+                                        echo '🎤 Voice note';
                                     } elseif (!empty($c['last_message'])) {
                                         echo htmlspecialchars($c['last_message']);
                                     } else {
@@ -914,7 +1103,7 @@ if ($with) {
             <div class="empty-state">
                 <i class="fas fa-comments"></i>
                 <p>No conversations yet</p>
-                <small>Clients will message you here</small>
+                <small>Create a booking to start chatting</small>
             </div>
         <?php endif; ?>
     </div>
@@ -925,30 +1114,23 @@ if ($with) {
             <!-- Chat Header -->
             <div class="chat-header">
                 <div class="chat-header-info">
-                    <?php if (!isProvider()): ?>
-                        <a href="<?php echo htmlspecialchars($profileHref ?? '../provider/profile.php?id=' . (int)$with); ?>" class="chat-header-avatar-link" title="View profile">
-                    <?php endif; ?>
-
-                    <div class="chat-header-avatar online" style="overflow:hidden;">
-                        <?php if (!empty($otherUser['profile_image'])): ?>
-                            <?php $profilePath = '../uploads/profiles/' . htmlspecialchars($otherUser['profile_image']); ?>
-                            <img src="<?php echo $profilePath; ?>" alt="<?php echo htmlspecialchars($otherUser['full_name']); ?>" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.onerror=null;this.src='../uploads/<?php echo htmlspecialchars($otherUser['profile_image']); ?>';" />
-                        <?php else: ?>
-                            <?php echo strtoupper(substr($otherUser['full_name'], 0, 1)); ?>
-                        <?php endif; ?>
-                    </div>
-
-                    <?php if (!isProvider()): ?>
-                        </a>
-                    <?php endif; ?>
-
+                    <a href="<?php echo htmlspecialchars($profileHref ?? '../provider/profile.php?id=' . (int)$with); ?>" class="chat-header-avatar-link" title="View provider profile">
+                        <div class="chat-header-avatar online">
+                            <?php if (!empty($otherUser['profile_image'])): ?>
+                                <?php $profilePath = '../uploads/profiles/' . htmlspecialchars($otherUser['profile_image']); ?>
+                                <img src="<?php echo $profilePath; ?>" alt="<?php echo htmlspecialchars($otherUser['full_name']); ?>" class="conv-avatar-img" onerror="this.onerror=null;this.src='../uploads/<?php echo htmlspecialchars($otherUser['profile_image']); ?>';" />
+                            <?php else: ?>
+                                <?php echo strtoupper(substr($otherUser['full_name'], 0, 1)); ?>
+                            <?php endif; ?>
+                        </div>
+                    </a>
                     <div>
                         <div class="chat-header-name"><?php echo htmlspecialchars($otherUser['full_name']); ?></div>
                         <div class="chat-header-status">Active now</div>
                     </div>
                 </div>
                 <div class="chat-header-actions">
-                    <button class="header-btn chat-options-btn" id="chatOptionsBtn" title="Chat options"><i class="fas fa-ellipsis-v"></i></button>
+                    <button class="header-btn" id="chatOptionsBtn" title="Chat options"><i class="fas fa-ellipsis-v"></i></button>
                     <div class="chat-options-dropdown" id="chatOptionsDropdown" aria-hidden="true">
                         <button id="chatOptViewOffers">View Offers</button>
                         <button id="chatOptMute">Mute Notifications</button>
@@ -963,7 +1145,7 @@ if ($with) {
                 <div class="chat-confirm-card">
                     <h3 id="chatConfirmTitle">Confirm</h3>
                     <p id="chatConfirmText">Are you sure?</p>
-                    <div id="chatConfirmInputWrapper" style="display:none;">
+                    <div id="chatConfirmInputWrapper" style="display:none;" class="mt-2">
                         <textarea id="chatConfirmReason" placeholder="Report reason"></textarea>
                     </div>
                     <div class="chat-confirm-actions">
@@ -973,9 +1155,38 @@ if ($with) {
                 </div>
             </div>
             <div class="chat-action-toast" id="chatActionToast" role="status" aria-live="polite"></div>
-                    <button class="header-btn" title="Call"><i class="fas fa-phone"></i></button>
-                    <button class="header-btn" title="Video call"><i class="fas fa-video"></i></button>
-                    <button class="header-btn" title="More"><i class="fas fa-ellipsis-v"></i></button>
+
+            <!-- Service Offer Modal -->
+            <div class="service-modal" id="serviceOfferModal" aria-hidden="true">
+                <div class="service-modal-content">
+                    <div class="service-modal-header">
+                        <h3>Send Offer</h3>
+                        <button type="button" class="service-modal-close" aria-label="Close"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="service-list" id="offerServiceList"></div>
+                    <div class="negotiable-toggle">
+                        <label for="offerNegotiableCheck">Allow negotiation on price</label>
+                        <input type="checkbox" id="offerNegotiableCheck" checked>
+                    </div>
+                    <div class="service-modal-actions">
+                        <button type="button" class="btn-cancel">Cancel</button>
+                        <button type="button" class="btn-send" id="sendOfferBtn" disabled>Send Offer</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Service Modal -->
+            <div class="service-modal" id="serviceModal" aria-hidden="true">
+                <div class="service-modal-content">
+                    <div class="service-modal-header">
+                        <h3>Send Service</h3>
+                        <button type="button" class="service-modal-close" aria-label="Close"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="service-list" id="serviceList"></div>
+                    <div class="service-modal-actions">
+                        <button type="button" class="btn-cancel">Cancel</button>
+                        <button type="button" class="btn-send" id="sendServiceBtn" disabled>Send Service</button>
+                    </div>
                 </div>
             </div>
 
@@ -983,7 +1194,7 @@ if ($with) {
             <?php if ($booking_id): ?>
                 <div class="booking-info">
                     <i class="fas fa-info-circle"></i>
-                    <div>Booking <strong>#<?php echo intval($booking_id); ?></strong> active · <a href="../client/booking-details.php?id=<?php echo intval($booking_id); ?>">View details</a></div>
+                    <div>Booking <strong>#<?php echo intval($booking_id); ?></strong> active · <a href="booking-details.php?id=<?php echo intval($booking_id); ?>">View details</a></div>
                 </div>
             <?php endif; ?>
 
@@ -1007,8 +1218,8 @@ if ($with) {
             <!-- Messages Area -->
             <div class="messages-area" id="messagesArea">
                 <?php if (empty($messages)): ?>
-                    <div style="margin: auto; text-align: center; color: #999;">
-                        <i class="fas fa-comment-dots" style="font-size: 48px; margin-bottom: 12px; opacity: 0.3;"></i>
+                    <div class="msg-empty">
+                        <i class="fas fa-comment-dots"></i>
                         <p>No messages yet. Say hello!</p>
                     </div>
                 <?php else: ?>
@@ -1017,25 +1228,32 @@ if ($with) {
                             <div class="message <?php echo $m['sender_id'] == $me ? 'sent' : 'received'; ?>">
                                 <div class="message-bubble">
                                 <?php echo nl2br(htmlspecialchars($m['message'])); ?>
-                                <?php if (!empty($m['attachment_type']) && $m['attachment_type'] === 'audio'): ?>
+                                <?php
+                                    $isAudioMessage = (!empty($m['message_type']) && $m['message_type'] === 'audio')
+                                        || (!empty($m['attachment_type']) && $m['attachment_type'] === 'audio');
+                                    $attachmentPath = !empty($m['file_path']) ? $m['file_path'] : ($m['attachment_path'] ?? null);
+                                ?>
+                                <?php if ($isAudioMessage): ?>
                                     <div class="voice-badge">Voice note</div>
                                 <?php endif; ?>
-                                <?php if (!empty($m['attachment_path'])): ?>
-                                    <?php $ext = strtolower(pathinfo($m['attachment_path'], PATHINFO_EXTENSION)); ?>
+                                <?php if (!empty($attachmentPath)): ?>
+                                    <?php $ext = strtolower(pathinfo($attachmentPath, PATHINFO_EXTENSION)); ?>
                                     <?php if (in_array($ext, ['jpg','jpeg','png','gif'], true)): ?>
                                         <div class="attachment-preview">
-                                            <img src="../<?php echo htmlspecialchars($m['attachment_path']); ?>" alt="Attachment preview" style="max-width: 180px; max-height: 180px; border-radius: 8px; margin-top: 6px;" />
+                                            <img src="../<?php echo htmlspecialchars($attachmentPath); ?>" alt="Attachment preview" class="attach-img" />
                                         </div>
                                     <?php elseif (in_array($ext, ['webm','ogg','mp3','wav'], true)): ?>
-                                        <div class="attachment-preview" style="margin-top: 6px;">
-                                            <audio controls style="width: 100%; max-width: 250px;">
-                                                <source src="../<?php echo htmlspecialchars($m['attachment_path']); ?>" type="audio/<?php echo htmlspecialchars($ext === 'webm' ? 'webm' : ($ext === 'ogg' ? 'ogg' : ($ext === 'mp3' ? 'mpeg' : 'wav'))); ?>">
+                                        <div class="attachment-preview">
+                                            <audio controls class="attach-audio">
+                                                <source src="../<?php echo htmlspecialchars($attachmentPath); ?>" type="audio/<?php echo htmlspecialchars($ext === 'webm' ? 'webm' : ($ext === 'ogg' ? 'ogg' : ($ext === 'mp3' ? 'mpeg' : 'wav'))); ?>">
                                                 Your browser does not support the audio element.
                                             </audio>
                                         </div>
                                     <?php endif; ?>
                                     <div class="attachment-link">
-                                        <a href="../<?php echo htmlspecialchars($m['attachment_path']); ?>" target="_blank" rel="noopener noreferrer">📎 View attachment</a>
+                                        <a href="../<?php echo htmlspecialchars($attachmentPath); ?>" target="_blank" rel="noopener noreferrer">
+                                            📎 View attachment
+                                        </a>
                                     </div>
                                 <?php endif; ?>
                             </div>
@@ -1047,7 +1265,7 @@ if ($with) {
             </div>
 
             <!-- Message Input Area -->
-            <div class="typing-indicator" id="typingIndicator" style="display:none; padding: 8px 20px; color: #1e3a8a; font-size: 14px;">
+            <div class="typing-indicator" id="typingIndicator" style="display:none;">
                 <i class="fas fa-ellipsis-h fa-fw"></i> Typing...
             </div>
             <div class="message-input-area">
@@ -1056,22 +1274,27 @@ if ($with) {
                     <input type="hidden" name="booking_id" value="<?php echo $booking_id; ?>">
                     <input type="hidden" name="ajax" value="1">
 
-                    <div class="input-row" style="display:flex; align-items:center; gap:8px; width:100%;">
-                        <button type="button" id="attachButton" class="header-btn" title="Attach file"><i class="fas fa-paperclip"></i></button>
+                    <div class="input-row" style="position: relative;">
+                        <button type="button" id="attachButton" class="header-btn" title="Add content"><i class="fas fa-plus"></i></button>
+                        <div class="input-menu-dropdown" id="inputMenuDropdown" aria-hidden="true">
+                            <button type="button" id="menuAttachFile"><i class="fas fa-file"></i> Send File</button>
+                            <button type="button" id="menuSendOffer"><i class="fas fa-gift"></i> Send Offer</button>
+                            <button type="button" id="menuSendService"><i class="fas fa-briefcase"></i> Send Service</button>
+                        </div>
                         <input type="file" name="attachment" id="attachmentInput" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.webm" style="display:none;" title="Attach file">
-                        <input type="text" name="message" placeholder="Aa" autocomplete="off" id="messageTextField" style="flex:1;">
+                        <input type="text" name="message" placeholder="Type a message…" autocomplete="off" id="messageTextField">
                         <button type="button" id="recordButton" class="header-btn" title="Record voice message"><i class="fas fa-microphone"></i></button>
                         <button type="submit" class="send-btn" title="Send"><i class="fas fa-paper-plane"></i></button>
                     </div>
-                    <div id="recordStatus" style="font-size: 12px; color: #1e3a8a; margin-top: 4px;">Hold to record</div>
+                    <div id="recordStatus" class="record-status">Hold mic to record</div>
                 </form>
             </div>
         <?php else: ?>
             <div class="chat-empty">
                 <div>
                     <i class="fas fa-comments"></i>
-                    <p style="font-size: 18px; margin-top: 12px;">Select a client to start chatting</p>
-                    <small>Your clients' messages will appear here</small>
+                    <p>Select a conversation to start chatting</p>
+                    <small>Choose a booking conversation from the list</small>
                 </div>
             </div>
         <?php endif; ?>
@@ -1154,8 +1377,8 @@ function setRecordingState(state) {
         recordStatus.textContent = state ? 'Recording 0:00 — tap send to finish' : 'Hold to record';
     }
     if (recordButton) {
-        recordButton.style.background = state ? '#e53e3e' : 'transparent';
-        recordButton.style.color = state ? 'white' : '#1e3a8a';
+        recordButton.classList.toggle('recording', state);
+        // color handled by CSS
         recordButton.innerHTML = state ? '<i class="fas fa-stop"></i>' : '<i class="fas fa-microphone"></i>';
     }
     if (sendButton) {
@@ -1193,7 +1416,7 @@ function sendVoiceMessage(blob, durationSec) {
             const group = document.createElement('div');
             group.className = 'message-group';
 
-            const audioHtml = `<div class="attachment-preview" style="margin-top:6px;"><audio controls style="width:100%; max-width:250px;"><source src="../${data.message.file_path || data.message.attachment_path}" type="audio/webm">Your browser does not support audio playback.</audio></div>`;
+            const audioHtml = `<div class="attachment-preview"><audio controls class="attach-audio"><source src="../${data.message.file_path || data.message.attachment_path}" type="audio/webm">Your browser does not support audio playback.</audio></div>`;
             const voiceBadgeHtml = `<div class="voice-badge">Voice note</div>`;
             const attachmentLink = `<div class="attachment-link"><a href="../${data.message.file_path || data.message.attachment_path}" target="_blank" rel="noopener noreferrer">📎 View attachment</a></div>`;
 
@@ -1279,8 +1502,10 @@ function startRecording() {
 function stopRecordingAndSend() {
     if (!isRecording || !mediaRecorder) return;
     const durationSec = Math.round((Date.now() - recordingStartTime) / 1000);
-    mediaRecorder._recordingDuration = durationSec;
     mediaRecorder.stop();
+    // send will happen in onstop handler
+    // pass duration via global variable so handler can use it
+    mediaRecorder._recordingDuration = durationSec;
 }
 
 function cancelRecording() {
@@ -1294,11 +1519,7 @@ function cancelRecording() {
     setRecordingState(false);
 }
 
-if (attachButton && attachmentInput) {
-    attachButton.addEventListener('click', function() {
-        attachmentInput.click();
-    });
-
+if (attachmentInput) {
     attachmentInput.addEventListener('change', function() {
         if (attachmentInput.files && attachmentInput.files.length > 0) {
             const fileName = attachmentInput.files[0].name;
@@ -1341,10 +1562,9 @@ if (messageForm) {
 
         event.preventDefault();
         const formData = new FormData(messageForm);
-        const receiverId = formData.get('receiver_id');
         const messageText = (formData.get('message') || '').trim();
         const attachmentFile = formData.get('attachment');
-
+        
         if (!messageText && (!attachmentFile || attachmentFile.size === 0)) return;
 
         // Validate file size client-side
@@ -1392,10 +1612,10 @@ if (messageForm) {
                 if (attachmentPath) {
                     const ext = attachmentPath.split('.').pop().toLowerCase();
                     if (['jpg','jpeg','png','gif'].includes(ext)) {
-                        attachmentHtml += `<div class="attachment-preview"><img src="../${attachmentPath}" alt="Attachment preview" style="max-width:180px;max-height:180px;border-radius:8px;margin-top:6px;" /></div>`;
+                        attachmentHtml += `<div class="attachment-preview"><img src="../${attachmentPath}" alt="Attachment preview" class="attach-img" /></div>`;
                     } else if (['webm','ogg','mp3','wav'].includes(ext)) {
                         const audioType = ext === 'mp3' ? 'mpeg' : ext;
-                        attachmentHtml += `<div class="attachment-preview" style="margin-top:6px;"><audio controls style="width:100%;max-width:250px;"><source src="../${attachmentPath}" type="audio/${audioType}">Your browser does not support audio playback.</audio></div>`;
+                        attachmentHtml += `<div class="attachment-preview"><audio controls class="attach-audio"><source src="../${attachmentPath}" type="audio/${audioType}">Your browser does not support audio playback.</audio></div>`;
                     }
                     if (messageType === 'audio') {
                         voiceBadgeHtml = '<div class="voice-badge">Voice note</div>';
@@ -1437,8 +1657,6 @@ if (pollUser) {
         .then(data => {
             if (data.success) {
                 const messagesArea = document.getElementById('messagesArea');
-                const existing = Array.from(messagesArea.querySelectorAll('.message-bubble')).map(b=>b.textContent);
-                let changed = false;
                 messagesArea.innerHTML = '';
                 data.messages.forEach(m => {
                     const group = document.createElement('div');
@@ -1448,15 +1666,24 @@ if (pollUser) {
                     let voiceBadgeHtml = '';
                     const attachmentPath = m.file_path || m.attachment_path;
                     const messageType = m.message_type || m.attachment_type;
+                    const isSent = m.sender_id == <?php echo $me; ?>;
+                    
+                    // Handle service offer and service messages
+                    if (messageType === 'service_offer' || messageType === 'service') {
+                        try {
+                            const serviceData = JSON.parse(m.message);
+                            if (messageType === 'service_offer') {
+                                const negotiableTag = serviceData.negotiable ? '<span style="background: rgba(255,255,255,0.2); padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.7rem; display: inline-block; margin-top: 0.5rem;">NEGOTIABLE</span>' : '';\n                                const minPrice = serviceData.min_price ? parseFloat(serviceData.min_price).toFixed(0) : parseFloat(serviceData.price).toFixed(0);\n                                const maxPrice = serviceData.max_price ? parseFloat(serviceData.max_price).toFixed(0) : parseFloat(serviceData.price).toFixed(0);\n                                const priceText = minPrice === maxPrice ? `RWF ${minPrice}` : `RWF ${minPrice} - ${maxPrice}`;\n                                const offerBtn = isSent ? '' : `<div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;"><button onclick="negotiateOfferPrice(this, '${serviceData.service_id}');" style="flex: 1; padding: 0.5rem; background: var(--accent-light); border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">Make Offer</button><button onclick="acceptOfferDirect(this, '${serviceData.service_id}');" style="flex: 1; padding: 0.5rem; background: var(--accent); border: none; color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">Accept</button></div>`;\n                                group.innerHTML = `<div class="message ${isSent ? 'sent' : 'received'}"><div class="message-bubble" style="padding: 0.875rem;"><div style="font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem;"><i class="fas fa-gift"></i> ${serviceData.service_name}</div>${serviceData.description ? `<div style="font-size: 0.85rem; margin-bottom: 0.5rem; opacity: 0.95;">${serviceData.description}</div>` : ''}<div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 0.5rem; color: ${isSent ? 'rgba(255,255,255,0.95)' : 'var(--text-primary)'};">Base Price: ${priceText}</div>${negotiableTag}${offerBtn}</div></div><div class="message-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>`;\n                            } else if (messageType === 'service') {\n                                const bookBtn = isSent ? '' : `<button onclick="bookService(this, '${serviceData.service_id}');" style="width: 100%; padding: 0.65rem; background: var(--accent); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">Book Service</button>`;\n                                group.innerHTML = `<div class="message ${isSent ? 'sent' : 'received'}"><div class="message-bubble" style="padding: 0.875rem;"><div style="font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem;"><i class="fas fa-briefcase"></i> ${serviceData.service_name}</div>${serviceData.description ? `<div style="font-size: 0.85rem; margin-bottom: 0.5rem; opacity: 0.95;">${serviceData.description}</div>` : ''}<div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 0.75rem; color: ${isSent ? 'rgba(255,255,255,0.95)' : 'var(--text-primary)'};">Starting: RWF ${parseFloat(serviceData.price).toFixed(0)}</div>${bookBtn}</div></div><div class="message-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>`;\n                            }\n                            messagesArea.appendChild(group);\n                        } catch (e) {\n                            console.error('Service message parse error:', e);\n                        }\n                        return;\n                    }
+                    
                     if (attachmentPath) {
                         const isImage = /\.(jpg|jpeg|png|gif)$/i.test(attachmentPath);
                         const isAudio = /\.(webm|ogg|mp3|wav)$/i.test(attachmentPath);
                         if (isImage) {
-                            attachmentHtml += `<div class="attachment-preview"><img src="../${attachmentPath}" alt="Attachment preview" style="max-width:180px;max-height:180px;border-radius:8px;margin-top:6px;" /></div>`;
+                            attachmentHtml += `<div class="attachment-preview"><img src="../${attachmentPath}" alt="Attachment preview" class="attach-img" /></div>`;
                         } else if (isAudio) {
                             const mimeType = attachmentPath.match(/\.(webm|ogg|mp3|wav)$/i)[1].toLowerCase();
                             const audioType = mimeType === 'mp3' ? 'mpeg' : mimeType;
-                            attachmentHtml += `<div class="attachment-preview" style="margin-top:6px;"><audio controls style="width:100%;max-width:250px;"><source src="../${attachmentPath}" type="audio/${audioType}">Your browser does not support audio playback.</audio></div>`;
+                            attachmentHtml += `<div class="attachment-preview"><audio controls class="attach-audio"><source src="../${attachmentPath}" type="audio/${audioType}">Your browser does not support audio playback.</audio></div>`;
                         }
                         if (messageType === 'audio') {
                             voiceBadgeHtml = '<div class="voice-badge">Voice note</div>';
@@ -1501,6 +1728,372 @@ if (pollUser) {
         .catch(err => console.error('Poll error', err));
     }, 3000);
 }
+
+// Input menu dropdown functionality
+const inputMenuDropdown = document.getElementById('inputMenuDropdown');
+const menuAttachFile = document.getElementById('menuAttachFile');
+const menuSendOffer = document.getElementById('menuSendOffer');
+const menuSendService = document.getElementById('menuSendService');
+
+// Prevent file input from being triggered except through Send File button
+let allowFileInput = false;
+if (attachmentInput) {
+    attachmentInput.addEventListener('click', function(e) {
+        if (!allowFileInput) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    });
+}
+
+if (attachButton) {
+    attachButton.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const isVisible = inputMenuDropdown.classList.contains('visible');
+        inputMenuDropdown.classList.toggle('visible', !isVisible);
+    });
+}
+
+// Close menu when clicking outside
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.input-row')) {
+        inputMenuDropdown.classList.remove('visible');
+    }
+});
+
+if (menuAttachFile) {
+    menuAttachFile.addEventListener('click', function() {
+        inputMenuDropdown.classList.remove('visible');
+        allowFileInput = true;
+        document.getElementById('attachmentInput')?.click();
+        // Reset after a brief delay
+        setTimeout(() => { allowFileInput = false; }, 100);
+    });
+}
+
+// Service Offer Modal
+const serviceOfferModal = document.getElementById('serviceOfferModal');
+const offerServiceList = document.getElementById('offerServiceList');
+const sendOfferBtn = document.getElementById('sendOfferBtn');
+const offerNegotiableCheck = document.getElementById('offerNegotiableCheck');
+
+if (menuSendOffer) {
+    menuSendOffer.addEventListener('click', function() {
+        inputMenuDropdown.classList.remove('visible');
+        openServiceOfferModal();
+    });
+}
+
+function openServiceOfferModal() {
+    serviceOfferModal.classList.add('show');
+    serviceOfferModal.setAttribute('aria-hidden', 'false');
+    
+    // Load services
+    fetch('../api/service_offers.php?action=get_services')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.services) {
+                renderOfferServices(data.services);
+            }
+        })
+        .catch(console.error);
+}
+
+function renderOfferServices(services) {
+    offerServiceList.innerHTML = '';
+    
+    if (!services || services.length === 0) {
+        offerServiceList.innerHTML = '<div style="padding: 1rem; text-align: center; color: var(--text-muted);">No services available</div>';
+        return;
+    }
+    
+    services.forEach(service => {
+        const div = document.createElement('div');
+        div.className = 'service-item';
+        const minPrice = service.min_price ? parseFloat(service.min_price).toFixed(2) : parseFloat(service.price).toFixed(2);
+        const maxPrice = service.max_price ? parseFloat(service.max_price).toFixed(2) : parseFloat(service.price).toFixed(2);
+        const priceRange = minPrice === maxPrice ? `RWF ${minPrice}` : `RWF ${minPrice} - ${maxPrice}`;
+        
+        div.innerHTML = `
+            <div class="service-name">${service.name || 'Unnamed Service'}</div>
+            <div class="service-desc">${service.description || ''}</div>
+            <div class="service-price">${priceRange}</div>
+        `;
+        div.addEventListener('click', function() {
+            document.querySelectorAll('#offerServiceList .service-item').forEach(el => el.classList.remove('selected'));
+            div.classList.add('selected');
+            div.dataset.serviceId = service.id;
+            div.dataset.serviceName = service.name;
+            div.dataset.servicePrice = service.price;
+            sendOfferBtn.disabled = false;
+        });
+        offerServiceList.appendChild(div);
+    });
+}
+
+// Service Modal
+const serviceModal = document.getElementById('serviceModal');
+const serviceList = document.getElementById('serviceList');
+const sendServiceBtn = document.getElementById('sendServiceBtn');
+
+if (menuSendService) {
+    menuSendService.addEventListener('click', function() {
+        inputMenuDropdown.classList.remove('visible');
+        openServiceModal();
+    });
+}
+
+function openServiceModal() {
+    serviceModal.classList.add('show');
+    serviceModal.setAttribute('aria-hidden', 'false');
+    
+    // Load services
+    fetch('../api/service_offers.php?action=get_services')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && data.services) {
+                renderServices(data.services);
+            }
+        })
+        .catch(console.error);
+}
+
+function renderServices(services) {
+    serviceList.innerHTML = '';
+    
+    if (!services || services.length === 0) {
+        serviceList.innerHTML = '<div style="padding: 1rem; text-align: center; color: var(--text-muted);">No services available</div>';
+        return;
+    }
+    
+    services.forEach(service => {
+        const div = document.createElement('div');
+        div.className = 'service-item';
+        div.innerHTML = `
+            <div class="service-name">${service.name || 'Unnamed Service'}</div>
+            <div class="service-desc">${service.description || ''}</div>
+            <div class="service-price">RWF ${parseFloat(service.price).toFixed(2)}</div>
+        `;
+        div.addEventListener('click', function() {
+            document.querySelectorAll('#serviceList .service-item').forEach(el => el.classList.remove('selected'));
+            div.classList.add('selected');
+            div.dataset.serviceId = service.id;
+            div.dataset.serviceName = service.name;
+            div.dataset.servicePrice = service.price;
+            sendServiceBtn.disabled = false;
+        });
+        serviceList.appendChild(div);
+    });
+}
+
+// Close modals
+function closeServiceOfferModal() {
+    serviceOfferModal.classList.remove('show');
+    serviceOfferModal.setAttribute('aria-hidden', 'true');
+    sendOfferBtn.disabled = true;
+}
+
+function closeServiceModal() {
+    serviceModal.classList.remove('show');
+    serviceModal.setAttribute('aria-hidden', 'true');
+    sendServiceBtn.disabled = true;
+}
+
+// Close buttons
+document.querySelectorAll('.service-modal .service-modal-close').forEach(btn => {
+    btn.addEventListener('click', function() {
+        if (this.closest('#serviceOfferModal')) {
+            closeServiceOfferModal();
+        } else if (this.closest('#serviceModal')) {
+            closeServiceModal();
+        }
+    });
+});
+
+// Cancel buttons
+document.querySelectorAll('.service-modal .btn-cancel').forEach(btn => {
+    btn.addEventListener('click', function() {
+        if (this.closest('#serviceOfferModal')) {
+            closeServiceOfferModal();
+        } else if (this.closest('#serviceModal')) {
+            closeServiceModal();
+        }
+    });
+});
+
+// Send Offer button
+if (sendOfferBtn) {
+    sendOfferBtn.addEventListener('click', function() {
+        const selectedService = document.querySelector('#offerServiceList .service-item.selected');
+        if (!selectedService || !selectedService.dataset.serviceId) {
+            alert('Please select a service');
+            return;
+        }
+        
+        const serviceId = selectedService.dataset.serviceId;
+        const isNegotiable = offerNegotiableCheck.checked;
+        
+        sendOfferMessage(serviceId, isNegotiable);
+        closeServiceOfferModal();
+    });
+}
+
+// Send Service button
+if (sendServiceBtn) {
+    sendServiceBtn.addEventListener('click', function() {
+        const selectedService = document.querySelector('#serviceList .service-item.selected');
+        if (!selectedService || !selectedService.dataset.serviceId) {
+            alert('Please select a service');
+            return;
+        }
+        
+        const serviceId = selectedService.dataset.serviceId;
+        sendServiceMessage(serviceId);
+        closeServiceModal();
+    });
+}
+
+function sendOfferMessage(serviceId, isNegotiable) {
+    const formData = new FormData();
+    formData.append('receiver_id', <?php echo $with; ?>);
+    formData.append('booking_id', <?php echo $booking_id; ?>);
+    formData.append('ajax', '1');
+    formData.append('offer_service_id', serviceId);
+    formData.append('offer_negotiable', isNegotiable ? '1' : '0');
+    formData.append('message_type', 'service_offer');
+    
+    fetch(window.location.href, {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            const messagesArea = document.getElementById('messagesArea');
+            const group = document.createElement('div');
+            group.className = 'message-group';
+            
+            const offerInfo = data.message?.offer_info || {};
+            const serviceName = offerInfo.service_name || 'Service Offer';
+            const negotiableTag = offerInfo.negotiable ? '<span style="background: rgba(255,255,255,0.2); padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.7rem; margin-top: 0.5rem; display: inline-block;">NEGOTIABLE</span>' : '';
+            const minPrice = offerInfo.min_price ? parseFloat(offerInfo.min_price).toFixed(0) : parseFloat(offerInfo.price).toFixed(0);
+            const maxPrice = offerInfo.max_price ? parseFloat(offerInfo.max_price).toFixed(0) : parseFloat(offerInfo.price).toFixed(0);
+            const priceText = minPrice === maxPrice ? `RWF ${minPrice}` : `RWF ${minPrice} - ${maxPrice}`;
+            
+            group.innerHTML = `
+                <div class="message sent">
+                    <div class="message-bubble" style="padding: 0.875rem;">
+                        <div style="font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-gift"></i> ${serviceName}
+                        </div>
+                        ${offerInfo.description ? `<div style="font-size: 0.85rem; opacity: 0.95; margin-bottom: 0.5rem;">${offerInfo.description}</div>` : ''}
+                        <div style="font-weight: 600; font-size: 0.95rem; color: rgba(255,255,255,0.95);">Base Price: ${priceText}</div>
+                        ${negotiableTag}
+                        <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; justify-content: space-between;">
+                            <button onclick="negotiateOfferPrice(this, '${serviceId}');" style="flex: 1; padding: 0.5rem; background: rgba(255,255,255,0.2); border: none; color: white; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.85rem;">Make Offer</button>
+                            <button onclick="acceptOfferDirect(this, '${serviceId}');" style="flex: 1; padding: 0.5rem; background: rgba(255,255,255,0.3); border: none; color: white; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.85rem;">Accept</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="message-time">${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+            `;
+            messagesArea.appendChild(group);
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+        }
+    })
+    .catch(console.error);
+}
+
+function sendServiceMessage(serviceId) {
+    const formData = new FormData();
+    formData.append('receiver_id', <?php echo $with; ?>);
+    formData.append('booking_id', <?php echo $booking_id; ?>);
+    formData.append('ajax', '1');
+    formData.append('service_id', serviceId);
+    formData.append('message_type', 'service');
+    
+    fetch(window.location.href, {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            const messagesArea = document.getElementById('messagesArea');
+            const group = document.createElement('div');
+            group.className = 'message-group';
+            
+            const serviceInfo = data.message?.service_info || {};
+            const serviceName = serviceInfo.service_name || 'Service';
+            
+            group.innerHTML = `
+                <div class="message sent">
+                    <div class="message-bubble" style="padding: 0.875rem;">
+                        <div style="font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fas fa-briefcase"></i> ${serviceName}
+                        </div>
+                        ${serviceInfo.description ? `<div style="font-size: 0.85rem; opacity: 0.95; margin-bottom: 0.5rem; line-height: 1.4;">${serviceInfo.description}</div>` : ''}
+                        ${serviceInfo.price ? `<div style="font-weight: 600; font-size: 0.95rem; color: rgba(255,255,255,0.95); margin-bottom: 0.75rem;">Starting Price: RWF ${parseFloat(serviceInfo.price).toFixed(0)}</div>` : ''}
+                        <button onclick="bookService(this, '${serviceId}', '${serviceName}');" style="width: 100%; padding: 0.65rem; background: rgba(255,255,255,0.25); border: none; color: white; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.85rem; transition: all 0.2s ease;">Book This Service</button>
+                    </div>
+                </div>
+                <div class="message-time">${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+            `;
+            messagesArea.appendChild(group);
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+        }
+    })
+    .catch(console.error);
+}
+
+// Helper functions for booking and negotiation
+function bookService(btn, serviceId, serviceName) {
+    const clientId = <?php echo $with; ?>;
+    window.location.href = `../client/booking.php?provider_id=${clientId}&service_id=${serviceId}`;
+}
+
+function negotiateOfferPrice(btn, serviceId) {
+    // Open negotiation dialog
+    const clientId = <?php echo $with; ?>;
+    const priceInput = prompt('Enter your counter-offer price (RWF):', '');
+    if (priceInput && !isNaN(parseFloat(priceInput)) && parseFloat(priceInput) > 0) {
+        const formData = new FormData();
+        formData.append('action', 'create_offer');
+        formData.append('service_id', serviceId);
+        formData.append('offered_price', parseFloat(priceInput));
+        formData.append('notes', 'Counter-offer from messaging');
+        
+        fetch('../api/service_offers.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                const toast = document.getElementById('chatActionToast');
+                if (toast) {
+                    toast.textContent = 'Counter-offer sent!';
+                    toast.className = 'chat-action-toast success';
+                    toast.style.opacity = '1';
+                    setTimeout(() => { toast.style.opacity = '0'; }, 3000);
+                }
+            }
+        })
+        .catch(console.error);
+    }
+}
+
+function acceptOfferDirect(btn, serviceId) {
+    const clientId = <?php echo $with; ?>;
+    window.location.href = `../client/booking.php?provider_id=${clientId}&service_id=${serviceId}`;
+}
 </script>
 <script>
     window.chatContext = {
@@ -1510,5 +2103,6 @@ if (pollUser) {
     };
 </script>
 <script src="../assets/js/chat-dropdown.js"></script>
+    </div> <!-- .main-content -->
 </body>
 </html>
