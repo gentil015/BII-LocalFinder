@@ -90,6 +90,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sent_sms_count = 0;
             $failed_count = 0;
             
+            $notificationEngine = new NotificationEngine();
+
             foreach ($users as $user) {
                 $log_data = [
                     'user_id' => $user['id'],
@@ -98,33 +100,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'subject' => $subject,
                     'message' => $message,
                     'target_audience' => $target_audience,
-                    'is_emergency' => $is_emergency
+                    'is_emergency' => $is_emergency,
+                    'sent_email' => 0,
+                    'sent_sms' => 0
                 ];
                 
                 try {
-                    // Send email notification if enabled
-                    if ($send_email && !empty($user['email']) && $email_enabled) {
-                        if (Mailer::sendAnnouncement($user['email'], $user['full_name'], $subject, $message)) {
-                            $sent_email_count++;
-                            $log_data['sent_email'] = 1;
-                        } else {
-                            $failed_count++;
-                        }
-                    }
-                    
-                    // Send SMS notification if enabled (placeholder for SMS integration)
-                    if ($send_sms && !empty($user['phone']) && $sms_enabled) {
-                        // SMS integration would go here
+                    $sendOptions = [
+                        'force_sms' => (bool) $send_sms,
+                        'force_email' => (bool) $send_email
+                    ];
+
+                    $result = $notificationEngine->send($user, $subject, $message, $sendOptions);
+
+                    if (!empty($result['sms']['success']) || !empty($result['sms']['demo_mode'])) {
                         $sent_sms_count++;
                         $log_data['sent_sms'] = 1;
                     }
-                    
+
+                    if (!empty($result['email']['success'])) {
+                        $sent_email_count++;
+                        $log_data['sent_email'] = 1;
+                    }
+
+                    $log_data['status'] = !empty($result['errors']) ? 'failed' : 'sent';
+                    $sentVia = [];
+                    if (!empty($result['sms']['success']) || !empty($result['sms']['demo_mode'])) {
+                        $sentVia[] = 'sms';
+                    }
+                    if (!empty($result['email']['success'])) {
+                        $sentVia[] = 'email';
+                    }
+                    $sentVia = $sentVia ? implode(',', $sentVia) : 'failed';
+
                     // Log the notification
                     $log_stmt = $db->prepare("
                         INSERT INTO notification_logs 
                         (user_id, user_type, notification_type, subject, message, target_audience, 
-                         sent_email, sent_sms, is_emergency, status, created_at) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent', NOW())
+                         sent_via, status, created_at) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
                     ");
                     $log_stmt->execute([
                         $log_data['user_id'],
@@ -133,9 +147,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $log_data['subject'],
                         $log_data['message'],
                         $log_data['target_audience'],
-                        $log_data['sent_email'] ?? 0,
-                        $log_data['sent_sms'] ?? 0,
-                        $log_data['is_emergency']
+                        $sentVia,
+                        $log_data['status'] ?? 'sent'
                     ]);
                     
                 } catch (Exception $e) {
@@ -208,39 +221,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $message = "You have received a new booking request. Please check your dashboard for details.";
                         break;
                 }
-                
-                $sent = false;
-                
-                // Send email
-                if ($send_email && $email_enabled) {
-                    $sent = Mailer::sendAnnouncement($provider['email'], $provider['full_name'], $subject, $message);
-                }
-                
-                // Send SMS (placeholder)
-                if ($send_sms && $sms_enabled) {
-                    // SMS integration would go here
-                    $sent = true;
-                }
-                
-                if ($sent) {
+
+                $notificationEngine = new NotificationEngine();
+                $sendOptions = [
+                    'force_sms' => (bool) $send_sms,
+                    'force_email' => (bool) $send_email,
+                ];
+
+                $result = $notificationEngine->send($provider, $subject, $message, $sendOptions);
+                $sentEmail = !empty($result['email']['success']);
+                $sentSms = !empty($result['sms']['success']) || !empty($result['sms']['demo_mode']);
+
+                if ($sentEmail || $sentSms) {
+                    $sentVia = [];
+                    if ($sentEmail) {
+                        $sentVia[] = 'email';
+                    }
+                    if ($sentSms) {
+                        $sentVia[] = 'sms';
+                    }
+                    $sentVia = $sentVia ? implode(',', $sentVia) : 'failed';
+
                     // Log the notification
-                    $log_stmt = $db->prepare("
-                        INSERT INTO notification_logs 
-                        (user_id, user_type, notification_type, subject, message, target_audience, 
-                         sent_email, sent_sms, status, created_at) 
-                        VALUES (?, ?, ?, ?, ?, 'individual', ?, ?, 'sent', NOW())
-                    ");
+                    $log_stmt = $db->prepare("\n                        INSERT INTO notification_logs \n                        (user_id, user_type, notification_type, subject, message, target_audience, \n                         sent_via, status, created_at) \n                        VALUES (?, ?, ?, ?, ?, 'individual', ?, 'sent', NOW())\n                    ");
                     $log_stmt->execute([
                         $provider['id'],
                         $provider['user_type'],
                         $notification_type,
                         $subject,
                         $message,
-                        $send_email ? 1 : 0,
-                        $send_sms ? 1 : 0
+                        $sentVia
                     ]);
-                    
+
                     $success = "Provider notification sent successfully";
+                } else {
+                    $errors[] = 'Provider notification failed (email/sms)';
                 }
             }
         } catch (Exception $e) {
@@ -292,39 +307,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $message = "Your service has been completed. Please rate your experience.";
                         break;
                 }
-                
-                $sent = false;
-                
-                // Send email
-                if ($send_email && $email_enabled) {
-                    $sent = Mailer::sendAnnouncement($client['email'], $client['full_name'], $subject, $message);
-                }
-                
-                // Send SMS (placeholder)
-                if ($send_sms && $sms_enabled) {
-                    // SMS integration would go here
-                    $sent = true;
-                }
-                
-                if ($sent) {
+
+                $notificationEngine = new NotificationEngine();
+                $sendOptions = [
+                    'force_sms' => (bool) $send_sms,
+                    'force_email' => (bool) $send_email,
+                ];
+
+                $result = $notificationEngine->send($client, $subject, $message, $sendOptions);
+                $sentEmail = !empty($result['email']['success']);
+                $sentSms = !empty($result['sms']['success']) || !empty($result['sms']['demo_mode']);
+
+                if ($sentEmail || $sentSms) {
+                    $sentVia = [];
+                    if ($sentEmail) {
+                        $sentVia[] = 'email';
+                    }
+                    if ($sentSms) {
+                        $sentVia[] = 'sms';
+                    }
+                    $sentVia = $sentVia ? implode(',', $sentVia) : 'failed';
+
                     // Log the notification
-                    $log_stmt = $db->prepare("
-                        INSERT INTO notification_logs 
-                        (user_id, user_type, notification_type, subject, message, target_audience, 
-                         sent_email, sent_sms, status, created_at) 
-                        VALUES (?, ?, ?, ?, ?, 'individual', ?, ?, 'sent', NOW())
-                    ");
+                    $log_stmt = $db->prepare("\n                        INSERT INTO notification_logs \n                        (user_id, user_type, notification_type, subject, message, target_audience, \n                         sent_via, status, created_at) \n                        VALUES (?, ?, ?, ?, ?, 'individual', ?, 'sent', NOW())\n                    ");
                     $log_stmt->execute([
                         $client['id'],
                         $client['user_type'],
                         $notification_type,
                         $subject,
                         $message,
-                        $send_email ? 1 : 0,
-                        $send_sms ? 1 : 0
+                        $sentVia
                     ]);
-                    
+
                     $success = "Client notification sent successfully";
+                } else {
+                    $errors[] = 'Client notification failed (email/sms)';
                 }
             }
         } catch (Exception $e) {
@@ -396,38 +413,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $users = $stmt->fetchAll();
             
             $sent_count = 0;
+            $notificationEngine = new NotificationEngine();
+
             foreach ($users as $user) {
-                $sent = false;
-                
-                if ($send_email && $email_enabled) {
-                    if (Mailer::sendAnnouncement($user['email'], $user['full_name'], $subject, $message)) {
-                        $sent = true;
+                $sendOptions = [
+                    'force_sms' => (bool) $send_sms,
+                    'force_email' => (bool) $send_email,
+                ];
+
+                $result = $notificationEngine->send($user, $subject, $message, $sendOptions);
+                $sentEmail = !empty($result['email']['success']);
+                $sentSms = !empty($result['sms']['success']) || !empty($result['sms']['demo_mode']);
+
+                if ($sentEmail || $sentSms) {
+                    $sentVia = [];
+                    if ($sentEmail) {
+                        $sentVia[] = 'email';
                     }
-                }
-                
-                if ($send_sms && $sms_enabled && !empty($user['phone'])) {
-                    // SMS integration would go here
-                    $sent = true;
-                }
-                
-                if ($sent) {
-                    $sent_count++;
-                    
-                    // Log the broadcast
-                    $log_stmt = $db->prepare("
-                        INSERT INTO notification_logs 
-                        (user_id, user_type, notification_type, subject, message, target_audience, 
-                         sent_email, sent_sms, status, created_at) 
-                        VALUES (?, ?, 'broadcast', ?, ?, 'campaign', ?, ?, 'sent', NOW())
-                    ");
+                    if ($sentSms) {
+                        $sentVia[] = 'sms';
+                    }
+                    $sentVia = $sentVia ? implode(',', $sentVia) : 'failed';
+
+                    // Log the notification
+                    $log_stmt = $db->prepare("\n                        INSERT INTO notification_logs \n                        (user_id, user_type, notification_type, subject, message, target_audience, \n                         sent_via, status, created_at) \n                        VALUES (?, ?, ?, ?, ?, 'broadcast', ?, 'sent', NOW())\n                    ");
                     $log_stmt->execute([
                         $user['id'],
                         $user['user_type'],
+                        'broadcast',
                         $subject,
                         $message,
-                        $send_email ? 1 : 0,
-                        $send_sms ? 1 : 0
+                        $sentVia
                     ]);
+
+                    $sent_count++;
                 }
             }
             
@@ -447,9 +466,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'smtp_host' => sanitize($_POST['smtp_host']),
                 'smtp_port' => intval($_POST['smtp_port']),
                 'smtp_username' => sanitize($_POST['smtp_username']),
+                'smtp_password' => sanitize($_POST['smtp_password']),
                 'smtp_encryption' => sanitize($_POST['smtp_encryption']),
                 'sms_provider' => sanitize($_POST['sms_provider']),
                 'sms_api_key' => sanitize($_POST['sms_api_key']),
+                'sms_api_url' => sanitize($_POST['sms_api_url']),
                 'default_notification_email' => sanitize($_POST['default_notification_email']),
                 'auto_send_welcome_emails' => isset($_POST['auto_send_welcome_emails']) ? 1 : 0,
                 'notify_admin_new_registrations' => isset($_POST['notify_admin_new_registrations']) ? 1 : 0
@@ -1876,6 +1897,11 @@ $notify_admin = getNotificationSetting($db, 'notify_admin_new_registrations', '1
                             </div>
                             
                             <div class="form-group">
+                                <label>SMTP Password</label>
+                                <input type="password" name="smtp_password" class="form-control" value="<?php echo htmlspecialchars(getNotificationSetting($db, 'smtp_password', '')); ?>" placeholder="Enter SMTP password">
+                            </div>
+
+                            <div class="form-group">
                                 <label>SMTP Encryption</label>
                                 <select name="smtp_encryption" class="form-select" required>
                                     <option value="tls" <?php echo $smtp_encryption === 'tls' ? 'selected' : ''; ?>>TLS</option>
@@ -1904,6 +1930,11 @@ $notify_admin = getNotificationSetting($db, 'notify_admin_new_registrations', '1
                             <div class="form-group">
                                 <label>SMS API Key</label>
                                 <input type="password" name="sms_api_key" class="form-control" value="<?php echo htmlspecialchars($sms_api_key); ?>" placeholder="Enter SMS API key">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>SMS API URL</label>
+                                <input type="text" name="sms_api_url" class="form-control" value="<?php echo htmlspecialchars(getNotificationSetting($db, 'sms_api_url', '')); ?>" placeholder="https://api.provider.com/v1/messages">
                             </div>
                         </div>
                         

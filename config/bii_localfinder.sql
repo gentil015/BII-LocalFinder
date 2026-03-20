@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Mar 01, 2026 at 04:41 PM
+-- Generation Time: Mar 20, 2026 at 08:15 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -70,6 +70,19 @@ CREATE TABLE `blocked_ips` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `blocked_users`
+--
+
+CREATE TABLE `blocked_users` (
+  `id` int(11) NOT NULL,
+  `blocker_id` int(11) NOT NULL,
+  `blocked_id` int(11) NOT NULL,
+  `created_at` datetime DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `bookings`
 --
 
@@ -122,7 +135,10 @@ INSERT INTO `bookings` (`id`, `client_id`, `provider_id`, `location`, `service_i
 (31, 32, 12, NULL, 48, 'Price negotiation offer', NULL, 'pending', '2025-12-27', NULL, '', '2025-12-27 08:46:25', '2025-12-27 08:46:25', NULL, NULL, 0),
 (32, 32, 12, NULL, 48, 'for me I live nearest of airport', NULL, 'pending', '2025-12-27', NULL, '', '2025-12-27 15:59:26', '2025-12-27 15:59:26', NULL, NULL, 0),
 (33, 32, 12, NULL, 48, 'Price negotiation offer', 40000.00, 'completed', '2026-01-15', NULL, 'completed', '2026-01-15 20:36:50', '2026-01-15 20:41:04', NULL, '2026-01-15 12:39:32', 0),
-(34, 32, 12, NULL, 47, 'I need driver who will drive in all week travel.', NULL, 'pending', '2026-03-17', '10:00:00', 'pending', '2026-02-28 17:54:54', '2026-02-28 17:54:54', NULL, NULL, 0);
+(34, 32, 12, NULL, 47, 'I need driver who will drive in all week travel.', NULL, 'pending', '2026-03-17', '10:00:00', 'pending', '2026-02-28 17:54:54', '2026-02-28 17:54:54', NULL, NULL, 0),
+(35, 32, 12, '', 47, 'I need the some one who can drive in my weddings', NULL, 'pending', '2026-03-19', '09:00:00', 'confirmed', '2026-03-09 20:53:27', '2026-03-09 20:57:25', NULL, NULL, 0),
+(36, 32, 12, '', 47, 'Come early', NULL, 'pending', '2026-03-27', '14:00:00', 'pending', '2026-03-09 21:27:06', '2026-03-09 21:27:06', NULL, NULL, 0),
+(37, 32, 12, '', 48, ';hluh/.hkl/jiof;shvjsf;jbhvsdfjlbvl;shvbsjl/sjbhvsl/gvbaql/', NULL, 'pending', '2026-03-21', '14:00:00', 'cancelled', '2026-03-10 20:41:06', '2026-03-12 18:52:45', NULL, NULL, 0);
 
 -- --------------------------------------------------------
 
@@ -178,17 +194,17 @@ CREATE TABLE `categories` (
 --
 
 INSERT INTO `categories` (`id`, `name`, `keywords`, `icon`, `description`, `is_active`, `is_premium`, `monthly_fee`, `is_ai_enabled`, `ai_keywords`, `payment_types`, `default_payment_type`) VALUES
-(1, 'Electrician', 'electricity,electrical,wiring,lights,lighting,power,circuit,breaker,outlet,switch,socket', 'fa-bolt', 'Electrical installation and repairs', 1, 0, 0.00, 1, 'electrician, electricity, electric, power, wiring, wire, circuit, socket, outlet, switch, fuse, breaker, distribution board, db box, meter, transformer, voltage, current, overload, short circuit, tripping, light, lighting, bulb, lamp, chandelier, install light, repair light, electrical installation, electrical repair, rewiring, connect, disconnect, sparks, shock, no power, power cut, blackout, burnt smell, loose connection, extension, electrical fault, electrical maintenance', NULL, 'per_service'),
-(2, 'Plumber', 'plumbing,pipe,leak,water,tap,faucet,toilet,drain,shower,sink,bathroom,kitchen', 'fa-wrench', 'Plumbing services and installations', 1, 0, 0.00, 1, 'plumber, plumbing, pipe, pipes, water pipe, leakage, leak, leaking, burst pipe, tap, faucet, sink, toilet, WC, shower, bathtub, drainage, drain, blocked drain, clogged, sewage, sewer, septic, flushing problem, water tank, tank installation, water heater, geyser, boiler, low pressure, no water, plumbing repair, pipe installation, fix tap, fix toilet, bathroom repair, kitchen plumbing, plumber service', NULL, 'per_service'),
+(1, 'Electricians', 'electricity,electrical,wiring,lights,lighting,power,circuit,breaker,outlet,switch,socket', 'fa-bolt', 'Electrical installation and repairs', 1, 0, 0.00, 1, 'electrician, electricity, electric, power, wiring, wire, circuit, socket, outlet, switch, fuse, breaker, distribution board, db box, meter, transformer, voltage, current, overload, short circuit, tripping, light, lighting, bulb, lamp, chandelier, install light, repair light, electrical installation, electrical repair, rewiring, connect, disconnect, sparks, shock, no power, power cut, blackout, burnt smell, loose connection, extension, electrical fault, electrical maintenance', NULL, 'per_service'),
+(2, 'Plumbers', 'plumbing,pipe,leak,water,tap,faucet,toilet,drain,shower,sink,bathroom,kitchen', 'fa-wrench', 'Plumbing services and installations', 1, 0, 0.00, 1, 'plumber, plumbing, pipe, pipes, water pipe, leakage, leak, leaking, burst pipe, tap, faucet, sink, toilet, WC, shower, bathtub, drainage, drain, blocked drain, clogged, sewage, sewer, septic, flushing problem, water tank, tank installation, water heater, geyser, boiler, low pressure, no water, plumbing repair, pipe installation, fix tap, fix toilet, bathroom repair, kitchen plumbing, plumber service', NULL, 'per_service'),
 (3, 'Cleaner', 'cleaning,clean,housekeeping,maid,window,windows,mop,floor,dust,vacuum,tidy,organize', 'fa-broom', 'Cleaning services for homes and offices', 1, 0, 0.00, 1, '', NULL, 'per_service'),
-(4, 'Mechanic', 'mechanic,car,vehicle,repair,engine,brake,tire,wheel,oil change,maintenance,garage,automotive', 'fa-car', 'Vehicle repair and maintenance', 1, 0, 0.00, 1, 'mechanic, car repair, auto repair, vehicle repair, garage, engine, motor, transmission, gearbox, clutch, brakes, brake pads, tires, wheels, wheel balance, alignment, suspension, shock absorber, radiator, overheating, oil change, service, maintenance, diagnose, check engine, engine light, battery, dead battery, jumpstart, starter, alternator, fuel pump, exhaust, noise, vibration, leaking, smoke, breakdown, tow, towing, motorcycle repair, moto repair, spark plug, filter, service car, fix car', NULL, 'per_service'),
-(5, 'Carpenter', 'carpenter,wood,woodwork,furniture,table,chair,cabinet,door,window,windows,shelf,repair', 'fa-hammer', 'Woodwork and furniture', 1, 0, 0.00, 1, 'carpenter, wood, timber, lumber, build, repair, fix, install, assemble, carve, cut, sand, polish, measure, design, door, window, cabinet, wardrobe, table, chair, bed, shelf, cupboard, furniture, desk, drawer, frame, ceiling boards, wooden floor, broken, loose, cracked, damaged, rotten wood, not closing, squeaking, unstable, custom furniture, woodwork, furniture installation, furniture assembly, carpentry work, wood repair, joinery', NULL, 'per_service'),
+(4, 'Mechanics', 'mechanic,car,vehicle,repair,engine,brake,tire,wheel,oil change,maintenance,garage,automotive', 'fa-car', 'Vehicle repair and maintenance', 1, 0, 0.00, 1, 'mechanic, car repair, auto repair, vehicle repair, garage, engine, motor, transmission, gearbox, clutch, brakes, brake pads, tires, wheels, wheel balance, alignment, suspension, shock absorber, radiator, overheating, oil change, service, maintenance, diagnose, check engine, engine light, battery, dead battery, jumpstart, starter, alternator, fuel pump, exhaust, noise, vibration, leaking, smoke, breakdown, tow, towing, motorcycle repair, moto repair, spark plug, filter, service car, fix car', NULL, 'per_service'),
+(5, 'Carpenters', 'carpenter,wood,woodwork,furniture,table,chair,cabinet,door,window,windows,shelf,repair', 'fa-hammer', 'Woodwork and furniture', 1, 0, 0.00, 1, 'carpenter, wood, timber, lumber, build, repair, fix, install, assemble, carve, cut, sand, polish, measure, design, door, window, cabinet, wardrobe, table, chair, bed, shelf, cupboard, furniture, desk, drawer, frame, ceiling boards, wooden floor, broken, loose, cracked, damaged, rotten wood, not closing, squeaking, unstable, custom furniture, woodwork, furniture installation, furniture assembly, carpentry work, wood repair, joinery', NULL, 'per_service'),
 (6, 'Painter', 'painter,paint,wall,ceiling,brush,roller,spray,color,decorate,renovate,interior,exterior', 'fa-paint-roller', 'House and office painting', 1, 0, 0.00, 1, 'painter, painting, paint, wall paint, house painting, room painting, exterior painting, interior painting, brush, roller, spray paint, color change, repaint, wall decoration, wallpaper, wall finish, ceiling paint, wall cracks, patching, sanding, primer, undercoat, paint job, paint repair, peeling paint, faded paint, mural, decoration, varnish, coating, paint maintenance', NULL, 'per_service'),
-(7, 'Gardener', 'gardener,garden,landscape,lawn,mow,trim,plant,flower,tree,weed,irrigation,soil', 'fa-leaf', 'Gardening and landscaping', 1, 0, 0.00, 1, 'gardener, gardening, garden, yard, lawn, grass, plants, flowers, trees, shrubs, hedge, trimming, pruning, cutting, mowing, watering, planting, weeding, landscaping, landscape, soil, fertilizer, compost, garden cleaning, lawn care, garden maintenance, tree removal, hedge cutting, bush trimming, irrigation, sprinkler, outdoor maintenance, backyard, front yard', NULL, 'per_service'),
+(7, 'Gardeners', 'gardener,garden,landscape,lawn,mow,trim,plant,flower,tree,weed,irrigation,soil', 'fa-leaf', 'Gardening and landscaping', 1, 0, 0.00, 1, 'gardener, gardening, garden, yard, lawn, grass, plants, flowers, trees, shrubs, hedge, trimming, pruning, cutting, mowing, watering, planting, weeding, landscaping, landscape, soil, fertilizer, compost, garden cleaning, lawn care, garden maintenance, tree removal, hedge cutting, bush trimming, irrigation, sprinkler, outdoor maintenance, backyard, front yard, tree', NULL, 'per_service'),
 (8, 'Construction', 'construction,build,builder,contractor,renovation,remodel,foundation,roof,wall,structure', 'fa-hard-hat', 'Building and construction work', 1, 0, 0.00, 1, 'construction, builder, building, contractor, site, foundation, cement, concrete, bricks, blocks, stones, sand, gravel, steel, iron bars, rebar, roofing, roof, tiles, ceiling, plaster, masonry, wall, floor, paving, renovation, remodeling, extension, structure, trench, excavation, digging, measuring, leveling, plan, blueprint, architect, engineer, project, scaffolding, waterproofing, finishing, drywall, partition, staircase, gutter, drainage, construction repair, construction work, house construction, maintenance', NULL, 'per_service'),
-(9, 'Driver', 'driver,drive,transport,car,vehicle,chauffeur,ride,taxi,delivery,move,relocation', 'fa-id-card', 'Drive people', 1, 0, 0.00, 1, 'driver, drive, transport, car, vehicle, taxi, cab, ride, pickup, drop, dropoff, delivery, chauffeur, personal driver, private driver, motorcycle, moto, boda, truck, bus, van, minibus, transport service, moving, relocation, travel, trip, long distance, short distance, airport pickup, airport drop, carry, take me, take us, lift, drive me, car hire, ride service, transport assistance', NULL, 'per_service'),
-(10, 'Barber', NULL, 'fa-solid fa-scissors', 'Cutting the hair', 1, 0, 0.00, 1, 'hair,cut,shave,shaving', NULL, 'per_service'),
-(13, 'Welder', NULL, 'fa-hammer', '', 1, 0, 0.00, 1, 'welder, welding, metal, steel, iron, gate repair, steel gate, metal gate, window grill, grill repair, metal fabrication, metal fixing, broken metal, weld, welding machine, metal frame, steel door repair, iron sheet welding, metal joint, metal crack, weld broken parts', NULL, 'per_service'),
+(9, 'Drivers', 'driver,drive,transport,car,vehicle,chauffeur,ride,taxi,delivery,move,relocation', 'fa-id-card', 'Drive people', 1, 0, 0.00, 1, 'driver, drive, transport, car, vehicle, taxi, cab, ride, pickup, drop, dropoff, delivery, chauffeur, personal driver, private driver, motorcycle, moto, boda, truck, bus, van, minibus, transport service, moving, relocation, travel, trip, long distance, short distance, airport pickup, airport drop, carry, take me, take us, lift, drive me, car hire, ride service, transport assistance', NULL, 'per_service'),
+(10, 'Barber', NULL, 'fa-solid fa-scissors', 'Cutting the hair', 1, 1, 8000.00, 1, 'hair,cut,shave,shaving', NULL, 'per_service'),
+(13, 'Welders', NULL, 'fa-hammer', '', 1, 0, 0.00, 1, 'welder, welding, metal, steel, iron, gate repair, steel gate, metal gate, window grill, grill repair, metal fabrication, metal fixing, broken metal, weld, welding machine, metal frame, steel door repair, iron sheet welding, metal joint, metal crack, weld broken parts', NULL, 'per_service'),
 (14, 'Mason', NULL, 'fa-hard-hat', 'Skilled masonry and building services including bricklaying, concrete work, wall construction, house extensions, renovations, floor leveling, plastering, tiling, paving, and general structural repairs for homes and commercial buildings.', 1, 0, 0.00, 1, 'mason, builder, masonry, construction, bricklayer, bricks, cement, concrete, blockwork, plaster, wall building, house construction, renovation, remodeling, extension, floor leveling, tiling, paving, foundation, structure, pillar, slab work, staircase construction, demolition, construction repair,mason, builder, construction, cement, concrete, bricks, blocks, plaster, wall, wall building, wall repair, broken wall, house extension, foundation, slab, construction repair, tiling, paving, floor repair, floor installation, cement work, concrete work, brick work, block laying, renovate, fix wall, construction worker, site work', NULL, 'per_service'),
 (15, 'Roofer', NULL, 'fa-house-damage', 'Professional roofing services including installation, repair, waterproofing, replacement of roofing sheets or tiles, fixing leaks, sealing, gutter repair, and full roof maintenance for residential and commercial buildings.', 1, 0, 0.00, 1, 'roofer, roofing, roof repair, roof installation, iron sheets, roof tiles, roofing sheets, leaking roof, rain leak, roof maintenance, ceiling damage, roof replacement, waterproofing, roof inspection, roof fixing, roof renovation, roof sealing, gutter repair, roof structure,roofer, roofing, roof, leak, leaking roof, rain leak, iron sheet roof, tile roof, roof repair, roof installation, broken roof, damaged roof, ceiling leak, waterproofing, roof sealing, gutter repair, roof tiles, roofing sheets, roof replacement, roof maintenance, roof fix', NULL, 'per_service'),
 (16, 'Tailor / Fashion Designer', NULL, 'fa-scissors', 'Professional tailoring and fashion design services including sewing, clothing repairs, adjustments, custom dressmaking, suit creation, uniform production, embroidery, and fabric-based garment design for men, women, and children.', 1, 0, 0.00, 1, 'tailor, tailoring, sewing, stitching, clothes repair, dressmaking, fashion designer, custom clothes, measurements, hemming, fabric, suit making, dress design, clothes adjustment, alterations, uniform making, embroidery, sewing service, garment repair, fashion design service,tailor, sewing, stitch, stitching, fabric, clothes repair, fix clothes, adjust clothes, resize clothes, dressmaking, make dress, suit design, suit making, clothes alteration, repair torn clothes, school uniform, custom clothes, fashion designer, design outfit, sewing machine', NULL, 'per_service');
@@ -401,8 +417,7 @@ INSERT INTO `favorites` (`id`, `client_id`, `provider_id`, `created_at`) VALUES
 (2, 11, 12, '2025-11-27 20:30:55'),
 (3, 11, 6, '2025-11-27 20:40:22'),
 (4, 11, 4, '2025-11-27 20:40:36'),
-(5, 31, 16, '2025-12-11 19:33:20'),
-(8, 32, 12, '2025-12-20 16:03:59');
+(5, 31, 16, '2025-12-11 19:33:20');
 
 -- --------------------------------------------------------
 
@@ -546,6 +561,36 @@ INSERT INTO `location_coordinates` (`id`, `location_name`, `district`, `sector`,
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `login_security`
+--
+
+CREATE TABLE `login_security` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) DEFAULT NULL,
+  `email` varchar(255) DEFAULT NULL,
+  `ip_address` varchar(45) DEFAULT NULL,
+  `user_agent` text DEFAULT NULL,
+  `login_timestamp` datetime DEFAULT current_timestamp(),
+  `status` enum('success','failed','locked') DEFAULT 'failed',
+  `device_fingerprint` varchar(255) DEFAULT NULL,
+  `is_verified` int(11) DEFAULT 0,
+  `verification_code` varchar(10) DEFAULT NULL,
+  `verification_expires` datetime DEFAULT NULL,
+  `created_at` datetime DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `login_security`
+--
+
+INSERT INTO `login_security` (`id`, `user_id`, `email`, `ip_address`, `user_agent`, `login_timestamp`, `status`, `device_fingerprint`, `is_verified`, `verification_code`, `verification_expires`, `created_at`) VALUES
+(1, 32, 'tuyizereaimely@gmail.com', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-02 08:20:00', 'failed', 'ced0ac43311e4bee51f1b5feaa5d8cac721d96cb402e02314d37f387ee796cdc', 0, NULL, NULL, '2026-03-02 08:20:00'),
+(2, 32, 'tuyizereaimely@gmail.com', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-02 08:20:08', 'locked', 'ced0ac43311e4bee51f1b5feaa5d8cac721d96cb402e02314d37f387ee796cdc', 0, '484278', '2026-03-02 08:35:08', '2026-03-02 08:20:08'),
+(3, 32, 'tuyizereaimely@gmail.com', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-02 08:21:06', 'locked', 'ced0ac43311e4bee51f1b5feaa5d8cac721d96cb402e02314d37f387ee796cdc', 0, '777955', '2026-03-02 08:36:06', '2026-03-02 08:21:06');
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `messages`
 --
 
@@ -555,8 +600,40 @@ CREATE TABLE `messages` (
   `receiver_id` int(11) NOT NULL,
   `message` text NOT NULL,
   `is_read` tinyint(1) DEFAULT 0,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `attachment_path` varchar(255) DEFAULT NULL,
+  `message_type` varchar(50) DEFAULT NULL,
+  `file_path` varchar(255) DEFAULT NULL,
+  `file_size` int(11) DEFAULT NULL,
+  `audio_duration` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+--
+-- Dumping data for table `messages`
+--
+
+INSERT INTO `messages` (`id`, `sender_id`, `receiver_id`, `message`, `is_read`, `created_at`, `attachment_path`, `message_type`, `file_path`, `file_size`, `audio_duration`) VALUES
+(5, 11, 15, 'Booking auto-init test message 3', 0, '2026-03-10 20:33:48', NULL, NULL, NULL, NULL, NULL),
+(6, 32, 26, 'New booking created: #BK-2026-00037', 1, '2026-03-10 20:41:12', NULL, NULL, NULL, NULL, NULL),
+(7, 32, 26, 'hi', 1, '2026-03-10 20:41:26', NULL, NULL, NULL, NULL, NULL),
+(8, 32, 26, 'hi', 1, '2026-03-10 20:42:46', NULL, NULL, NULL, NULL, NULL),
+(9, 26, 32, 'how can I assist you', 1, '2026-03-10 20:46:28', NULL, NULL, NULL, NULL, NULL),
+(10, 32, 26, '', 1, '2026-03-12 22:02:53', 'uploads/chat/chat_69b3380c7318d6.96921994.jpg', NULL, NULL, NULL, NULL),
+(11, 32, 26, '', 1, '2026-03-12 22:03:00', 'uploads/chat/chat_69b33813aa5781.52594177.jpg', NULL, NULL, NULL, NULL),
+(12, 32, 26, '', 1, '2026-03-14 18:10:09', NULL, 'audio', 'uploads/chat/voice_69b5a480edff44.10800927.webm', 98828, 6);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `muted_chats`
+--
+
+CREATE TABLE `muted_chats` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `muted_user_id` int(11) NOT NULL,
+  `created_at` datetime DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -918,6 +995,13 @@ CREATE TABLE `provider_service_areas` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `provider_service_areas`
+--
+
+INSERT INTO `provider_service_areas` (`id`, `provider_id`, `area_name`, `latitude`, `longitude`, `radius_km`, `is_primary`, `created_at`) VALUES
+(1, 12, 'Gisenyi', -1.58128100, 29.51751700, 10.00, 1, '2026-03-12 20:32:52');
+
 -- --------------------------------------------------------
 
 --
@@ -962,7 +1046,12 @@ INSERT INTO `provider_settings` (`id`, `provider_id`, `setting_key`, `setting_va
 (30, 12, 'payment_accept_wallet', '0', '2025-12-30 21:02:54'),
 (31, 12, 'payment_pay_after_service', '0', '2025-12-30 21:02:54'),
 (32, 12, 'payment_commission_transparency', '1', '2025-12-30 21:02:54'),
-(33, 12, 'communication_preferred_language', 'en', '2025-12-30 22:14:32');
+(33, 12, 'communication_preferred_language', 'en', '2025-12-30 22:14:32'),
+(60, 12, 'location_travel_fee_per_km', '0', '2026-03-12 20:32:52'),
+(61, 12, 'location_max_travel_distance', '16', '2026-03-12 20:32:52'),
+(62, 12, 'location_map_accuracy', 'approximate', '2026-03-12 20:32:52'),
+(63, 12, 'location_service_radius', '10', '2026-03-12 20:32:52'),
+(64, 12, 'location_multiple_areas', '0', '2026-03-12 20:32:52');
 
 -- --------------------------------------------------------
 
@@ -1223,7 +1312,7 @@ CREATE TABLE `service_providers` (
 INSERT INTO `service_providers` (`id`, `user_id`, `is_verified`, `profession`, `bio`, `experience_years`, `location`, `district`, `sector`, `latitude`, `longitude`, `availability`, `hourly_rate`, `is_active`, `status`, `is_banned`, `is_featured`, `featured_until`, `search_boost`, `verification_level`, `average_rating`, `total_reviews`, `total_jobs`, `created_at`, `updated_at`, `ban_reason`, `is_premium`, `working_days`, `working_hours_start`, `working_hours_end`, `break_start`, `break_end`, `slot_duration`, `buffer_time`, `max_daily_bookings`, `booking_lead_time`, `cancellation_cutoff`, `portfolio_enabled`, `max_portfolio_images`, `website`, `facebook`, `twitter`, `instagram`, `linkedin`, `youtube`, `whatsapp`, `tiktok`, `other_social`, `other_social_label`, `commission_rate`, `subscription_plan`, `can_receive_jobs`) VALUES
 (4, 15, 0, 'Plumber', 'I am proffesional plumber who has the certificate and I was teacher in the Hope international school', 3, 'Rubavu', 'Rusizi', '', NULL, NULL, '', 4000.00, 1, 'active', 0, 0, NULL, 0, 'none', 0.00, 0, 0, '2025-11-24 12:48:56', NULL, NULL, 0, '1,2,3,4,5', '08:00:00', '17:00:00', NULL, NULL, 30, 15, 8, 24, 12, 1, 6, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 10.00, 'free', 1),
 (6, 18, 0, 'Mechanic', 'I am studied Automobile engneering 4 a years in USA, I has the experience and large team we commit together. Professional Mechanic, reliable, professional.', 4, 'Musanze', 'Musanze', 'Ruhengeri', NULL, NULL, 'available', 0.00, 1, 'active', 0, 0, NULL, 0, 'none', 0.00, 0, 0, '2025-11-24 12:48:56', '2025-12-13 09:48:22', NULL, 0, '1,2,3,4,5', '08:00:00', '17:00:00', NULL, NULL, 30, 15, 8, 24, 12, 1, 6, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 10.00, 'free', 1),
-(12, 26, 0, 'Driver', 'I am the proffesional Professional Mason, skilled, licensed. with 4 years of experience, reliable, certified. Professional Driver.', 4, 'Huye', 'Kayonza', 'cyamata', NULL, NULL, 'available', 4500.00, 1, 'active', 0, 1, '2026-01-09 08:23:00', 80, 'premium', 3.50, 2, 5, '2025-11-27 07:28:01', '2026-01-15 12:41:04', NULL, 0, '1,2,3,4,5,6', '08:00:00', '17:00:00', '00:00:00', '00:00:00', 30, 15, 8, 24, 12, 1, 6, '', 'https://web.facebook.com/biicrow', '', 'https://www.instagram.com/gentil015/', '', '', '+250795946213', '', '', '', 10.00, 'free', 1),
+(12, 26, 0, 'Driver', 'I am the proffesional Professional Mason, skilled, licensed. with 4 years of experience, reliable, certified. Professional Driver.', 4, 'Huye', 'Kayonza', 'cyamata', NULL, NULL, 'available', 4500.00, 1, 'active', 0, 1, '2026-01-09 08:23:00', 80, '', 3.50, 2, 5, '2025-11-27 07:28:01', '2026-03-19 23:56:04', NULL, 0, '1,2,3,4,5,6,7', '07:00:00', '14:00:00', '00:00:00', '00:00:00', 30, 15, 3, 24, 12, 1, 6, '', 'https://web.facebook.com/biicrow', '', 'https://www.instagram.com/gentil015/', '', '', '+250795946213', '', '', '', 10.00, 'free', 1),
 (13, 27, 0, 'Carpenter', '', 1, 'Muhanga', 'Muhanga', 'bisizi', NULL, NULL, 'available', 2000.00, 1, 'active', 0, 0, '2025-11-30 13:21:00', 0, 'none', 0.00, 0, 0, '2025-11-27 12:51:23', '2025-11-28 01:44:53', NULL, 0, '1,2,3,4,5', '08:00:00', '17:00:00', NULL, NULL, 30, 15, 8, 24, 12, 1, 6, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 10.00, 'free', 1),
 (14, 28, 0, 'Driver', '', NULL, 'Nyabihu', 'Gicumbi', 'bisigo', NULL, NULL, 'available', NULL, 1, 'active', 0, 0, NULL, 0, 'none', 0.00, 0, 0, '2025-11-27 12:53:01', '2025-11-27 12:55:54', NULL, 0, '1,2,3,4,5', '08:00:00', '17:00:00', NULL, NULL, 30, 15, 8, 24, 12, 1, 6, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 10.00, 'free', 1),
 (15, 29, 0, 'Plumber', '', NULL, 'Bugesera', 'Bugesera', 'hugwe', NULL, NULL, 'available', NULL, 1, 'active', 0, 1, NULL, 0, 'none', 0.00, 0, 0, '2025-11-27 12:54:38', '2025-12-13 10:38:21', NULL, 0, '1,2,3,4,5,6,7', '08:00:00', '17:00:00', '00:00:00', '00:00:00', 30, 15, 8, 24, 12, 1, 6, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 10.00, 'free', 1),
@@ -1272,7 +1361,7 @@ INSERT INTO `system_settings` (`id`, `setting_key`, `setting_value`, `created_at
 (9, 'min_password_length', '8', '2025-11-24 18:24:23', '2025-11-29 12:23:52'),
 (10, 'require_special_chars', '0', '2025-11-24 18:24:23', '2025-11-24 18:24:23'),
 (11, 'contact_phone', '+250 788 123 456', '2025-11-24 18:27:54', '2025-11-24 18:27:54'),
-(12, 'maintenance_mode', '0', '2025-11-24 18:27:54', '2025-11-25 21:12:15'),
+(12, 'maintenance_mode', '0', '2025-11-24 18:27:54', '2026-03-03 19:05:31'),
 (23, 'timezone', 'Africa/Kigali', '2025-11-24 18:37:15', '2025-11-24 18:37:15'),
 (24, 'provider_verification_required', '1', '2025-11-24 18:37:15', '2025-12-18 06:31:10'),
 (25, 'session_timeout', '60', '2025-11-24 18:37:15', '2025-11-24 18:37:15'),
@@ -1284,7 +1373,7 @@ INSERT INTO `system_settings` (`id`, `setting_key`, `setting_value`, `created_at
 (31, 'require_rating_after_completion', '0', '2025-11-24 18:37:15', '2025-11-24 18:37:15'),
 (32, 'max_cancellations_per_month', '3', '2025-11-24 18:37:15', '2025-11-24 18:37:15'),
 (33, 'enable_email_notifications', '1', '2025-11-24 18:37:15', '2025-11-24 18:37:15'),
-(34, 'enable_sms_notifications', '0', '2025-11-24 18:37:15', '2025-11-24 18:37:15'),
+(34, 'enable_sms_notifications', '0', '2025-11-24 18:37:15', '2026-03-20 07:12:00'),
 (35, 'smtp_host', 'smtp.gmail.com', '2025-11-24 18:37:15', '2025-11-24 18:37:15'),
 (36, 'smtp_port', '587', '2025-11-24 18:37:15', '2025-11-24 18:37:15'),
 (37, 'enable_commission', '0', '2025-11-24 18:37:15', '2025-12-17 16:51:51'),
@@ -1310,7 +1399,7 @@ INSERT INTO `system_settings` (`id`, `setting_key`, `setting_value`, `created_at
 (57, 'archive_deleted_accounts', '1', '2025-11-24 18:37:15', '2025-11-24 18:37:15'),
 (58, 'data_retention_days', '30', '2025-11-24 18:37:15', '2025-11-24 18:37:15'),
 (88, 'platform_logo', 'default-logo.png', '2025-11-24 21:12:40', '2025-11-24 21:12:40'),
-(89, 'smtp_username', 'dushimegentil0@gmail.com', '2025-11-24 21:12:40', '2025-11-24 21:12:40'),
+(89, 'smtp_username', 'biilocalfinder@gmail.com', '2025-11-24 21:12:40', '2026-03-20 07:12:00'),
 (90, 'smtp_encryption', 'tls', '2025-11-24 21:12:40', '2025-11-25 21:54:04'),
 (91, 'sms_provider', 'twilio', '2025-11-24 21:12:40', '2025-11-24 21:12:40'),
 (92, 'sms_api_key', '', '2025-11-24 21:12:40', '2025-11-24 21:12:40'),
@@ -1319,7 +1408,8 @@ INSERT INTO `system_settings` (`id`, `setting_key`, `setting_value`, `created_at
 (95, 'payment_webhook', '', '2025-11-24 21:12:40', '2025-11-24 21:12:40'),
 (96, 'sms_webhook', '', '2025-11-24 21:12:40', '2025-11-24 21:12:40'),
 (97, 'email_webhook', '', '2025-11-24 21:12:40', '2025-11-24 21:12:40'),
-(181, 'smtp_password', 'nybv xofk ifll rihf', '2025-11-25 21:46:48', '2025-11-25 21:46:48');
+(181, 'smtp_password', 'mxuc mgaj ykyg nrwv', '2025-11-25 21:46:48', '2026-03-20 07:12:00'),
+(292, 'sms_api_url', '', '2026-03-20 06:56:56', '2026-03-20 06:56:56');
 
 -- --------------------------------------------------------
 
@@ -1401,14 +1491,14 @@ INSERT INTO `users` (`id`, `full_name`, `email`, `phone`, `password`, `user_type
 (11, 'Gitego', 'corneillemugisha@gmail.com', '+250788700443', '$2y$10$OK1Yyz/U54DWQSYO2P761ei6kVVAzc/QKp1KlXJ2VdM8jUx8bq9D6', 'client', 1, 1, 1, 1, 'active', '2025-12-03 11:46:15', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-11-05 13:16:37', '2025-12-03 19:46:15', NULL, NULL, 0, 1, NULL),
 (15, 'Djaziri', 'mggitego@gmail.com', '+25079593232', '$2y$10$8nrTCmHjF25..daDIfb.cePf6Phf9.YorB4E3DZi6VLv6xR0u.eoO', 'provider', 1, 1, 1, 1, 'active', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'profile_15_1762418046.jpg', '2025-11-06 07:44:17', '2025-11-24 18:46:59', NULL, NULL, 0, 1, NULL),
 (18, 'Abigael', 'mwizaabigael@gmail.com', '+250795946213', '$2y$10$NBBUjzA1WnzMGWFO/tsJteLdgaV/4ljhQGAD2Q7B7rdOG6pc7T3Nm', 'provider', 1, 1, 1, 1, 'active', '2025-12-13 09:46:18', NULL, NULL, NULL, NULL, NULL, NULL, 'profile_18_1765648102.png', '2025-11-06 08:17:25', '2025-12-17 17:29:41', '489883', '2025-12-17 18:59:41', 0, 1, NULL),
-(19, 'Administrator', 'admin@localfinder.com', '0712345678', '$2y$10$yC0Gk5aPWJo.JPq2n8Mnle5iQA1y56vrxtSPIu2Tr0U.SmvFiWozu', 'admin', 1, 1, 1, 1, 'active', '2026-02-25 13:16:25', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-11-24 20:58:48', '2026-02-25 21:16:25', NULL, NULL, 0, 1, NULL),
-(26, 'Dushime Gentil', 'dushimegentil0@gmail.com', '+25075946213', '$2y$10$j8vV1PQATcXgfJe7JpgqxeyLzReAGpNPhpSpovJLeSxHH0azlE/r2', 'provider', 1, 0, 0, 1, 'active', '2026-02-28 09:56:39', '2025-12-15 12:05:15', NULL, NULL, NULL, NULL, NULL, 'profile_26_1764790963.jpg', '2025-11-27 15:28:01', '2026-02-28 17:56:39', NULL, NULL, 0, 1, NULL),
+(19, 'Administrator', 'admin@localfinder.com', '0712345678', '$2y$10$yC0Gk5aPWJo.JPq2n8Mnle5iQA1y56vrxtSPIu2Tr0U.SmvFiWozu', 'admin', 1, 1, 1, 1, 'active', '2026-03-19 23:53:19', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-11-24 20:58:48', '2026-03-20 06:53:19', NULL, NULL, 0, 1, NULL),
+(26, 'Dushime Gentil', 'dushimegentil0@gmail.com', '+25075946213', '$2y$10$FeiPY8QgezUyKPFClesEe.Q3290JvNWaIvw85HJsVpsulrer7khw6', 'provider', 1, 0, 0, 1, 'active', '2026-03-19 23:28:05', '2025-12-15 12:05:15', NULL, NULL, NULL, NULL, NULL, 'profile_26_1764790963.jpg', '2025-11-27 15:28:01', '2026-03-20 06:28:05', NULL, NULL, 0, 1, NULL),
 (27, 'Ngabo Aime', 'ngaboaime@gmail.com', '0795930482', '$2y$10$VONKiH6iHMhgXBeweXGJHeFxSLySEXQmb11y9DpKzUDEjXVBdJPKe', 'provider', 1, 0, 0, 1, 'active', '2025-11-28 01:42:45', NULL, NULL, NULL, NULL, NULL, NULL, 'profile_27_1764277379.jpg', '2025-11-27 20:51:23', '2025-11-28 09:44:53', '726497', '2025-11-27 22:01:23', 0, 1, NULL),
 (28, 'Kevin Mugisha', 'mugishakevin@gmail.com', '+2507948927349', '$2y$10$bAKfPqcZvcM7Emu1bsRWk.blYvvysRjEr9F9l91XSjogXnqAAdED2', 'provider', 1, 0, 0, 1, 'active', '2025-11-27 13:47:24', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-11-27 20:53:01', '2025-11-27 21:47:24', '984236', '2025-11-27 22:03:01', 0, 1, NULL),
 (29, 'Adrien migabo', 'adrienmigabo@gmail.com', '0783937989', '$2y$10$pUikfrD3cFMUw9EnKirTjuh/BwqOIAkb1H60OgGtLi7Zq8dJZGmh6', 'provider', 1, 0, 0, 1, 'active', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-11-27 20:54:38', '2025-11-27 20:55:49', '933410', '2025-11-27 22:04:38', 0, 1, NULL),
 (30, 'Kevin mugisha', 'kevinmugisha354@gmail.com', '+250795946213', '$2y$10$bES98RTdKieFyNNMRrcqwegwg3/B31YRg/swjsuVBx57MLEui7/ou', 'provider', 1, 0, 0, 1, 'active', '2025-12-17 23:59:58', NULL, NULL, NULL, NULL, NULL, NULL, 'profile_30_1764621887.jpg', '2025-11-29 12:26:23', '2025-12-18 07:59:58', NULL, NULL, 0, 1, NULL),
 (31, 'David Gakuba', 'technogystore@gmail.com', '+250795946213', '$2y$10$hd7az0NcUCqYISUe.9SKvuzVHH8WkLctJTbxQndS/DGr.aeiBCN66', 'client', 1, 0, 0, 1, 'active', '2025-12-17 23:44:39', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-12-01 17:57:23', '2025-12-18 07:44:39', NULL, NULL, 0, 1, NULL),
-(32, 'Mukundwa Aime', 'tuyizereaimely@gmail.com', '+250795946213', '$2y$10$8bK7Xp71icAO5YjNxSR/XeKb5tlHjnbIRT2uWC2Dv3VuMwj/RGoQO', 'client', 1, 0, 0, 1, 'active', '2026-02-28 09:13:46', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-12-17 17:22:25', '2026-02-28 17:13:46', NULL, NULL, 0, 1, NULL),
+(32, 'Mukundwa Aime', 'tuyizereaimely@gmail.com', '+250795946213', '$2y$10$8bK7Xp71icAO5YjNxSR/XeKb5tlHjnbIRT2uWC2Dv3VuMwj/RGoQO', 'client', 1, 0, 0, 1, 'active', '2026-03-19 12:32:26', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-12-17 17:22:25', '2026-03-19 19:32:26', NULL, NULL, 0, 1, NULL),
 (33, 'ELie', 'biitechnology0@gmail.com', '+250795946213', '$2y$10$2JXLkcGSiQBTYvu8hU7CMepoP3wDzFMDqsM1tanSsfgojK54eAPVm', 'client', 0, 0, 0, 1, 'active', '2025-12-18 00:36:01', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-12-18 08:23:26', '2025-12-18 08:46:53', NULL, NULL, 0, 1, NULL);
 
 -- --------------------------------------------------------
@@ -1599,7 +1689,56 @@ INSERT INTO `user_logout_logs` (`id`, `user_id`, `user_type`, `logout_time`, `se
 (129, 32, 'unknown', '2026-02-28 08:47:18', 1692, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-02-28 16:47:18'),
 (130, 26, 'unknown', '2026-02-28 09:12:58', 1527, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-02-28 17:12:58'),
 (131, 26, 'unknown', '2026-02-28 09:13:17', 5, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-02-28 17:13:17'),
-(132, 32, 'unknown', '2026-02-28 09:56:21', 2555, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-02-28 17:56:21');
+(132, 32, 'unknown', '2026-02-28 09:56:21', 2555, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-02-28 17:56:21'),
+(133, 26, 'unknown', '2026-03-01 11:38:56', 2469, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-01 19:38:56'),
+(134, 26, 'unknown', '2026-03-02 07:57:47', 909, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-02 15:57:47'),
+(135, 32, 'unknown', '2026-03-02 11:09:13', 1400, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-02 19:09:13'),
+(136, 26, 'unknown', '2026-03-02 11:52:49', 2603, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-02 19:52:49'),
+(137, 26, 'unknown', '2026-03-02 11:52:49', 2603, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-02 19:52:49'),
+(138, 26, 'unknown', '2026-03-03 10:31:42', 544, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-03 18:31:42'),
+(139, 19, 'unknown', '2026-03-03 10:35:27', 182, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-03 18:35:27'),
+(140, 32, 'unknown', '2026-03-03 10:58:52', 1371, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-03 18:58:52'),
+(141, 32, 'unknown', '2026-03-03 11:03:59', 92, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-03 19:03:59'),
+(142, 19, 'unknown', '2026-03-03 11:05:41', 45, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-03 19:05:41'),
+(143, 32, 'unknown', '2026-03-03 11:08:02', 127, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-03 19:08:02'),
+(144, 32, 'unknown', '2026-03-03 11:32:18', 886, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-03 19:32:18'),
+(145, 26, 'unknown', '2026-03-03 11:33:14', 18, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-03 19:33:14'),
+(146, 32, 'unknown', '2026-03-05 11:09:22', 1705, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-05 19:09:22'),
+(147, 32, 'unknown', '2026-03-05 11:10:29', 17, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-05 19:10:29'),
+(148, 32, 'unknown', '2026-03-05 11:14:51', 118, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-05 19:14:51'),
+(149, 32, 'unknown', '2026-03-05 11:22:26', 43, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-05 19:22:26'),
+(150, 32, 'unknown', '2026-03-05 12:12:47', 2951, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-05 20:12:47'),
+(151, 19, 'unknown', '2026-03-05 12:16:00', 173, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-05 20:16:00'),
+(152, 32, 'unknown', '2026-03-05 12:16:41', 28, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-05 20:16:41'),
+(153, 19, 'unknown', '2026-03-05 12:17:37', 42, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-05 20:17:37'),
+(154, 32, 'unknown', '2026-03-05 12:18:08', 14, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-05 20:18:08'),
+(155, 19, 'unknown', '2026-03-05 12:24:57', 395, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-05 20:24:57'),
+(156, 32, 'unknown', '2026-03-05 12:55:51', 1842, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-05 20:55:51'),
+(157, 26, 'unknown', '2026-03-06 10:41:06', 669, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-06 18:41:06'),
+(158, 32, 'unknown', '2026-03-09 13:56:33', 454, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-09 20:56:33'),
+(159, 26, 'unknown', '2026-03-09 13:57:47', 60, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-09 20:57:47'),
+(160, 32, 'unknown', '2026-03-10 13:45:29', 1307, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-10 20:45:29'),
+(161, 26, 'unknown', '2026-03-10 13:48:21', 151, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-10 20:48:21'),
+(162, 32, 'unknown', '2026-03-10 14:48:15', 3581, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-10 21:48:15'),
+(163, 26, 'unknown', '2026-03-10 14:50:24', 103, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-10 21:50:24'),
+(164, 32, 'unknown', '2026-03-11 12:37:08', 2538, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-11 19:37:08'),
+(165, 26, 'unknown', '2026-03-11 13:03:56', 341, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-11 20:03:56'),
+(166, 26, 'unknown', '2026-03-12 12:11:21', 1216, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-12 19:11:21'),
+(167, 19, 'unknown', '2026-03-12 12:26:08', 869, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-12 19:26:08'),
+(168, 32, 'unknown', '2026-03-12 12:57:42', 1854, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-12 19:57:42'),
+(169, 32, 'unknown', '2026-03-12 13:15:25', 999, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-12 20:15:25'),
+(170, 26, 'unknown', '2026-03-12 13:34:15', 1118, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-12 20:34:15'),
+(171, 26, 'unknown', '2026-03-12 13:36:24', 104, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-12 20:36:24'),
+(172, 32, 'unknown', '2026-03-12 14:07:38', 1848, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-12 21:07:38'),
+(173, 32, 'unknown', '2026-03-12 15:03:09', 3173, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-12 22:03:09'),
+(174, 26, 'unknown', '2026-03-12 15:06:30', 134, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-12 22:06:30'),
+(175, 32, 'unknown', '2026-03-12 15:32:22', 94, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-12 22:32:22'),
+(176, 26, 'unknown', '2026-03-12 15:37:52', 308, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-12 22:37:52'),
+(177, 32, 'unknown', '2026-03-13 11:16:39', 3556, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-13 18:16:39'),
+(178, 32, 'unknown', '2026-03-14 11:10:28', 2126, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36', '2026-03-14 18:10:28'),
+(179, 26, 'unknown', '2026-03-19 12:32:12', 767, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-19 19:32:12'),
+(180, 19, 'unknown', '2026-03-19 23:27:17', 2038, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-20 06:27:17'),
+(181, 26, 'unknown', '2026-03-19 23:51:33', 1408, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-20 06:51:33');
 
 -- --------------------------------------------------------
 
@@ -1676,7 +1815,7 @@ CREATE TABLE `verification_documents` (
 INSERT INTO `verification_documents` (`id`, `provider_id`, `document_type`, `document_path`, `status`, `uploaded_at`, `reviewed_at`, `reviewer_id`, `notes`) VALUES
 (1, 12, 'national_id', 'verification_12_national_id_1765829230.pdf', 'approved', '2025-12-15 20:07:10', '2025-12-16 16:54:20', 19, NULL),
 (2, 12, 'certificate', 'verification_12_certificate_1765829230.pdf', 'pending', '2025-12-15 20:07:10', '2025-12-17 07:04:13', 19, NULL),
-(3, 12, 'selfie', 'selfie_12_1765904601.jpeg', 'pending', '2025-12-16 17:03:21', '2025-12-17 07:04:13', 19, NULL);
+(3, 12, 'selfie', 'selfie_12_1765904601.jpeg', 'approved', '2025-12-16 17:03:21', '2026-03-20 06:56:04', 19, NULL);
 
 --
 -- Indexes for dumped tables
@@ -1708,6 +1847,13 @@ ALTER TABLE `blocked_ips`
   ADD UNIQUE KEY `ip_address` (`ip_address`),
   ADD KEY `blocked_by` (`blocked_by`),
   ADD KEY `idx_blocked_ips_ip` (`ip_address`);
+
+--
+-- Indexes for table `blocked_users`
+--
+ALTER TABLE `blocked_users`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `idx_blocker_blocked` (`blocker_id`,`blocked_id`);
 
 --
 -- Indexes for table `bookings`
@@ -1819,6 +1965,15 @@ ALTER TABLE `location_coordinates`
   ADD KEY `idx_sector` (`sector`);
 
 --
+-- Indexes for table `login_security`
+--
+ALTER TABLE `login_security`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `email` (`email`),
+  ADD KEY `ip_address` (`ip_address`),
+  ADD KEY `user_id` (`user_id`);
+
+--
 -- Indexes for table `messages`
 --
 ALTER TABLE `messages`
@@ -1829,6 +1984,13 @@ ALTER TABLE `messages`
   ADD KEY `idx_messages_receiver_id` (`receiver_id`),
   ADD KEY `idx_messages_created_at` (`created_at`),
   ADD KEY `idx_messages_is_read` (`is_read`);
+
+--
+-- Indexes for table `muted_chats`
+--
+ALTER TABLE `muted_chats`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `idx_user_muted` (`user_id`,`muted_user_id`);
 
 --
 -- Indexes for table `negotiation_history`
@@ -2182,10 +2344,16 @@ ALTER TABLE `blocked_ips`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `blocked_users`
+--
+ALTER TABLE `blocked_users`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `bookings`
 --
 ALTER TABLE `bookings`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=35;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=38;
 
 --
 -- AUTO_INCREMENT for table `booking_notifications`
@@ -2239,7 +2407,7 @@ ALTER TABLE `districts`
 -- AUTO_INCREMENT for table `favorites`
 --
 ALTER TABLE `favorites`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- AUTO_INCREMENT for table `finalized_service_prices`
@@ -2260,10 +2428,22 @@ ALTER TABLE `location_coordinates`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=69;
 
 --
+-- AUTO_INCREMENT for table `login_security`
+--
+ALTER TABLE `login_security`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
 -- AUTO_INCREMENT for table `messages`
 --
 ALTER TABLE `messages`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
+
+--
+-- AUTO_INCREMENT for table `muted_chats`
+--
+ALTER TABLE `muted_chats`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `negotiation_history`
@@ -2275,7 +2455,7 @@ ALTER TABLE `negotiation_history`
 -- AUTO_INCREMENT for table `notifications`
 --
 ALTER TABLE `notifications`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `notification_logs`
@@ -2359,13 +2539,13 @@ ALTER TABLE `provider_services`
 -- AUTO_INCREMENT for table `provider_service_areas`
 --
 ALTER TABLE `provider_service_areas`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `provider_settings`
 --
 ALTER TABLE `provider_settings`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=58;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=65;
 
 --
 -- AUTO_INCREMENT for table `provider_shares`
@@ -2383,7 +2563,7 @@ ALTER TABLE `provider_social_links`
 -- AUTO_INCREMENT for table `provider_time_off`
 --
 ALTER TABLE `provider_time_off`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `provider_views`
@@ -2425,7 +2605,7 @@ ALTER TABLE `service_providers`
 -- AUTO_INCREMENT for table `system_settings`
 --
 ALTER TABLE `system_settings`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=279;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=303;
 
 --
 -- AUTO_INCREMENT for table `toxic_content_logs`
@@ -2455,7 +2635,7 @@ ALTER TABLE `user_activities`
 -- AUTO_INCREMENT for table `user_logout_logs`
 --
 ALTER TABLE `user_logout_logs`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=133;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=182;
 
 --
 -- AUTO_INCREMENT for table `user_sessions`
@@ -2558,6 +2738,12 @@ ALTER TABLE `finalized_service_prices`
 --
 ALTER TABLE `google_calendar_tokens`
   ADD CONSTRAINT `google_calendar_tokens_ibfk_1` FOREIGN KEY (`provider_id`) REFERENCES `service_providers` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `login_security`
+--
+ALTER TABLE `login_security`
+  ADD CONSTRAINT `login_security_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `messages`

@@ -1,0 +1,8 @@
+2026-03-14 19:02:32 - Voice upload request received. POST: {"receiver_id":"26","duration":"5"}, FILES: {"voice":{"name":"voice_1773511352045.webm","full_path":"voice_1773511352045.webm","type":"audio\/webm","tmp_name":"C:\\xampp\\tmp\\php4198.tmp","error":0,"size":77576}}
+2026-03-14 19:08:43 - Voice upload request received. POST: {"receiver_id":"26","duration":"7"}, FILES: {"voice":{"name":"voice_1773511723662.webm","full_path":"voice_1773511723662.webm","type":"audio\/webm","tmp_name":"C:\\xampp\\tmp\\phpED42.tmp","error":0,"size":105590}}
+2026-03-14 19:08:43 - MIME type detected: video/webm
+2026-03-14 19:08:43 - Invalid MIME type: video/webm
+2026-03-14 19:10:08 - Voice upload request received. POST: {"receiver_id":"26","duration":"6"}, FILES: {"voice":{"name":"voice_1773511808956.webm","full_path":"voice_1773511808956.webm","type":"audio\/webm","tmp_name":"C:\\xampp\\tmp\\php3A74.tmp","error":0,"size":98828}}
+2026-03-14 19:10:08 - MIME type detected: video/webm
+2026-03-14 19:10:09 - File saved successfully to C:\xampp\htdocs\Bii_localFinder/uploads/chat/voice_69b5a480edff44.10800927.webm
+2026-03-14 19:10:09 - Returning success response with file_path: uploads/chat/voice_69b5a480edff44.10800927.webm

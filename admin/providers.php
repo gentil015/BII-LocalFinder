@@ -642,6 +642,10 @@ function getWorkingDaysArray($working_days) {
             border-left: 4px solid var(--primary);
             transition: all 0.3s ease;
         }
+
+        .provider-card-clickable {
+            cursor: pointer;
+        }
         
         .provider-card:hover {
             transform: translateY(-2px);
@@ -1291,7 +1295,7 @@ function getWorkingDaysArray($working_days) {
                         $completion_pct = $req->getCompletionPercentage();
                         $is_complete = $req->isComplete();
                     ?>
-                        <div class="provider-card">
+                        <div class="provider-card provider-card-clickable" data-provider-id="<?php echo $provider['id']; ?>">
                             <div class="provider-header">
                                 <div class="provider-info">
                                     <div class="provider-name">
@@ -2162,21 +2166,165 @@ function getWorkingDaysArray($working_days) {
                 });
         }
         
+        function escapeHtml(unsafe) {
+            if (unsafe === null || unsafe === undefined) return '';
+            return String(unsafe)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function formatCurrency(value) {
+            const amount = parseFloat(value) || 0;
+            return 'RWF ' + amount.toLocaleString('en-RW', {maximumFractionDigits: 0});
+        }
+
+        function formatDate(rawDate) {
+            if (!rawDate) return 'N/A';
+            const d = new Date(rawDate);
+            if (isNaN(d)) return rawDate;
+            return d.toLocaleDateString('en-RW', { year: 'numeric', month: 'short', day: 'numeric' });
+        }
+
+        function getBadgeHtml(text, type) {
+            return `<span class="badge ${type}">${escapeHtml(text)}</span>`;
+        }
+
+        function renderProviderDetailsHtml(data) {
+            const p = data.provider;
+            const s = data.stats || {};
+            const b = data.booking || {};
+            const schedule = data.schedule || {};
+            const categories = data.categories || [];
+            const reviews = data.reviews || [];
+            const gallery = data.gallery || [];
+            const complaints = data.complaints || [];
+
+            const rating = parseFloat(p.average_rating || p.average_rating || 0).toFixed(1);
+            const completionRate = p.profile_completion_percent ? `${p.profile_completion_percent}%` : 'N/A';
+
+            const workingDays = (schedule.working_days || '').split(',').filter(Boolean).map(d => {
+                const days = {1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat',7:'Sun'};
+                return days[d] || d;
+            }).join(', ');
+
+            const scheduleHtml = schedule.working_hours_start && schedule.working_hours_end ?
+                `<div class="detail-item"><div class="detail-label">Working Hours</div><div class="detail-value">${escapeHtml(schedule.working_hours_start)} - ${escapeHtml(schedule.working_hours_end)}</div></div>` : '';
+
+            const badgeHtml = [];
+            if (p.is_verified || p.user_verified) badgeHtml.push('<span class="badge verified">Verified</span>');
+            if (p.verification_level) badgeHtml.push(`<span class="badge badge-${p.verification_level}">${escapeHtml(p.verification_level.toUpperCase())}</span>`);
+            if (p.is_featured) badgeHtml.push('<span class="badge badge-featured">Featured</span>');
+            if (p.is_banned) badgeHtml.push('<span class="badge banned">Banned</span>');
+            if (p.is_active) badgeHtml.push('<span class="badge active">Active</span>');
+
+            let html = `
+                <div class="provider-detail-header" style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem;">
+                    <div style="flex-shrink:0;">
+                        <img src="${escapeHtml(p.profile_image || '../uploads/default-avatar.png')}" alt="Profile" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid #0d6efd;" />
+                    </div>
+                    <div style="flex:1;min-width:240px;">
+                        <h4 style="margin:0;">${escapeHtml(p.full_name)}</h4>
+                        <div style="color:#6c757d;">${escapeHtml(p.profession || 'Profession not set')}</div>
+                        <div style="margin-top:0.3rem;">${badgeHtml.join(' ')}</div>
+                    </div>
+                    <div style="text-align:right;min-width:160px;">
+                        <div style="font-size:1.2rem;font-weight:600;">${rating} ⭐</div>
+                        <div style="color:#6c757d;">(${reviews.length} reviews)</div>
+                    </div>
+                </div>
+
+                <div class="details-grid">
+                    <div class="detail-item"><div class="detail-label">Email</div><div class="detail-value">${escapeHtml(p.email)}</div></div>
+                    <div class="detail-item"><div class="detail-label">Phone</div><div class="detail-value">${escapeHtml(p.phone)}</div></div>
+                    <div class="detail-item"><div class="detail-label">Location</div><div class="detail-value">${escapeHtml(p.location || '')}${p.district ? ', ' + escapeHtml(p.district) : ''}${p.sector ? ', ' + escapeHtml(p.sector) : ''}</div></div>
+                    <div class="detail-item"><div class="detail-label">Experience</div><div class="detail-value">${escapeHtml(p.experience_years || 0)} years</div></div>
+                    <div class="detail-item"><div class="detail-label">Hourly Rate</div><div class="detail-value">${formatCurrency(p.hourly_rate)}</div></div>
+                    <div class="detail-item"><div class="detail-label">Commission Rate</div><div class="detail-value">${escapeHtml(p.commission_rate || 0)}%</div></div>
+                    <div class="detail-item"><div class="detail-label">Subscription Plan</div><div class="detail-value">${escapeHtml(p.subscription_plan || 'N/A')}</div></div>
+                    <div class="detail-item"><div class="detail-label">Availability</div><div class="detail-value">${escapeHtml(p.availability || 'Unknown')}</div></div>
+                    <div class="detail-item"><div class="detail-label">Profile Completed</div><div class="detail-value">${completionRate}</div></div>
+                    <div class="detail-item"><div class="detail-label">Member Since</div><div class="detail-value">${formatDate(p.user_created)}</div></div>
+                </div>
+
+                <div class="details-grid" style="margin-top:1rem;">
+                    <div class="detail-item"><div class="detail-label">Completed Jobs</div><div class="detail-value">${escapeHtml(s.completed_jobs || 0)}</div></div>
+                    <div class="detail-item"><div class="detail-label">Pending Jobs</div><div class="detail-value">${escapeHtml(s.pending_jobs || 0)}</div></div>
+                    <div class="detail-item"><div class="detail-label">Upcoming Jobs</div><div class="detail-value">${escapeHtml(b.upcoming || 0)}</div></div>
+                    <div class="detail-item"><div class="detail-label">Cancelled Jobs</div><div class="detail-value">${escapeHtml(b.cancelled || 0)}</div></div>
+                    <div class="detail-item"><div class="detail-label">Total Earnings</div><div class="detail-value">${formatCurrency(s.total_earnings || 0)}</div></div>
+                    <div class="detail-item"><div class="detail-label">Complaints</div><div class="detail-value">${escapeHtml(s.complaints_received || 0)}</div></div>
+                </div>
+
+                <div class="scheduling-details" style="margin-top:1rem;">
+                    <h5>Schedule & Availability</h5>
+                    <div class="row">
+                        <div class="col-md-4"><div class="detail-label">Days</div><div class="detail-value">${workingDays || 'Not set'}</div></div>
+                        <div class="col-md-4"><div class="detail-label">Work Hours</div><div class="detail-value">${escapeHtml(schedule.working_hours_start || 'N/A')} - ${escapeHtml(schedule.working_hours_end || 'N/A')}</div></div>
+                        <div class="col-md-4"><div class="detail-label">Break</div><div class="detail-value">${escapeHtml(schedule.break_start || 'N/A')} - ${escapeHtml(schedule.break_end || 'N/A')}</div></div>
+                    </div>
+                    <div class="row" style="margin-top:0.5rem;">
+                        <div class="col-md-4"><div class="detail-label">Slot Duration</div><div class="detail-value">${escapeHtml(schedule.slot_duration || 0)} min</div></div>
+                        <div class="col-md-4"><div class="detail-label">Buffer Time</div><div class="detail-value">${escapeHtml(schedule.buffer_time || 0)} min</div></div>
+                        <div class="col-md-4"><div class="detail-label">Max Daily</div><div class="detail-value">${escapeHtml(schedule.max_daily_bookings || 0)}</div></div>
+                    </div>
+                </div>
+
+                <div style="margin-top:1rem;">
+                    <h5>Categories and Services</h5>
+                    <p>${categories.length ? categories.map(c => `<span class=\"badge badge-secondary me-1\">${escapeHtml(c.name)}</span>`).join(' ') : 'None'}</p>
+                </div>
+            `;
+
+            if (p.bio) {
+                html += `<div style="margin-top:1rem;"><h5>Bio</h5><p>${escapeHtml(p.bio)}</p></div>`;
+            }
+
+            if (schedule.time_off && schedule.time_off.length) {
+                html += `<div style="margin-top:1rem;"><h5>Time Off</h5><ul>${schedule.time_off.map(item=>`<li>${escapeHtml(item.start_date)} to ${escapeHtml(item.end_date)}: ${escapeHtml(item.reason||'No reason')}</li>`).join('')}</ul></div>`;
+            }
+
+            if (schedule.availability_exceptions && schedule.availability_exceptions.length) {
+                html += `<div style="margin-top:1rem;"><h5>Availability Exceptions</h5><ul>${schedule.availability_exceptions.map(item=>`<li>${escapeHtml(item.date)} - ${escapeHtml(item.is_available==1 ? 'Available' : 'Not Available')} ${escapeHtml(item.start_time||'')} ${escapeHtml(item.end_time||'')} ${escapeHtml(item.notes||'')}</li>`).join('')}</ul></div>`;
+            }
+
+            if (reviews.length) {
+                html += `<div style="margin-top:1rem;"><h5>Recent Reviews</h5>${reviews.map(r=>`<div class=\"detail-item\" style=\"margin-bottom:0.7rem;\"><div class=\"detail-label\">${escapeHtml(r.client_name || 'Anonymous')} - ${escapeHtml(r.rating)} ⭐</div><div>${escapeHtml(r.comment || r.review || '')}</div><small>${formatDate(r.created_at||r.updated_at)}</small></div>`).join('')}</div>`;
+            }
+
+            if (gallery.length) {
+                html += `<div style="margin-top:1rem;"><h5>Gallery</h5><div style="display:flex;gap:8px;flex-wrap:wrap;">${gallery.map(img => `<img src=\"${escapeHtml(img.image_path)}\" alt=\"${escapeHtml(img.title||'Image')}\" style=\"width:120px;height:80px;object-fit:cover;border-radius:6px;\"/>`).join('')}</div></div>`;
+            }
+
+            if (complaints.length) {
+                html += `<div style="margin-top:1rem;"><h5>Complaints</h5><ul>${complaints.map(c=>`<li>${escapeHtml(c.reason||c.description||'No detail')} <strong>by ${escapeHtml(c.reporter_name||'Unknown')}</strong> on ${formatDate(c.created_at||c.createdAt||'')}</li>`).join('')}</ul></div>`;
+            }
+
+            return html;
+        }
+
         function viewProviderDetails(providerId) {
-            // Fetch provider details
-            fetch(`get_provider_data.php?action=details&id=${providerId}`)
-                .then(response => response.text())
-                .then(html => {
-                    document.getElementById('providerDetailsContent').innerHTML = html;
-                    document.getElementById('detailsModal').style.display = 'block';
+            const content = document.getElementById('providerDetailsContent');
+            content.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin"></i> Loading details...</div>';
+            document.getElementById('detailsModal').style.display = 'block';
+
+            fetch(`get_provider_data.php?action=full_profile&id=${providerId}`)
+                .then(response => {
+                    if (!response.ok) throw new Error('Unable to fetch provider profile');
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.error) throw new Error(data.error);
+                    content.innerHTML = renderProviderDetailsHtml(data);
                 })
                 .catch(error => {
                     console.error('Error fetching provider details:', error);
-                    document.getElementById('providerDetailsContent').innerHTML = '<p>Error loading provider details</p>';
-                    document.getElementById('detailsModal').style.display = 'block';
+                    content.innerHTML = `<div class="alert alert-danger">Error loading provider details: ${escapeHtml(error.message)}</div>`;
                 });
         }
-        
+
         function closeModal(modalId) {
             document.getElementById(modalId).style.display = 'none';
         }
@@ -2206,6 +2354,23 @@ function getWorkingDaysArray($working_days) {
                 this.closest('.modal').style.display = 'none';
             };
         });
+
+        // Provider card click behavior (skip inner action buttons)
+        function setupProviderCardClicks() {
+            document.querySelectorAll('.provider-card-clickable').forEach(card => {
+                card.addEventListener('click', event => {
+                    if (event.target.closest('button, a, form, .action-buttons')) {
+                        return;
+                    }
+                    const providerId = card.dataset.providerId;
+                    if (providerId) {
+                        viewProviderDetails(providerId);
+                    }
+                });
+            });
+        }
+
+        setupProviderCardClicks();
     </script>
 </body>
 </html>

@@ -9,7 +9,11 @@ require_once __DIR__ . '/includes/chat.php';
 
 header('Content-Type: application/json');
 
+// Log the request
+file_put_contents(__DIR__ . '/voice_upload.log', date('Y-m-d H:i:s') . ' - Voice upload request received. POST: ' . json_encode($_POST) . ', FILES: ' . json_encode($_FILES) . "\n", FILE_APPEND);
+
 if (!isLoggedIn()) {
+    file_put_contents(__DIR__ . '/voice_upload.log', date('Y-m-d H:i:s') . ' - Not authenticated' . "\n", FILE_APPEND);
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Not authenticated']);
     exit;
@@ -26,6 +30,7 @@ if ($sender_id <= 0 || $receiver_id <= 0) {
 }
 
 if (empty($_FILES['voice']) || $_FILES['voice']['error'] !== UPLOAD_ERR_OK) {
+    file_put_contents(__DIR__ . '/voice_upload.log', date('Y-m-d H:i:s') . ' - No audio file uploaded or error: ' . ($_FILES['voice']['error'] ?? 'no file') . "\n", FILE_APPEND);
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'No audio file uploaded']);
     exit;
@@ -53,14 +58,17 @@ if (!in_array($ext, $allowedExt, true)) {
 $finfo = finfo_open(FILEINFO_MIME_TYPE);
 $mime = finfo_file($finfo, $file['tmp_name']);
 finfo_close($finfo);
+file_put_contents(__DIR__ . '/voice_upload.log', date('Y-m-d H:i:s') . ' - MIME type detected: ' . $mime . "\n", FILE_APPEND);
 $allowedMime = [
     'audio/webm',
+    'video/webm',
     'audio/ogg',
     'audio/mpeg',
     'audio/wav',
     'audio/x-wav',
 ];
 if (!in_array($mime, $allowedMime, true)) {
+    file_put_contents(__DIR__ . '/voice_upload.log', date('Y-m-d H:i:s') . ' - Invalid MIME type: ' . $mime . "\n", FILE_APPEND);
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Invalid audio MIME type']);
     exit;
@@ -75,10 +83,13 @@ $filename = uniqid('voice_', true) . '.' . $ext;
 $target = $uploadDir . $filename;
 
 if (!move_uploaded_file($file['tmp_name'], $target)) {
+    file_put_contents(__DIR__ . '/voice_upload.log', date('Y-m-d H:i:s') . ' - Unable to save file to ' . $target . ', error: ' . error_get_last()['message'] . "\n", FILE_APPEND);
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Unable to save file']);
     exit;
 }
+
+file_put_contents(__DIR__ . '/voice_upload.log', date('Y-m-d H:i:s') . ' - File saved successfully to ' . $target . "\n", FILE_APPEND);
 
 $filePath = 'uploads/chat/' . $filename;
 $fileSize = filesize($target);
@@ -86,12 +97,14 @@ $fileSize = filesize($target);
 $inserted = sendAudioMessage($sender_id, $receiver_id, $filePath, $fileSize, $duration);
 
 if (!$inserted) {
+    file_put_contents(__DIR__ . '/voice_upload.log', date('Y-m-d H:i:s') . ' - Failed to save message to DB' . "\n", FILE_APPEND);
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Failed to save message']);
     exit;
 }
 
 // Return the message data for client-side rendering
+file_put_contents(__DIR__ . '/voice_upload.log', date('Y-m-d H:i:s') . ' - Returning success response with file_path: ' . $filePath . "\n", FILE_APPEND);
 echo json_encode([
     'success' => true,
     'message' => [

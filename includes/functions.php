@@ -5,6 +5,8 @@
 
 // Database connection (if not already in config/database.php)
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/NotificationEngine.php';
+require_once __DIR__ . '/sms.php';
 
 /**
  * Sanitize user input
@@ -667,19 +669,11 @@ function sendEmailNotification($to, $subject, $message) {
     if (!isEmailNotificationsEnabled()) {
         return false;
     }
-    
+
     try {
-        // Implement email sending logic using SMTP settings
-        $smtpHost = getSetting('smtp_host', 'smtp.gmail.com');
-        $smtpPort = getSetting('smtp_port', '587');
-        $smtpUsername = getSetting('smtp_username', 'dushimegentil0@gmail.com');
-        $smtpEncryption = getSetting('smtp_encryption', 'tls');
-        
-        // Placeholder for actual email implementation
-        // You would use PHPMailer or similar here
-        
-        error_log("Email sent to {$to}: {$subject}");
-        return true;
+        $provider = new EmailProvider();
+        $result = $provider->send($to, $subject, $message);
+        return !empty($result['success']);
     } catch (Exception $e) {
         error_log("Error sending email: " . $e->getMessage());
         return false;
@@ -693,20 +687,19 @@ function sendEmailNotification($to, $subject, $message) {
  * @param string $message
  * @return bool
  */
-function sendSMSNotification($phone, $message) {
+function sendSMSNotification($phone, $message, array $options = []) {
     if (!isSMSNotificationsEnabled()) {
         return false;
     }
-    
+
     try {
-        $smsProvider = getSetting('sms_provider', 'twilio');
-        $smsApiKey = getSetting('sms_api_key', '');
-        
-        // Placeholder for actual SMS implementation
-        // You would integrate with Twilio, Africa's Talking, etc.
-        
-        error_log("SMS sent to {$phone}: {$message}");
-        return true;
+        $result = SMSNotifier::send($phone, $message, $options);
+
+        if (!empty($result['sms']['demo_mode']) || !empty($result['sms']['success'])) {
+            return true;
+        }
+
+        return false;
     } catch (Exception $e) {
         error_log("Error sending SMS: " . $e->getMessage());
         return false;

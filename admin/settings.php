@@ -139,9 +139,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'smtp_host' => sanitize($_POST['smtp_host']),
                 'smtp_port' => intval($_POST['smtp_port']),
                 'smtp_username' => sanitize($_POST['smtp_username']),
+                'smtp_password' => sanitize($_POST['smtp_password']),
                 'smtp_encryption' => sanitize($_POST['smtp_encryption']),
                 'sms_provider' => sanitize($_POST['sms_provider']),
-                'sms_api_key' => sanitize($_POST['sms_api_key'])
+                'sms_api_key' => sanitize($_POST['sms_api_key']),
+                'sms_api_url' => sanitize($_POST['sms_api_url'])
             ];
             
             foreach ($notification_settings as $key => $value) {
@@ -1011,6 +1013,13 @@ $system_info = [
                             </div>
                             
                             <div class="col-md-6">
+                                <label class="form-label">SMTP Password</label>
+                                <input type="password" class="form-control" name="smtp_password" value="<?php echo getSetting($db, 'smtp_password', ''); ?>">
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
                                 <label class="form-label">SMTP Encryption</label>
                                 <select class="form-select" name="smtp_encryption">
                                     <option value="tls" <?php echo getSetting($db, 'smtp_encryption') === 'tls' ? 'selected' : ''; ?>>TLS</option>
@@ -1033,6 +1042,12 @@ $system_info = [
                             <div class="col-md-6">
                                 <label class="form-label">SMS API Key</label>
                                 <input type="password" class="form-control" name="sms_api_key" value="<?php echo getSetting($db, 'sms_api_key'); ?>">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label class="form-label">SMS API URL</label>
+                                <input type="text" class="form-control" name="sms_api_url" value="<?php echo getSetting($db, 'sms_api_url', ''); ?>" placeholder="https://api.provider.com/v1/messages">
                             </div>
                         </div>
                         

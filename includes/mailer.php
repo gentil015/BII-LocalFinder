@@ -7,6 +7,7 @@ use PHPMailer\PHPMailer\Exception;
 
 // Ensure PHPMailer is loaded
 require __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/functions.php';
 
 /**
  * Mailer class for BII LocalFinder
@@ -39,11 +40,11 @@ class Mailer
     protected function loadSmtpSettings()
     {
         $this->smtpConfig = [
-            'host' => 'smtp.gmail.com',
-            'port' => 587,
-            'username' => 'biilocalfinder@gmail.com',
-            'password' => 'hwde cjlw qaab hdwv',
-            'encryption' => 'tls'
+            'host' => getSetting('smtp_host', 'smtp.gmail.com'),
+            'port' => intval(getSetting('smtp_port', 587)),
+            'username' => getSetting('smtp_username', ''),
+            'password' => getSetting('smtp_password', ''),
+            'encryption' => getSetting('smtp_encryption', 'tls')
         ];
     }
 

@@ -208,10 +208,11 @@ $messages = [];
 $otherUser = null;
 $bookingTimeline = [];
 if ($with) {
-    $stmt = $db->prepare("SELECT id, full_name FROM users WHERE id = ?");
+    $stmt = $db->prepare("SELECT id, full_name, profile_image FROM users WHERE id = ?");
     $stmt->execute([$with]);
     $otherUser = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($otherUser) {
+        $profileHref = isProvider() ? '../client/profile.php?id=' . $with : '../provider/profile.php?id=' . $with;
         markMessagesRead($with, $me);
         $messages = getConversationMessages($me, $with);
         if ($booking_id) {
@@ -470,6 +471,109 @@ if ($with) {
         .chat-header-actions {
             display: flex;
             gap: 12px;
+            position: relative;
+        }
+
+        .chat-options-dropdown {
+            position: absolute;
+            top: 48px;
+            right: 0;
+            min-width: 210px;
+            background: #fff;
+            border: 1px solid #e5e5e5;
+            border-radius: 10px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+            z-index: 10;
+            display: none;
+            flex-direction: column;
+            padding: 6px 0;
+        }
+
+        .chat-options-dropdown.visible {
+            display: flex;
+        }
+
+        .chat-options-dropdown button {
+            text-align: left;
+            border: none;
+            background: transparent;
+            width: 100%;
+            padding: 10px 14px;
+            font-size: 14px;
+            color: #1a1a1a;
+            cursor: pointer;
+        }
+
+        .chat-options-dropdown button:hover {
+            background: #f6f6f8;
+        }
+
+        .chat-confirm-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.35);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .chat-confirm-modal.show {
+            display: flex;
+        }
+
+        .chat-confirm-card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 420px;
+            width: 100%;
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+        }
+
+        .chat-confirm-card h3 {
+            margin-top: 0;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .chat-confirm-card textarea {
+            width: 100%;
+            min-height: 80px;
+            border: 1px solid #dcdce0;
+            border-radius: 6px;
+            padding: 8px 10px;
+            margin-top: 8px;
+            margin-bottom: 12px;
+            resize: vertical;
+        }
+
+        .chat-confirm-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .chat-action-toast {
+            position: fixed;
+            bottom: 25px;
+            right: 25px;
+            background: #111;
+            color: #fff;
+            padding: 10px 14px;
+            border-radius: 8px;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+            z-index: 110;
+            pointer-events: none;
+        }
+
+        .chat-action-toast.error {
+            background: #be1e2d;
+        }
+
+        .chat-action-toast.success {
+            background: #1e733b;
         }
 
         .header-btn {
@@ -777,16 +881,21 @@ if ($with) {
                 <?php foreach ($convs as $c): ?>
                     <li class="conversation-item <?php if ($with === (int)$c['id']) echo 'active'; ?>" onclick="loadConversation(<?php echo $c['id']; ?>)">
                         <div class="conversation-avatar online">
-                            <?php echo strtoupper(substr($c['full_name'], 0, 1)); ?>
+                            <?php if (!empty($c['profile_image'])): ?>
+                                <?php $convProfile = '../uploads/profiles/' . htmlspecialchars($c['profile_image']); ?>
+                                <img src="<?php echo $convProfile; ?>" alt="<?php echo htmlspecialchars($c['full_name']); ?>" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.onerror=null;this.src='../uploads/<?php echo htmlspecialchars($c['profile_image']); ?>';" />
+                            <?php else: ?>
+                                <?php echo strtoupper(substr($c['full_name'], 0, 1)); ?>
+                            <?php endif; ?>
                         </div>
                         <div class="conversation-info">
                             <div class="conversation-name"><?php echo htmlspecialchars($c['full_name']); ?></div>
                             <div class="conversation-preview">
                                 <?php 
                                     if ($c['unread_count'] > 0) {
-                                        echo '📨 New messages';
+                                        echo 'New messages';
                                     } elseif (!empty($c['last_message_type']) && $c['last_message_type'] === 'audio') {
-                                        echo '🎤 Voice note';
+                                        echo ' Voice note';
                                     } elseif (!empty($c['last_message'])) {
                                         echo htmlspecialchars($c['last_message']);
                                     } else {
@@ -816,15 +925,54 @@ if ($with) {
             <!-- Chat Header -->
             <div class="chat-header">
                 <div class="chat-header-info">
-                    <div class="chat-header-avatar online">
-                        <?php echo strtoupper(substr($otherUser['full_name'], 0, 1)); ?>
+                    <?php if (!isProvider()): ?>
+                        <a href="<?php echo htmlspecialchars($profileHref ?? '../provider/profile.php?id=' . (int)$with); ?>" class="chat-header-avatar-link" title="View profile">
+                    <?php endif; ?>
+
+                    <div class="chat-header-avatar online" style="overflow:hidden;">
+                        <?php if (!empty($otherUser['profile_image'])): ?>
+                            <?php $profilePath = '../uploads/profiles/' . htmlspecialchars($otherUser['profile_image']); ?>
+                            <img src="<?php echo $profilePath; ?>" alt="<?php echo htmlspecialchars($otherUser['full_name']); ?>" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.onerror=null;this.src='../uploads/<?php echo htmlspecialchars($otherUser['profile_image']); ?>';" />
+                        <?php else: ?>
+                            <?php echo strtoupper(substr($otherUser['full_name'], 0, 1)); ?>
+                        <?php endif; ?>
                     </div>
+
+                    <?php if (!isProvider()): ?>
+                        </a>
+                    <?php endif; ?>
+
                     <div>
                         <div class="chat-header-name"><?php echo htmlspecialchars($otherUser['full_name']); ?></div>
                         <div class="chat-header-status">Active now</div>
                     </div>
                 </div>
                 <div class="chat-header-actions">
+                    <button class="header-btn chat-options-btn" id="chatOptionsBtn" title="Chat options"><i class="fas fa-ellipsis-v"></i></button>
+                    <div class="chat-options-dropdown" id="chatOptionsDropdown" aria-hidden="true">
+                        <button id="chatOptViewOffers">View Offers</button>
+                        <button id="chatOptMute">Mute Notifications</button>
+                        <button id="chatOptClear">Clear Chat</button>
+                        <button id="chatOptDelete">Delete Conversation</button>
+                        <button id="chatOptReport">Report User</button>
+                        <button id="chatOptBlock">Block User</button>
+                    </div>
+                </div>
+            </div>
+            <div class="chat-confirm-modal" id="chatConfirmModal" aria-hidden="true">
+                <div class="chat-confirm-card">
+                    <h3 id="chatConfirmTitle">Confirm</h3>
+                    <p id="chatConfirmText">Are you sure?</p>
+                    <div id="chatConfirmInputWrapper" style="display:none;">
+                        <textarea id="chatConfirmReason" placeholder="Report reason"></textarea>
+                    </div>
+                    <div class="chat-confirm-actions">
+                        <button class="btn btn-secondary" id="chatConfirmCancel">Cancel</button>
+                        <button class="btn btn-danger" id="chatConfirmAction">Confirm</button>
+                    </div>
+                </div>
+            </div>
+            <div class="chat-action-toast" id="chatActionToast" role="status" aria-live="polite"></div>
                     <button class="header-btn" title="Call"><i class="fas fa-phone"></i></button>
                     <button class="header-btn" title="Video call"><i class="fas fa-video"></i></button>
                     <button class="header-btn" title="More"><i class="fas fa-ellipsis-v"></i></button>
@@ -1034,8 +1182,12 @@ function sendVoiceMessage(blob, durationSec) {
         method: 'POST',
         body: formData
     })
-    .then(r => r.json())
+    .then(r => {
+        console.log('Voice upload response status:', r.status);
+        return r.json();
+    })
     .then(data => {
+        console.log('Voice upload response data:', data);
         if (data.success && data.message) {
             const messagesArea = document.getElementById('messagesArea');
             const group = document.createElement('div');
@@ -1070,6 +1222,10 @@ function startRecording() {
         alert('Audio recording is not supported by your browser.');
         return;
     }
+    if (!window.MediaRecorder) {
+        alert('MediaRecorder is not supported by your browser.');
+        return;
+    }
 
     navigator.mediaDevices.getUserMedia({ audio: true })
     .then(stream => {
@@ -1092,7 +1248,10 @@ function startRecording() {
             if (audioChunks.length > 0) {
                 const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                 const durationSec = mediaRecorder._recordingDuration || Math.round((Date.now() - recordingStartTime) / 1000);
+                console.log('Audio blob size:', audioBlob.size, 'duration:', durationSec);
                 sendVoiceMessage(audioBlob, durationSec);
+            } else {
+                console.log('No audio chunks recorded');
             }
             setRecordingState(false);
         };
@@ -1262,10 +1421,6 @@ if (messageForm) {
         })
         .catch(console.error);
     });
-            }
-        })
-        .catch(console.error);
-    });
 }
 
 // Polling for new messages every 3 seconds
@@ -1347,5 +1502,13 @@ if (pollUser) {
     }, 3000);
 }
 </script>
+<script>
+    window.chatContext = {
+        withId: <?php echo (int) $with; ?>,
+        bookingId: <?php echo (int) $booking_id; ?>,
+        isProvider: <?php echo isProvider() ? 'true' : 'false'; ?>
+    };
+</script>
+<script src="../assets/js/chat-dropdown.js"></script>
 </body>
 </html>

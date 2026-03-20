@@ -67,6 +67,131 @@ function ensureMessagesAudioColumnsExist(): void
  * @param string $message
  * @return bool True on success
  */
+function ensureChatMetaTablesExist(): void
+{
+    try {
+        $db = Database::getInstance()->getConnection();
+
+        $db->exec("CREATE TABLE IF NOT EXISTS blocked_users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            blocker_id INT NOT NULL,
+            blocked_id INT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY idx_blocker_blocked (blocker_id, blocked_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+        $db->exec("CREATE TABLE IF NOT EXISTS muted_chats (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            muted_user_id INT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY idx_user_muted (user_id, muted_user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+        $db->exec("CREATE TABLE IF NOT EXISTS reports (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            reporter_id INT NOT NULL,
+            reported_user_id INT NOT NULL,
+            reason TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    } catch (Throwable $e) {
+        error_log('ensureChatMetaTablesExist error: ' . $e->getMessage());
+    }
+}
+
+function isUserBlocked(int $userId, int $otherId): bool
+{
+    try {
+        $db = Database::getInstance()->getConnection();
+        $stmt = $db->prepare("SELECT 1 FROM blocked_users WHERE blocker_id = ? AND blocked_id = ? LIMIT 1");
+        $stmt->execute([$userId, $otherId]);
+        return (bool) $stmt->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('isUserBlocked error: ' . $e->getMessage());
+        return false;
+    }
+}
+
+function isChatMuted(int $userId, int $otherId): bool
+{
+    try {
+        $db = Database::getInstance()->getConnection();
+        $stmt = $db->prepare("SELECT 1 FROM muted_chats WHERE user_id = ? AND muted_user_id = ? LIMIT 1");
+        $stmt->execute([$userId, $otherId]);
+        return (bool) $stmt->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('isChatMuted error: ' . $e->getMessage());
+        return false;
+    }
+}
+
+function clearChat(int $userA, int $userB): bool
+{
+    try {
+        $db = Database::getInstance()->getConnection();
+        $stmt = $db->prepare("DELETE FROM messages WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)");
+        return $stmt->execute([$userA, $userB, $userB, $userA]);
+    } catch (Throwable $e) {
+        error_log('clearChat error: ' . $e->getMessage());
+        return false;
+    }
+}
+
+function deleteConversation(int $userA, int $userB): bool
+{
+    return clearChat($userA, $userB);
+}
+
+function blockUser(int $blockerId, int $blockedId): bool
+{
+    if ($blockerId === $blockedId) {
+        return false;
+    }
+
+    try {
+        $db = Database::getInstance()->getConnection();
+        $stmt = $db->prepare("INSERT IGNORE INTO blocked_users (blocker_id, blocked_id) VALUES (?, ?)");
+        return $stmt->execute([$blockerId, $blockedId]);
+    } catch (Throwable $e) {
+        error_log('blockUser error: ' . $e->getMessage());
+        return false;
+    }
+}
+
+function reportUser(int $reporterId, int $reportedId, string $reason): bool
+{
+    if ($reporterId === $reportedId || trim($reason) === '') {
+        return false;
+    }
+
+    try {
+        $db = Database::getInstance()->getConnection();
+        $stmt = $db->prepare("INSERT INTO reports (reporter_id, reported_user_id, reason) VALUES (?, ?, ?)");
+        return $stmt->execute([$reporterId, $reportedId, sanitize($reason)]);
+    } catch (Throwable $e) {
+        error_log('reportUser error: ' . $e->getMessage());
+        return false;
+    }
+}
+
+function toggleMuteChat(int $userId, int $otherId): bool
+{
+    try {
+        $db = Database::getInstance()->getConnection();
+        if (isChatMuted($userId, $otherId)) {
+            $stmt = $db->prepare("DELETE FROM muted_chats WHERE user_id = ? AND muted_user_id = ?");
+            return $stmt->execute([$userId, $otherId]);
+        }
+
+        $stmt = $db->prepare("INSERT IGNORE INTO muted_chats (user_id, muted_user_id) VALUES (?, ?)");
+        return $stmt->execute([$userId, $otherId]);
+    } catch (Throwable $e) {
+        error_log('toggleMuteChat error: ' . $e->getMessage());
+        return false;
+    }
+}
+
 function sendMessage(int $sender_id, int $receiver_id, string $message, string $attachment_path = null, string $attachment_type = null): bool
 {
     if (trim($message) === '' && empty($attachment_path)) {
@@ -75,6 +200,12 @@ function sendMessage(int $sender_id, int $receiver_id, string $message, string $
 
     try {
         $db = Database::getInstance()->getConnection();
+
+        ensureChatMetaTablesExist();
+
+        if (isUserBlocked($receiver_id, $sender_id) || isUserBlocked($sender_id, $receiver_id)) {
+            return false;
+        }
 
         if ($attachment_path !== null || $attachment_type !== null) {
             ensureMessagesAttachmentColumnExists();
@@ -116,10 +247,12 @@ function sendAudioMessage(int $sender_id, int $receiver_id, string $file_path, i
         $db = Database::getInstance()->getConnection();
         ensureMessagesAudioColumnsExist();
 
+        error_log("Inserting audio message: sender=$sender_id, receiver=$receiver_id, file=$file_path, size=$file_size, duration=$duration");
+
         $sql = "INSERT INTO messages (sender_id, receiver_id, message, message_type, file_path, file_size, audio_duration) VALUES (?, ?, ?, ?, ?, ?, ?)";
         $stmt = $db->prepare($sql);
 
-        return $stmt->execute([
+        $result = $stmt->execute([
             $sender_id,
             $receiver_id,
             sanitize($message),
@@ -128,6 +261,10 @@ function sendAudioMessage(int $sender_id, int $receiver_id, string $file_path, i
             $file_size,
             $duration
         ]);
+
+        error_log("Audio message insert result: " . ($result ? 'success' : 'failed'));
+
+        return $result;
     } catch (Throwable $e) {
         error_log('sendAudioMessage error: ' . $e->getMessage());
         return false;

@@ -63,6 +63,72 @@ function getProviderStats($db, $provider_id) {
     return $stats;
 }
 
+function getProviderBookingStats($db, $provider_id) {
+    $stats = [];
+
+    $stmt = $db->prepare("SELECT COUNT(*) FROM bookings WHERE provider_id = ? AND status = 'completed'");
+    $stmt->execute([$provider_id]);
+    $stats['completed'] = (int)$stmt->fetchColumn();
+
+    $stmt = $db->prepare("SELECT COUNT(*) FROM bookings WHERE provider_id = ? AND status = 'pending'");
+    $stmt->execute([$provider_id]);
+    $stats['pending'] = (int)$stmt->fetchColumn();
+
+    $stmt = $db->prepare("SELECT COUNT(*) FROM bookings WHERE provider_id = ? AND status IN ('confirmed', 'pending') AND preferred_date >= CURDATE()");
+    $stmt->execute([$provider_id]);
+    $stats['upcoming'] = (int)$stmt->fetchColumn();
+
+    $stmt = $db->prepare("SELECT COUNT(*) FROM bookings WHERE provider_id = ? AND status = 'cancelled'");
+    $stmt->execute([$provider_id]);
+    $stats['cancelled'] = (int)$stmt->fetchColumn();
+
+    return $stats;
+}
+
+function getProviderCategories($db, $provider_id) {
+    $stmt = $db->prepare("SELECT c.id, c.name FROM categories c JOIN provider_services ps ON ps.category_id = c.id WHERE ps.provider_id = ?");
+    $stmt->execute([$provider_id]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function getProviderReviews($db, $provider_id) {
+    $stmt = $db->prepare("SELECT r.*, u.full_name as client_name, u.profile_image as client_image FROM reviews r JOIN users u ON r.client_id = u.id WHERE r.provider_id = ? ORDER BY r.created_at DESC LIMIT 10");
+    $stmt->execute([$provider_id]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function getProviderSchedule($db, $provider_id) {
+    $stmt = $db->prepare("SELECT working_days, working_hours_start, working_hours_end, break_start, break_end, slot_duration, buffer_time, max_daily_bookings, booking_lead_time, cancellation_cutoff FROM service_providers WHERE id = ?");
+    $stmt->execute([$provider_id]);
+    $schedule = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    $stmt = $db->prepare("SELECT * FROM provider_time_off WHERE provider_id = ? AND end_date >= CURDATE() ORDER BY start_date ASC LIMIT 10");
+    $stmt->execute([$provider_id]);
+    $schedule['time_off'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $stmt = $db->prepare("SELECT * FROM provider_availability WHERE provider_id = ? AND date >= CURDATE() ORDER BY date ASC LIMIT 10");
+    $stmt->execute([$provider_id]);
+    $schedule['availability_exceptions'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    return $schedule;
+}
+
+function getProviderGallery($db, $provider_id) {
+    try {
+        $stmt = $db->prepare("SELECT image_path, title FROM portfolio_images WHERE provider_id = ? AND is_active = 1 ORDER BY display_order ASC, uploaded_at DESC LIMIT 12");
+        $stmt->execute([$provider_id]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+function getProviderComplaints($db, $provider_id) {
+    $stmt = $db->prepare("SELECT r.*, u.full_name as reporter_name, u.email as reporter_email FROM reports r LEFT JOIN users u ON u.id = r.reporter_id WHERE r.reported_user_id = (SELECT user_id FROM service_providers WHERE id = ?) ORDER BY r.created_at DESC LIMIT 10");
+    $stmt->execute([$provider_id]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
 switch ($action) {
     case 'profile':
     case 'verification':
@@ -87,6 +153,35 @@ switch ($action) {
             header('HTTP/1.1 404 Not Found');
             echo json_encode(['error' => 'Provider not found']);
         }
+        break;
+        
+    case 'full_profile':
+        $provider = getProviderDetails($db, $provider_id);
+        if (!$provider) {
+            header('HTTP/1.1 404 Not Found');
+            echo json_encode(['error' => 'Provider not found']);
+            break;
+        }
+
+        $stats = getProviderStats($db, $provider_id);
+        $booking_stats = getProviderBookingStats($db, $provider_id);
+        $schedule = getProviderSchedule($db, $provider_id);
+        $categories = getProviderCategories($db, $provider_id);
+        $reviews = getProviderReviews($db, $provider_id);
+        $gallery = getProviderGallery($db, $provider_id);
+        $complaints = getProviderComplaints($db, $provider_id);
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'provider' => $provider,
+            'stats' => $stats,
+            'booking' => $booking_stats,
+            'schedule' => $schedule,
+            'categories' => $categories,
+            'reviews' => $reviews,
+            'gallery' => $gallery,
+            'complaints' => $complaints,
+        ]);
         break;
         
     case 'details':
