@@ -4,6 +4,7 @@ require_once '../config/database.php';
 require_once '../includes/mailer.php';
 require_once '../includes/functions.php';
 require_once '../includes/ai_helpers.php';
+require_once '../includes/event_tracking.php';
 
 // Check if user is logged in
 if (!isLoggedIn()) {
@@ -454,6 +455,31 @@ try {
     $providers = [];
 }
 
+// Track search event if there was a search query
+if (!empty($searchQuery)) {
+    $filters = [
+        'location' => $locationQuery,
+        'category_id' => $categoryId,
+        'min_rating' => $minRating,
+        'availability' => $availability,
+        'sort_by' => $sortBy
+    ];
+
+    // Remove empty filters
+    $filters = array_filter($filters, function($value) {
+        return $value !== null && $value !== '' && $value !== 0;
+    });
+
+    trackEvent('search', 'search', null, [
+        'search_query' => $searchQuery,
+        'search_type' => 'provider',
+        'filters' => $filters,
+        'results_count' => count($providers),
+        'page' => $page,
+        'per_page' => $perPage
+    ]);
+}
+
 // Handle AJAX request for AI text improvement
 if (isset($_GET['improve_text']) && $enable_ai_features) {
     header('Content-Type: application/json');
@@ -505,9 +531,12 @@ if (isset($_GET['track_share'])) {
                 INSERT INTO provider_shares (provider_id, user_id, platform)
                 VALUES (?, ?, ?)
             ");
-            $stmt->execute([$provider_id, $user_id, $platform]);
-            
-            echo json_encode(['success' => true, 'message' => 'Share tracked']);
+            if ($stmt->execute([$provider_id, $user_id, $platform])) {
+                $share_id = $db->lastInsertId();
+                echo json_encode(['success' => true, 'message' => 'Share tracked', 'share_id' => $share_id]);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Failed to track share']);
+            }
         } else {
             echo json_encode(['success' => false, 'message' => 'Invalid provider ID']);
         }
@@ -634,9 +663,12 @@ if (isset($_GET['send_share_email'])) {
                         INSERT INTO provider_shares (provider_id, user_id, platform)
                         VALUES (?, ?, 'email')
                     ");
-                    $stmt->execute([$provider_id, $_SESSION['user_id']]);
-                    
-                    echo json_encode(['success' => true, 'message' => 'Email sent successfully']);
+                    if ($stmt->execute([$provider_id, $_SESSION['user_id']])) {
+                        $share_id = $db->lastInsertId();
+                        echo json_encode(['success' => true, 'message' => 'Email sent successfully', 'share_id' => $share_id]);
+                    } else {
+                        echo json_encode(['success' => false, 'message' => 'Failed to log share after email']);
+                    }
                 } else {
                     echo json_encode(['success' => false, 'message' => 'Failed to send email. Please try again.']);
                 }
@@ -1513,6 +1545,9 @@ if (isset($_GET['send_share_email'])) {
     }
 }
     </style>
+
+    <!-- Shared User Behavior Tracking -->
+    <?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
 </head>
 <body>
     <!-- Mobile Menu Toggle -->
@@ -1788,12 +1823,14 @@ if (isset($_GET['send_share_email'])) {
                     <div class="d-grid gap-2">
                         <div class="btn-group btn-group-sm" role="group">
                             <a href="../client/provider-profile.php?id=<?php echo $provider['id']; ?>" 
-                               class="btn btn-outline-primary btn-sm">
+                               class="btn btn-outline-primary btn-sm"
+                               onclick="if(window.trackClick){window.trackClick('click_provider_view','provider',<?php echo $provider['id']; ?>);} ">
                                 <i class="fas fa-eye"></i> View
                             </a>
                             
                             <?php if (isLoggedIn() && !isProvider()): ?>
-                                <a href="booking.php?provider_id=<?php echo $provider['id']; ?>" class="btn btn-primary btn-sm">
+                                <a href="booking.php?provider_id=<?php echo $provider['id']; ?>" class="btn btn-primary btn-sm"
+                                   onclick="if(window.trackClick){window.trackClick('click_provider_book','provider',<?php echo $provider['id']; ?>);} ">
                                     <i class="fas fa-calendar-check"></i> Book
                                 </a>
                             <?php else: ?>
@@ -2235,6 +2272,7 @@ if (isset($_GET['send_share_email'])) {
         let currentShareProviderId = null;
         let currentShareProviderName = null;
         let currentShareProfession = null;
+        let currentShareId = null;
 
         function openShareModal(providerId, providerName, profession, profileImage) {
             currentShareProviderId = providerId;
@@ -2266,6 +2304,7 @@ if (isset($_GET['send_share_email'])) {
             // Generate share link
             const shareLink = window.location.origin + '/client/provider-profile.php?id=' + providerId;
             document.getElementById('shareLink').value = shareLink;
+            currentShareId = null;
 
             // Fetch share statistics
             fetchShareStats(providerId);
@@ -2445,7 +2484,7 @@ if (isset($_GET['send_share_email'])) {
 
         function trackShare(platform) {
             // Track share via AJAX
-            fetch('providers.php?track_share=1', {
+            return fetch('providers.php?track_share=1', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -2455,7 +2494,30 @@ if (isset($_GET['send_share_email'])) {
                     platform: platform
                 })
             })
-            .catch(error => console.error('Error tracking share:', error));
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.share_id) {
+                    currentShareId = data.share_id;
+
+                    const shareLinkInput = document.getElementById('shareLink');
+                    if (shareLinkInput) {
+                        try {
+                            const url = new URL(shareLinkInput.value);
+                            url.searchParams.set('share_id', data.share_id);
+                            shareLinkInput.value = url.toString();
+                        } catch (e) {
+                            console.error('Invalid share link format:', e);
+                        }
+                    }
+
+                    fetchShareStats(currentShareProviderId);
+                }
+                return data;
+            })
+            .catch(error => {
+                console.error('Error tracking share:', error);
+                return { success: false, error };
+            });
         }
 
         function fetchShareStats(providerId) {
@@ -2649,6 +2711,29 @@ if (isset($_GET['send_share_email'])) {
             }
         });
         <?php endif; ?>
+
+        // Track search form submission
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchForm = document.querySelector('form[action="providers.php"]');
+            if (searchForm) {
+                searchForm.addEventListener('submit', function(e) {
+                    const searchQuery = searchForm.querySelector('input[name="query"]').value.trim();
+                    const locationQuery = searchForm.querySelector('input[name="location"]').value.trim();
+                    const categoryId = searchForm.querySelector('select[name="category"]').value;
+
+                    if (searchQuery || locationQuery || categoryId) {
+                        const filters = {};
+                        if (locationQuery) filters.location = locationQuery;
+                        if (categoryId) filters.category_id = categoryId;
+
+                        // Track the search
+                        if (typeof window.trackSearch === 'function') {
+                            window.trackSearch(searchQuery || locationQuery, 'providers', filters, <?php echo count($providers); ?>);
+                        }
+                    }
+                });
+            }
+        });
     </script>
 </body>
 </html>

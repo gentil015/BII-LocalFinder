@@ -3,6 +3,7 @@ session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once '../includes/chat.php';
+require_once '../includes/event_tracking.php';
 
 // Check if user is logged in and is a client
 if (!isLoggedIn()) {
@@ -220,7 +221,8 @@ $all_bookings = $stmt->fetchAll();
 // Handle booking cancellation with system settings validation
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_booking'])) {
     $booking_id = intval($_POST['booking_id']);
-    
+    $cancellation_reason = isset($_POST['cancellation_reason']) ? sanitize($_POST['cancellation_reason']) : null;
+
     // Check monthly cancellation limit
     if ($monthly_cancellations >= $system_settings['max_cancellations_per_month']) {
         $error = "You have reached your monthly cancellation limit ({$system_settings['max_cancellations_per_month']}). Please contact support.";
@@ -236,14 +238,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_booking'])) {
             $providerData = $stmtProvider->fetch(PDO::FETCH_ASSOC);
             $providerId = $providerData['provider_id'] ?? null;
 
-            $stmt = $db->prepare("UPDATE bookings SET status = 'cancelled', cancelled_at = NOW() WHERE id = ?");
-            if ($stmt->execute([$booking_id])) {
+            $updateQuery = "UPDATE bookings SET status = 'cancelled', cancelled_at = NOW(), cancellation_reason = ? WHERE id = ?";
+            $stmt = $db->prepare($updateQuery);
+            if ($stmt->execute([$cancellation_reason, $booking_id])) {
                 $success = "Booking cancelled successfully";
                 // Log activity
-                logActivity($db, $_SESSION['user_id'], 'booking_cancelled', "Cancelled booking #{$booking_id}");
+                logActivity($db, $_SESSION['user_id'], 'booking_cancelled', "Cancelled booking #{$booking_id} - Reason: {$cancellation_reason}");
+
+                // Track booking cancelled event
+                trackEvent('booking_cancelled', 'booking', $booking_id, [
+                    'cancellation_reason' => $cancellation_reason,
+                    'client_id' => $_SESSION['user_id'],
+                    'provider_id' => $providerId
+                ], $_SESSION['user_id']);
 
                 if ($providerId) {
-                    sendMessage($_SESSION['user_id'], $providerId, "Booking #{$booking_id} has been cancelled by the client.");
+                    sendMessage($_SESSION['user_id'], $providerId, "Booking #{$booking_id} has been cancelled by the client. Reason: {$cancellation_reason}");
                 }
 
                 // Refresh page
@@ -1274,6 +1284,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_booking'])) {
                                     <span class="badge <?php echo $booking['status']; ?>">
                                         <?php echo ucfirst($booking['status']); ?>
                                     </span>
+                                    <?php if ($booking['status'] === 'cancelled' && !empty($booking['cancellation_reason'])): ?>
+                                        <div class="text-danger small mt-1">Reason: <?php echo htmlspecialchars($booking['cancellation_reason']); ?></div>
+                                    <?php endif; ?>
                                 </div>
  
                                 <p class="mb-2">
@@ -1323,11 +1336,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_booking'])) {
                                     
                                     <?php if (in_array($booking['status'], ['pending', 'confirmed'])): ?>
                                         <?php if ($monthly_cancellations < $system_settings['max_cancellations_per_month']): ?>
-                                            <form method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to cancel this booking?')">
+                                            <form method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to cancel this booking?');">
                                                 <input type="hidden" name="booking_id" value="<?php echo $booking['id']; ?>">
-                                                <button type="submit" name="cancel_booking" class="btn-sm btn-cancel" onclick="event.stopPropagation();">
-                                                    <i class="fas fa-times me-1"></i> Cancel
-                                                </button>
+                                                <div class="d-flex align-items-center gap-2 mb-1" style="flex-wrap:wrap;">
+                                                    <select name="cancellation_reason" class="form-select form-select-sm" required style="width:auto; min-width:180px;">
+                                                        <option value="">Select cancellation reason</option>
+                                                        <option value="too expensive">too expensive</option>
+                                                        <option value="provider did not respond">provider did not respond</option>
+                                                        <option value="found another provider">found another provider</option>
+                                                        <option value="changed mind">changed mind</option>
+                                                        <option value="bad communication">bad communication</option>
+                                                        <option value="other">other</option>
+                                                    </select>
+                                                    <button type="submit" name="cancel_booking" class="btn-sm btn-cancel" onclick="event.stopPropagation();">
+                                                        <i class="fas fa-times me-1"></i> Cancel
+                                                    </button>
+                                                </div>
                                             </form>
                                         <?php else: ?>
                                             <span class="badge bg-danger">Cancellation Limit Reached</span>

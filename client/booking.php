@@ -9,6 +9,7 @@ $db = Database::getInstance()->getConnection();
 
 $provider_id = isset($_GET['provider_id']) ? intval($_GET['provider_id']) : 0;
 $service_id = isset($_GET['service_id']) ? intval($_GET['service_id']) : 0;
+$share_id = isset($_GET['share_id']) ? intval($_GET['share_id']) : null;
 
 if (!$provider_id) {
     header('Location: providers.php');
@@ -25,6 +26,17 @@ $provider = $stmt->fetch();
 if (!$provider) {
     header('Location: providers.php');
     exit();
+}
+
+// Ensure provider share id exists on bookings table for share-to-booking attribution
+try {
+    $colStmt = $db->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'provider_share_id'");
+    $colStmt->execute();
+    if ($colStmt->fetchColumn() == 0) {
+        $db->exec("ALTER TABLE bookings ADD COLUMN provider_share_id INT NULL AFTER status");
+    }
+} catch (Exception $e) {
+    error_log('Booking table share column check failed: ' . $e->getMessage());
 }
 
 // Fetch services
@@ -191,8 +203,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['final_submit'])) {
     }
 
     if (empty($booking_errors)) {
-        $stmt = $db->prepare("INSERT INTO bookings (client_id, provider_id, service_id, service_description, preferred_date, preferred_time, location, amount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')");
-        if ($stmt->execute([$_SESSION['user_id'], $provider_id, $service_id, $service_desc, $preferred_date, $preferred_time, $client_location, $client_proposed_price])) {
+        $stmt = $db->prepare("INSERT INTO bookings (client_id, provider_id, service_id, service_description, preferred_date, preferred_time, location, amount, status, provider_share_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)");
+        if ($stmt->execute([$_SESSION['user_id'], $provider_id, $service_id, $service_desc, $preferred_date, $preferred_time, $client_location, $client_proposed_price, $share_id ? $share_id : null])) {
             $booking_id = $db->lastInsertId();
             $booking_ref = '#BK-' . date('Y') . '-' . str_pad($booking_id,5,'0',STR_PAD_LEFT);
 
@@ -238,6 +250,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['final_submit'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+        (function() {
+            const pageUrl = window.location.href;
+            const pageTitle = document.title;
+            let pageStartTime = Date.now();
+
+            function sendTrack(action, data = {}) {
+                const payload = new URLSearchParams({ action, page_url: pageUrl, page_title: pageTitle, ...data });
+                fetch('../api/track_user_behavior.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: payload
+                }).catch(console.error);
+            }
+
+            function trackPageView() {
+                sendTrack('track_page_view', { referrer: document.referrer || '' });
+            }
+
+            function startPageSession() {
+                sendTrack('start_page_session', { page_start: new Date(pageStartTime).toISOString() });
+            }
+
+            function endPageSession() {
+                const pageEnd = Date.now();
+                const timeSpent = Math.floor((pageEnd - pageStartTime) / 1000);
+                sendTrack('end_page_session', {
+                    page_start: new Date(pageStartTime).toISOString(),
+                    page_end: new Date(pageEnd).toISOString(),
+                    time_spent_seconds: timeSpent
+                });
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+                trackPageView();
+                startPageSession();
+            });
+
+            window.addEventListener('beforeunload', endPageSession);
+            window.addEventListener('unload', endPageSession);
+
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden) {
+                    endPageSession();
+                } else {
+                    pageStartTime = Date.now();
+                    startPageSession();
+                }
+            });
+        })();
+    </script>
     <title>Book a Service — BII LocalFinder</title>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -852,6 +915,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['final_submit'])) {
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(53,99,233,.25); border-radius: 3px; }
     </style>
+    <!-- Shared User Behavior Tracking -->
+    <?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
 </head>
 <body>
 

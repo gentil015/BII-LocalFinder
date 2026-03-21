@@ -442,6 +442,8 @@
             .provider-details { grid-template-columns: 1fr; }
         }
     </style>
+    <!-- Shared User Behavior Tracking -->
+    <?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
 </head>
 <body>
     <div class="container">

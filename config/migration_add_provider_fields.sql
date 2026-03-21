@@ -12,3 +12,7 @@ CREATE INDEX `idx_is_active_banned` ON `service_providers`(`is_active`, `is_bann
 
 -- Update existing providers (set all to not featured, boost 0)
 UPDATE `service_providers` SET `is_featured` = 0, `search_boost` = 0 WHERE `is_featured` IS NULL OR `search_boost` IS NULL;
+
+-- Add cancellation tracking fields for bookings
+ALTER TABLE `bookings` ADD COLUMN `cancellation_reason` VARCHAR(255) NULL AFTER `status`;
+ALTER TABLE `bookings` ADD COLUMN `cancelled_at` DATETIME NULL AFTER `cancellation_reason`;

@@ -161,6 +161,57 @@ $recommended_providers = $stmt->fetchAll();
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="../bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        (function() {
+            const pageUrl = window.location.href;
+            const pageTitle = document.title;
+            let pageStartTime = Date.now();
+
+            function sendTrack(action, data = {}) {
+                const payload = new URLSearchParams({ action, page_url: pageUrl, page_title: pageTitle, ...data });
+                fetch('../api/track_user_behavior.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: payload
+                }).catch(console.error);
+            }
+
+            function trackPageView() {
+                sendTrack('track_page_view', { referrer: document.referrer || '' });
+            }
+
+            function startPageSession() {
+                sendTrack('start_page_session', { page_start: new Date(pageStartTime).toISOString() });
+            }
+
+            function endPageSession() {
+                const pageEnd = Date.now();
+                const timeSpent = Math.floor((pageEnd - pageStartTime) / 1000);
+                sendTrack('end_page_session', {
+                    page_start: new Date(pageStartTime).toISOString(),
+                    page_end: new Date(pageEnd).toISOString(),
+                    time_spent_seconds: timeSpent
+                });
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+                trackPageView();
+                startPageSession();
+            });
+
+            window.addEventListener('beforeunload', endPageSession);
+            window.addEventListener('unload', endPageSession);
+
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden) {
+                    endPageSession();
+                } else {
+                    pageStartTime = Date.now();
+                    startPageSession();
+                }
+            });
+        })();
+    </script>
     <style>
         /* EXACT SAME STYLES AS DASHBOARD - NO CHANGES */
         :root {
@@ -716,6 +767,8 @@ $recommended_providers = $stmt->fetchAll();
             color: #856404;
         }
     </style>
+    <!-- Shared User Behavior Tracking -->
+    <?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
 </head>
 <body>
     <!-- Mobile Menu Toggle -->

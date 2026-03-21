@@ -10,6 +10,7 @@
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/event_tracking.php';
 
 function ensureMessagesAttachmentColumnExists(): void
 {
@@ -243,7 +244,20 @@ function sendMessage(int $sender_id, int $receiver_id, string $message, string $
         $sql .= ")";
 
         $stmt = $db->prepare($sql);
-        return $stmt->execute($params);
+        if ($stmt->execute($params)) {
+            $messageId = $db->lastInsertId();
+
+            // Track message sent event
+            trackEvent('send_message', 'message', $messageId, [
+                'sender_id' => $sender_id,
+                'receiver_id' => $receiver_id,
+                'message_type' => $message_type,
+                'has_attachment' => !empty($attachment_path)
+            ], $sender_id);
+
+            return $messageId;
+        }
+        return false;
     } catch (Throwable $e) {
         error_log('sendMessage error: ' . $e->getMessage());
         return false;
@@ -360,8 +374,17 @@ function markMessagesRead(int $from, int $to): void
 {
     try {
         $db = Database::getInstance()->getConnection();
-        $stmt = $db->prepare("UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ?");
-        $stmt->execute([$from, $to]);
+        $stmt = $db->prepare("UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ? AND is_read = 0");
+        $result = $stmt->execute([$from, $to]);
+
+        if ($result && $stmt->rowCount() > 0) {
+            // Track message read event
+            trackEvent('message_read', 'user', $from, [
+                'sender_id' => $from,
+                'receiver_id' => $to,
+                'messages_read_count' => $stmt->rowCount()
+            ], $to);
+        }
     } catch (Throwable $e) {
         error_log('markMessagesRead error: ' . $e->getMessage());
     }

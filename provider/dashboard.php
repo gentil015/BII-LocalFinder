@@ -1464,6 +1464,8 @@ $profile_completion = ($completed_fields / count($required_fields)) * 100;
             transform: translateX(3px);
         }
     </style>
+    <!-- Shared User Behavior Tracking -->
+    <?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
 </head>
 <body>
     <!-- Mobile Menu Toggle -->

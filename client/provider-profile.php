@@ -31,10 +31,22 @@ $platform_description = getPlatformSetting('platform_description', 'Connecting s
 
 // Get provider ID
 $provider_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+$share_id = isset($_GET['share_id']) ? intval($_GET['share_id']) : null;
 
 if (!$provider_id) {
     header("Location: providers.php");
     exit();
+}
+
+// Ensure booking share link connection column exists
+try {
+    $colStmt = $db->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'provider_share_id'");
+    $colStmt->execute();
+    if ($colStmt->fetchColumn() == 0) {
+        $db->exec("ALTER TABLE bookings ADD COLUMN provider_share_id INT NULL AFTER status");
+    }
+} catch (Exception $e) {
+    error_log('Booking share column check error: ' . $e->getMessage());
 }
 
 // Get provider details with verification status
@@ -544,12 +556,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
         
         if (empty($booking_errors)) {
             $stmt = $db->prepare("
-                INSERT INTO bookings (client_id, provider_id, service_id, service_description, preferred_date, preferred_time, status)
-                VALUES (?, ?, ?, ?, ?, ?, 'pending')
+                INSERT INTO bookings (client_id, provider_id, service_id, service_description, preferred_date, preferred_time, status, provider_share_id)
+                VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
             ");
 
             // Ensure we pass NULL for service_id when none selected to avoid FK constraint errors
-            $params = [$_SESSION['user_id'], $provider_id, $service_id, $service_description, $preferred_date, $preferred_time];
+            $params = [
+                $_SESSION['user_id'],
+                $provider_id,
+                $service_id,
+                $service_description,
+                $preferred_date,
+                $preferred_time,
+                $share_id ? $share_id : null
+            ];
             if ($stmt->execute($params)) {
                 $booking_success = "Booking request sent successfully! The provider will contact you soon.";
                 
@@ -2614,7 +2634,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
                         </div>
                         <div class="card-body text-center">
                             <p class="mb-3 text-muted">To make a booking request, go to the full booking flow where you can select service, date and provide details.</p>
-                            <a href="booking.php?provider_id=<?php echo $provider_id; ?>" class="btn btn-primary w-100 py-2">
+                            <a href="booking.php?provider_id=<?php echo $provider_id; ?><?php echo !empty($share_id) ? '&share_id=' . intval($share_id) : ''; ?>" class="btn btn-primary w-100 py-2">
                                 <i class="fas fa-arrow-right me-2"></i> Continue to Booking
                             </a>
                             <div class="mt-3 text-start">
@@ -3470,6 +3490,95 @@ function updateStickyPositions() {
                 alert('Error sending offer. Please try again.');
             });
         }
+
+        // Track provider profile view and page session
+        (function() {
+            let pageStartTime = Date.now();
+            const pageUrl = window.location.href;
+            const pageTitle = document.title;
+
+            function trackPageView() {
+                fetch('../api/track_user_behavior.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        action: 'track_page_view',
+                        page_url: pageUrl,
+                        page_title: pageTitle,
+                        referrer: document.referrer
+                    })
+                }).catch(console.error);
+            }
+
+            function startPageSession() {
+                const pageStart = new Date(pageStartTime).toISOString();
+                fetch('../api/track_user_behavior.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        action: 'start_page_session',
+                        page_url: pageUrl,
+                        page_start: pageStart
+                    })
+                }).catch(console.error);
+            }
+
+            function endPageSession() {
+                const pageEndTime = Date.now();
+                const timeSpent = Math.floor((pageEndTime - pageStartTime) / 1000);
+                const pageEnd = new Date(pageEndTime).toISOString();
+                const pageStart = new Date(pageStartTime).toISOString();
+
+                fetch('../api/track_user_behavior.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        action: 'end_page_session',
+                        page_url: pageUrl,
+                        time_spent_seconds: timeSpent,
+                        page_start: pageStart,
+                        page_end: pageEnd
+                    })
+                }).catch(console.error);
+            }
+
+            function trackProviderView() {
+                fetch('../api/track_user_behavior.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        action: 'track_provider_view',
+                        provider_id: <?php echo intval($provider_id); ?>
+                    })
+                }).catch(console.error);
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+                trackPageView();
+                startPageSession();
+                setTimeout(trackProviderView, 1000);
+            });
+
+            window.addEventListener('beforeunload', endPageSession);
+            window.addEventListener('unload', endPageSession);
+
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden) {
+                    endPageSession();
+                } else {
+                    pageStartTime = Date.now();
+                    startPageSession();
+                }
+            });
+        })();
     </script>
 </body>
 </html>

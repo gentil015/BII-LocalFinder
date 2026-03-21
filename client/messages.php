@@ -48,6 +48,95 @@ if (isProvider()) {
 $me = $_SESSION['user_id'];
 $db = Database::getInstance()->getConnection();
 
+// Function to render message content (handles service offers, services, and regular messages)
+function renderMessageContent($m) {
+    $messageType = $m['message_type'] ?? $m['attachment_type'] ?? '';
+    $attachmentPath = $m['file_path'] ?? $m['attachment_path'] ?? '';
+    
+    // Handle service offer messages
+    if ($messageType === 'service_offer') {
+        $jsonData = html_entity_decode($m['message'], ENT_QUOTES, 'UTF-8');
+        $serviceData = json_decode($jsonData, true);
+        if ($serviceData) {
+            $negotiableBadge = $serviceData['negotiable'] ? '<span class="badge negotiable">Negotiable</span>' : '';
+            $priceRange = $serviceData['min_price'] && $serviceData['max_price'] && $serviceData['min_price'] != $serviceData['max_price'] 
+                ? number_format($serviceData['min_price']) . ' - ' . number_format($serviceData['max_price']) . ' RWF'
+                : number_format($serviceData['price'] ?? 0) . ' RWF';
+            
+            return '
+                <div class="service-card offer-card">
+                    <div class="service-card-header">
+                        <i class="fas fa-gift service-icon"></i>
+                        <div class="service-title">' . htmlspecialchars($serviceData['service_name']) . '</div>
+                        ' . $negotiableBadge . '
+                    </div>
+                    <div class="service-description">' . htmlspecialchars($serviceData['description']) . '</div>
+                    <div class="service-price">' . $priceRange . '</div>
+                    <div class="service-actions">
+                        <button class="btn btn-sm btn-outline-primary" onclick="negotiateOfferPrice(this, ' . intval($serviceData['service_id']) . ')">Negotiate</button>
+                        <button class="btn btn-sm btn-primary" onclick="acceptOfferDirect(this, ' . intval($serviceData['service_id']) . ')">Accept Offer</button>
+                    </div>
+                </div>';
+        }
+    }
+    // Handle service messages
+    elseif ($messageType === 'service') {
+        $jsonData = html_entity_decode($m['message'], ENT_QUOTES, 'UTF-8');
+        $serviceData = json_decode($jsonData, true);
+        if ($serviceData) {
+            $priceRange = $serviceData['min_price'] && $serviceData['max_price'] && $serviceData['min_price'] != $serviceData['max_price'] 
+                ? number_format($serviceData['min_price']) . ' - ' . number_format($serviceData['max_price']) . ' RWF'
+                : number_format($serviceData['price'] ?? 0) . ' RWF';
+            
+            return '
+                <div class="service-card service-card-basic">
+                    <div class="service-card-header">
+                        <i class="fas fa-briefcase service-icon"></i>
+                        <div class="service-title">' . htmlspecialchars($serviceData['service_name']) . '</div>
+                    </div>
+                    <div class="service-description">' . htmlspecialchars($serviceData['description']) . '</div>
+                    <div class="service-price">' . $priceRange . '</div>
+                    <div class="service-actions">
+                        <button class="btn btn-sm btn-primary" onclick="bookService(this, ' . intval($serviceData['service_id']) . ', \'' . addslashes($serviceData['service_name']) . '\')">Book Now</button>
+                    </div>
+                </div>';
+        }
+    }
+    
+    // Handle regular messages with attachments
+    $content = nl2br(htmlspecialchars($m['message']));
+    
+    $isAudioMessage = (!empty($m['message_type']) && $m['message_type'] === 'audio')
+        || (!empty($m['attachment_type']) && $m['attachment_type'] === 'audio');
+    
+    if ($isAudioMessage) {
+        $content .= '<div class="voice-badge">Voice note</div>';
+    }
+    
+    if (!empty($attachmentPath)) {
+        $ext = strtolower(pathinfo($attachmentPath, PATHINFO_EXTENSION));
+        if (in_array($ext, ['jpg','jpeg','png','gif'], true)) {
+            $content .= '<div class="attachment-preview">
+                <img src="../' . htmlspecialchars($attachmentPath) . '" alt="Attachment preview" class="attach-img" />
+            </div>';
+        } elseif (in_array($ext, ['webm','ogg','mp3','wav'], true)) {
+            $content .= '<div class="attachment-preview">
+                <audio controls class="attach-audio">
+                    <source src="../' . htmlspecialchars($attachmentPath) . '" type="audio/' . htmlspecialchars($ext === 'webm' ? 'webm' : ($ext === 'ogg' ? 'ogg' : ($ext === 'mp3' ? 'mpeg' : 'wav'))) . '">
+                    Your browser does not support the audio element.
+                </audio>
+            </div>';
+        }
+        $content .= '<div class="attachment-link">
+            <a href="../' . htmlspecialchars($attachmentPath) . '" target="_blank" rel="noopener noreferrer">
+                📎 View attachment
+            </a>
+        </div>';
+    }
+    
+    return $content;
+}
+
 function saveChatAttachment(array $file): ?string
 {
     if (empty($file['name']) || $file['error'] !== UPLOAD_ERR_OK) {
@@ -830,6 +919,133 @@ if ($with) {
         .message.sent .attachment-link a { color: white; }
         .message.received .attachment-link a { color: var(--accent); }
 
+        /* Service cards in messages */
+        .service-card {
+            background: rgba(255,255,255,0.1);
+            border-radius: var(--radius-md);
+            padding: 0.875rem;
+            margin: 0.25rem 0;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .message.received .service-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+        }
+
+        .service-card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .service-icon {
+            font-size: 1rem;
+            color: var(--accent);
+        }
+
+        .message.received .service-icon {
+            color: var(--accent);
+        }
+
+        .service-title {
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: white;
+        }
+
+        .message.received .service-title {
+            color: var(--text-primary);
+        }
+
+        .badge.negotiable {
+            background: rgba(255,193,7,0.2);
+            color: #ffc107;
+            font-size: 0.65rem;
+            padding: 0.15rem 0.4rem;
+            border-radius: 8px;
+            font-weight: 600;
+            margin-left: auto;
+        }
+
+        .message.received .badge.negotiable {
+            background: rgba(255,193,7,0.1);
+            color: #856404;
+        }
+
+        .service-description {
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.8);
+            line-height: 1.4;
+            margin-bottom: 0.5rem;
+        }
+
+        .message.received .service-description {
+            color: var(--text-secondary);
+        }
+
+        .service-price {
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.95);
+            margin-bottom: 0.75rem;
+        }
+
+        .message.received .service-price {
+            color: var(--text-primary);
+        }
+
+        .service-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .service-actions .btn {
+            flex: 1;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            border: none;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .service-actions .btn-outline-primary {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+        }
+
+        .service-actions .btn-outline-primary:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .service-actions .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .service-actions .btn-primary:hover {
+            background: var(--accent-dark);
+        }
+
+        .message.received .service-actions .btn-outline-primary {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+        }
+
+        .message.received .service-actions .btn-outline-primary:hover {
+            background: var(--border);
+        }
+
+        .message.received .service-actions .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
         .voice-badge {
             display: inline-flex;
             align-items: center;
@@ -1145,38 +1361,10 @@ if ($with) {
                     </div>
                 <?php else: ?>
                     <?php foreach ($messages as $m): ?>
-                        <div class="message-group">
+                        <div class="message-group" data-message-id="<?php echo intval($m['id']); ?>">
                             <div class="message <?php echo $m['sender_id'] == $me ? 'sent' : 'received'; ?>">
                                 <div class="message-bubble">
-                                <?php echo nl2br(htmlspecialchars($m['message'])); ?>
-                                <?php
-                                    $isAudioMessage = (!empty($m['message_type']) && $m['message_type'] === 'audio')
-                                        || (!empty($m['attachment_type']) && $m['attachment_type'] === 'audio');
-                                    $attachmentPath = !empty($m['file_path']) ? $m['file_path'] : ($m['attachment_path'] ?? null);
-                                ?>
-                                <?php if ($isAudioMessage): ?>
-                                    <div class="voice-badge">Voice note</div>
-                                <?php endif; ?>
-                                <?php if (!empty($attachmentPath)): ?>
-                                    <?php $ext = strtolower(pathinfo($attachmentPath, PATHINFO_EXTENSION)); ?>
-                                    <?php if (in_array($ext, ['jpg','jpeg','png','gif'], true)): ?>
-                                        <div class="attachment-preview">
-                                            <img src="../<?php echo htmlspecialchars($attachmentPath); ?>" alt="Attachment preview" class="attach-img" />
-                                        </div>
-                                    <?php elseif (in_array($ext, ['webm','ogg','mp3','wav'], true)): ?>
-                                        <div class="attachment-preview">
-                                            <audio controls class="attach-audio">
-                                                <source src="../<?php echo htmlspecialchars($attachmentPath); ?>" type="audio/<?php echo htmlspecialchars($ext === 'webm' ? 'webm' : ($ext === 'ogg' ? 'ogg' : ($ext === 'mp3' ? 'mpeg' : 'wav'))); ?>">
-                                                Your browser does not support the audio element.
-                                            </audio>
-                                        </div>
-                                    <?php endif; ?>
-                                    <div class="attachment-link">
-                                        <a href="../<?php echo htmlspecialchars($attachmentPath); ?>" target="_blank" rel="noopener noreferrer">
-                                            📎 View attachment
-                                        </a>
-                                    </div>
-                                <?php endif; ?>
+                                <?php echo renderMessageContent($m); ?>
                             </div>
                             </div>
                             <div class="message-time"><?php echo date('H:i', strtotime($m['created_at'])); ?></div>
@@ -1601,91 +1789,217 @@ function acceptOfferDirect(btn, serviceId) {
     window.location.href = `booking.php?provider_id=${providerId}&service_id=${serviceId}`;
 }
 
-// Polling for new messages every 3 seconds
+// ══ PROFESSIONAL REAL-TIME MESSAGE POLLING ══
+// Fetches new messages every 2 seconds without page reload (like WhatsApp/Messenger)
+let lastMessageId = 0;
+let pollInterval = null;
 const pollUser = <?php echo $with; ?>;
-if (pollUser) {
-    setInterval(function() {
-        fetch('messages.php?action=poll&with=' + pollUser + '&booking_id=' + <?php echo $booking_id; ?>, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(r => {
-            if (!r.ok) throw new Error('Poll failed: ' + r.status);
-            return r.json();
-        })
-        .then(data => {
-            if (data.success) {
-                const messagesArea = document.getElementById('messagesArea');
-                messagesArea.innerHTML = '';
-                data.messages.forEach(m => {
-                    const group = document.createElement('div');
-                    group.className = 'message-group';
+const pollBookingId = <?php echo $booking_id; ?>;
+const currentUserId = <?php echo $me; ?>;
 
-                    let attachmentHtml = '';
-                    let voiceBadgeHtml = '';
-                    const attachmentPath = m.file_path || m.attachment_path;
-                    const messageType = m.message_type || m.attachment_type;
-                    const isSent = m.sender_id == <?php echo $me; ?>;
-                    
-                    // Handle service offer and service messages
-                    if (messageType === 'service_offer' || messageType === 'service') {
-                        try {
-                            const serviceData = JSON.parse(m.message);
-                            if (messageType === 'service_offer') {
-                                const negotiableTag = serviceData.negotiable ? '<span style="background: rgba(255,255,255,0.2); padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.7rem; display: inline-block; margin-top: 0.5rem;">NEGOTIABLE</span>' : '';\n                                const minPrice = serviceData.min_price ? parseFloat(serviceData.min_price).toFixed(0) : parseFloat(serviceData.price).toFixed(0);\n                                const maxPrice = serviceData.max_price ? parseFloat(serviceData.max_price).toFixed(0) : parseFloat(serviceData.price).toFixed(0);\n                                const priceText = minPrice === maxPrice ? `RWF ${minPrice}` : `RWF ${minPrice} - ${maxPrice}`;\n                                const offerBtn = isSent ? '' : `<div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;"><button onclick="negotiateOfferPrice(this, '${serviceData.service_id}');" style="flex: 1; padding: 0.5rem; background: var(--accent-light); border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">Make Offer</button><button onclick="acceptOfferDirect(this, '${serviceData.service_id}');" style="flex: 1; padding: 0.5rem; background: var(--accent); border: none; color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">Accept</button></div>`;\n                                group.innerHTML = `<div class="message ${isSent ? 'sent' : 'received'}"><div class="message-bubble" style="padding: 0.875rem;"><div style="font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem;"><i class="fas fa-gift"></i> ${serviceData.service_name}</div>${serviceData.description ? `<div style="font-size: 0.85rem; margin-bottom: 0.5rem; opacity: 0.95;">${serviceData.description}</div>` : ''}<div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 0.5rem; color: ${isSent ? 'rgba(255,255,255,0.95)' : 'var(--text-primary)'};">Base Price: ${priceText}</div>${negotiableTag}${offerBtn}</div></div><div class="message-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>`;\n                            } else if (messageType === 'service') {\n                                const bookBtn = isSent ? '' : `<button onclick="bookService(this, '${serviceData.service_id}');" style="width: 100%; padding: 0.65rem; background: var(--accent); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">Book Service</button>`;\n                                group.innerHTML = `<div class="message ${isSent ? 'sent' : 'received'}"><div class="message-bubble" style="padding: 0.875rem;"><div style="font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem;"><i class="fas fa-briefcase"></i> ${serviceData.service_name}</div>${serviceData.description ? `<div style="font-size: 0.85rem; margin-bottom: 0.5rem; opacity: 0.95;">${serviceData.description}</div>` : ''}<div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 0.75rem; color: ${isSent ? 'rgba(255,255,255,0.95)' : 'var(--text-primary)'};">Starting: RWF ${parseFloat(serviceData.price).toFixed(0)}</div>${bookBtn}</div></div><div class="message-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>`;\n                            }\n                            messagesArea.appendChild(group);\n                        } catch (e) {\n                            console.error('Service message parse error:', e);\n                        }\n                        return;\n                    }
-                    
-                    if (attachmentPath) {
-                        const isImage = /\.(jpg|jpeg|png|gif)$/i.test(attachmentPath);
-                        const isAudio = /\.(webm|ogg|mp3|wav)$/i.test(attachmentPath);
-                        if (isImage) {
-                            attachmentHtml += `<div class="attachment-preview"><img src="../${attachmentPath}" alt="Attachment preview" class="attach-img" /></div>`;
-                        } else if (isAudio) {
-                            const mimeType = attachmentPath.match(/\.(webm|ogg|mp3|wav)$/i)[1].toLowerCase();
-                            const audioType = mimeType === 'mp3' ? 'mpeg' : mimeType;
-                            attachmentHtml += `<div class="attachment-preview"><audio controls class="attach-audio"><source src="../${attachmentPath}" type="audio/${audioType}">Your browser does not support audio playback.</audio></div>`;
-                        }
-                        if (messageType === 'audio') {
-                            voiceBadgeHtml = '<div class="voice-badge">Voice note</div>';
-                        }
-                        attachmentHtml += `<div class="attachment-link"><a href="../${attachmentPath}" target="_blank" rel="noopener noreferrer">📎 View attachment</a></div>`;
-                    }
+// Get initial message count to set starting point
+const messagesArea = document.getElementById('messagesArea');
+if (messagesArea && pollUser) {
+    const lastMsg = messagesArea.querySelector('.message-group:last-child');
+    if (lastMsg) {
+        const msgId = lastMsg.getAttribute('data-message-id');
+        if (msgId) lastMessageId = parseInt(msgId);
+    }
+}
 
-                    group.innerHTML = `
-                        <div class="message ${m.sender_id == <?php echo $me; ?> ? 'sent' : 'received'}">
-                            <div class="message-bubble">
-                                ${m.message.replace(/\n/g,'<br>')}
-                                ${voiceBadgeHtml}
-                                ${attachmentHtml}
-                            </div>
-                        </div>
-                        <div class="message-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
-                    `;
-                    messagesArea.appendChild(group);
+// Helper function to create and append a new message element
+function renderNewMessage(m, messagesArea) {
+    const group = document.createElement('div');
+    group.className = 'message-group';
+    group.setAttribute('data-message-id', m.id);
+    
+    const isSent = m.sender_id == currentUserId;
+    let attachmentHtml = '';
+    let voiceBadgeHtml = '';
+    const attachmentPath = m.file_path || m.attachment_path;
+    const messageType = m.message_type || m.attachment_type;
+    
+    // Handle service offer messages
+    if (messageType === 'service_offer') {
+        try {
+            const serviceData = JSON.parse(m.message);
+            const negotiableTag = serviceData.negotiable ? '<span style="background: rgba(255,255,255,0.2); padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.7rem; display: inline-block; margin-top: 0.5rem;">NEGOTIABLE</span>' : '';
+            const minPrice = serviceData.min_price ? parseFloat(serviceData.min_price).toFixed(0) : parseFloat(serviceData.price).toFixed(0);
+            const maxPrice = serviceData.max_price ? parseFloat(serviceData.max_price).toFixed(0) : parseFloat(serviceData.price).toFixed(0);
+            const priceText = minPrice === maxPrice ? `RWF ${minPrice}` : `RWF ${minPrice} - ${maxPrice}`;
+            const offerBtn = isSent ? '' : `<div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;"><button onclick="negotiateOfferPrice(this, '${serviceData.service_id}');" style="flex: 1; padding: 0.5rem; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4); color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">Make Offer</button><button onclick="acceptOfferDirect(this, '${serviceData.service_id}');" style="flex: 1; padding: 0.5rem; background: rgba(255,255,255,0.3); border: none; color: white; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">Accept</button></div>`;
+            group.innerHTML = `<div class="message ${isSent ? 'sent' : 'received'}"><div class="message-bubble" style="padding: 0.875rem;"><div style="font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem;"><i class="fas fa-gift"></i> ${serviceData.service_name}</div>${serviceData.description ? `<div style="font-size: 0.85rem; margin-bottom: 0.5rem; opacity: 0.95;">${serviceData.description}</div>` : ''}<div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 0.5rem; color: ${isSent ? 'rgba(255,255,255,0.95)' : 'var(--text-primary)'};">Base Price: ${priceText}</div>${negotiableTag}${offerBtn}</div></div><div class="message-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>`;
+        } catch (e) {
+            console.error('Service offer parse error:', e);
+            return;
+        }
+    } 
+    // Handle service messages
+    else if (messageType === 'service') {
+        try {
+            const serviceData = JSON.parse(m.message);
+            const bookBtn = isSent ? '' : `<button onclick="bookService(this, '${serviceData.service_id}');" style="width: 100%; padding: 0.65rem; background: rgba(255,255,255,0.25); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">Book Service</button>`;
+            group.innerHTML = `<div class="message ${isSent ? 'sent' : 'received'}"><div class="message-bubble" style="padding: 0.875rem;"><div style="font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem;"><i class="fas fa-briefcase"></i> ${serviceData.service_name}</div>${serviceData.description ? `<div style="font-size: 0.85rem; margin-bottom: 0.5rem; opacity: 0.95;">${serviceData.description}</div>` : ''}<div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 0.75rem; color: ${isSent ? 'rgba(255,255,255,0.95)' : 'var(--text-primary)'};">Starting: RWF ${parseFloat(serviceData.price).toFixed(0)}</div>${bookBtn}</div></div><div class="message-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>`;
+        } catch (e) {
+            console.error('Service message parse error:', e);
+            return;
+        }
+    }
+    // Handle regular messages with attachments
+    else {
+        if (attachmentPath) {
+            const isImage = /\.(jpg|jpeg|png|gif)$/i.test(attachmentPath);
+            const isAudio = /\.(webm|ogg|mp3|wav)$/i.test(attachmentPath);
+            if (isImage) {
+                attachmentHtml += `<div class="attachment-preview"><img src="../${attachmentPath}" alt="Attachment" class="attach-img" style="max-width: 280px; border-radius: 8px;" /></div>`;
+            } else if (isAudio) {
+                const ext = attachmentPath.split('.').pop().toLowerCase();
+                const audioType = ext === 'mp3' ? 'mpeg' : ext;
+                attachmentHtml += `<div class="attachment-preview"><audio controls class="attach-audio" style="width: 100%;"><source src="../${attachmentPath}" type="audio/${audioType}">Your browser does not support audio playback.</audio></div>`;
+            }
+            if (messageType === 'audio') {
+                voiceBadgeHtml = '<div class="voice-badge" style="display: block; font-size: 0.75rem; font-weight: 600; color: rgba(255,255,255,0.9); margin-bottom: 0.5rem;"><i class="fas fa-microphone"></i> Voice message</div>';
+            }
+            attachmentHtml += `<div class="attachment-link" style="margin-top: 0.5rem;"><a href="../${attachmentPath}" target="_blank" rel="noopener noreferrer" style="color: ${isSent ? 'rgba(255,255,255,0.8)' : 'var(--accent)'}; text-decoration: none; font-size: 0.85rem;"><i class="fas fa-download"></i> View attachment</a></div>`;
+        }
+        
+        group.innerHTML = `
+            <div class="message ${isSent ? 'sent' : 'received'}" style="animation: fadeInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
+                <div class="message-bubble">
+                    ${voiceBadgeHtml}
+                    <div>${m.message.replace(/\n/g,'<br>')}</div>
+                    ${attachmentHtml}
+                </div>
+            </div>
+            <div class="message-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+        `;
+    }
+    
+    messagesArea.appendChild(group);
+    
+    // Auto-scroll only if user is already scrolled to bottom
+    const isScrolledToBottom = (messagesArea.scrollHeight - messagesArea.scrollTop - messagesArea.clientHeight) < 100;
+    if (isScrolledToBottom) {
+        messagesArea.scrollTop = messagesArea.scrollHeight;
+    }
+}
+
+// Update conversation item in the list
+function updateConversationPreview(userId, newPreview) {
+    const convItem = document.querySelector(`.conversation-item[onclick*="loadConversation(${userId})"]`);
+    if (convItem) {
+        const preview = convItem.querySelector('.conversation-preview');
+        if (preview) {
+            preview.textContent = newPreview;
+        }
+    }
+}
+
+// Professional polling function  
+function pollForNewMessages() {
+    if (!pollUser) return; // No conversation selected
+    
+    fetch('messages.php?action=poll&with=' + pollUser + (pollBookingId ? '&booking_id=' + pollBookingId : ''), {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        cache: 'no-store'
+    })
+    .then(r => {
+        if (!r.ok) throw new Error('Poll failed: ' + r.status);
+        return r.json();
+    })
+    .then(data => {
+        if (!data.success || !data.messages) return;
+        
+        // Only process messages newer than the last one we've seen
+        const newMessages = data.messages.filter(m => m.id > lastMessageId);
+        
+        if (newMessages.length > 0) {
+            const messagesArea = document.getElementById('messagesArea');
+            if (messagesArea) {
+                // Hide empty state if it exists
+                const emptyState = messagesArea.querySelector('.msg-empty');
+                if (emptyState) emptyState.style.display = 'none';
+                
+                newMessages.forEach(m => {
+                    renderNewMessage(m, messagesArea);
+                    lastMessageId = Math.max(lastMessageId, m.id);
                 });
-                messagesArea.scrollTop = messagesArea.scrollHeight;
-
-                if (Array.isArray(data.booking_timeline) && data.booking_timeline.length) {
-                    const timelineArea = document.getElementById('bookingTimeline');
-                    if (timelineArea) {
-                        timelineArea.innerHTML = '';
-                        data.booking_timeline.forEach(item => {
-                            const itemEl = document.createElement('div');
-                            itemEl.className = 'timeline-item timeline-' + (item.status || '');
-                            itemEl.innerHTML = `
-                                <div class="timeline-dot"></div>
-                                <div class="timeline-content">
-                                    <div class="timeline-title">${item.label}</div>
-                                    ${item.time ? `<div class="timeline-time">${new Date(item.time).toLocaleString()}</div>` : ''}
-                                </div>
-                            `;
-                            timelineArea.appendChild(itemEl);
-                        });
-                    }
+                
+                // Update conversation preview with last message
+                const lastNewMsg = newMessages[newMessages.length - 1];
+                let preview = '';
+                if (lastNewMsg.message_type === 'audio' || lastNewMsg.attachment_type === 'audio') {
+                    preview = '🎤 Voice note';
+                } else {
+                    preview = lastNewMsg.message.substring(0, 50);
+                }
+                updateConversationPreview(pollUser, preview);
+            }
+        }
+        
+        // Update booking timeline if present
+        if (Array.isArray(data.booking_timeline) && data.booking_timeline.length) {
+            const timelineArea = document.getElementById('bookingTimeline');
+            if (timelineArea) {
+                // Only update if content changed
+                const newHtml = data.booking_timeline.map(item => `
+                    <div class="timeline-item timeline-${item.status || ''}">
+                        <div class="timeline-dot"></div>
+                        <div class="timeline-content">
+                            <div class="timeline-title">${item.label}</div>
+                            ${item.time ? `<div class="timeline-time">${new Date(item.time).toLocaleString()}</div>` : ''}
+                        </div>
+                    </div>
+                `).join('');
+                
+                if (timelineArea.innerHTML !== newHtml) {
+                    timelineArea.innerHTML = newHtml;
                 }
             }
-        })
-        .catch(err => console.error('Poll error', err));
-    }, 3000);
+        }
+    })
+    .catch(err => {
+        // Silent fail - normal for polling, don't spam console
+        if (err.message && !err.message.includes('Poll failed')) {
+            console.debug('Poll: Network check failed', err.message);
+        }
+    });
 }
+
+// Start polling when a conversation is open
+if (pollUser) {
+    // Initial poll immediately
+    pollForNewMessages();
+    
+    // Then poll every 2 seconds for new messages
+    pollInterval = setInterval(pollForNewMessages, 2000);
+    
+    // Clean up polling when user leaves the page
+    window.addEventListener('beforeunload', () => {
+        if (pollInterval) clearInterval(pollInterval);
+    });
+}
+
+// Add fade-in animation for new messages
+if (!document.querySelector('style[data-animation]')) {
+    const style = document.createElement('style');
+    style.setAttribute('data-animation', '1');
+    style.textContent = `
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+
 </script>
 <script>
     window.chatContext = {

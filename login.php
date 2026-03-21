@@ -48,6 +48,9 @@ $sessionTimeout = getSessionTimeout() * 60; // Convert minutes to seconds
 $ip = getClientIP();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Debug: indicate POST request received
+    error_log("POST request received to login.php");
+    
     // Check if IP is blocked
     if (isIPBlocked($ip)) {
         $errors[] = 'Access denied. Your IP address has been blocked.';
@@ -55,6 +58,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $email = isset($_POST['email']) ? sanitize($_POST['email']) : '';
     $password = isset($_POST['password']) ? $_POST['password'] : '';
+
+    // Debug: log the POST data
+    error_log("Login attempt: email=$email, password=" . (empty($password) ? 'empty' : 'provided'));
 
     if (empty($email) || empty($password)) {
         $errors[] = 'Please enter both email and password.';
@@ -122,6 +128,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $_SESSION['user_name'] = $user['full_name'];
                             $_SESSION['login_time'] = time();
                             $_SESSION['user_email'] = $user['email'];
+                            
+                            // Create user session record for tracking
+                            $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                            $device = 'Unknown';
+                            if (preg_match('/Mobile|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i', $userAgent)) {
+                                $device = 'Mobile';
+                            } elseif (preg_match('/Tablet|iPad/i', $userAgent)) {
+                                $device = 'Tablet';
+                            } else {
+                                $device = 'Desktop';
+                            }
+                            $sessionId = session_id();
+                            
+                            try {
+                                $sessionStmt = $db->prepare('
+                                    INSERT INTO user_sessions (user_id, session_id, device, ip_address, user_agent, login_time, is_active) 
+                                    VALUES (?, ?, ?, ?, ?, NOW(), 1)
+                                ');
+                                $result = $sessionStmt->execute([$user['id'], $sessionId, $device, $ip, $userAgent]);
+                                error_log("User session created for user {$user['id']}: " . ($result ? 'SUCCESS' : 'FAILED'));
+                            } catch (Exception $e) {
+                                error_log("Failed to create user session: " . $e->getMessage());
+                            }
                             
                             // Update last login timestamp
                             $updateStmt = $db->prepare('UPDATE users SET last_login = NOW() WHERE id = ?');

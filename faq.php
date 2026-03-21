@@ -706,23 +706,6 @@ $provider_registration_enabled = getPlatformSetting('provider_registration', '1'
             </div>
         </div>
     </nav>
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="logout.php">Logout</a>
-                        </li>
-                    <?php else: ?>
-                        <li class="nav-item">
-                            <a class="nav-link" href="login.php">Login</a>
-                        </li>
-                        <li class="nav-item ms-2">
-                            <a class="btn btn-primary px-4" href="register.php">Get Started</a>
-                        </li>
-                    <?php endif; ?>
-                </ul>
-            </div>
-        </div>
-    </nav>
 
     <!-- Hero Section -->
     <section class="hero-faq">

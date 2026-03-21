@@ -1446,6 +1446,7 @@ class AIBookingHandler
                 // insert initial chat message so conversation exists
                 try {
                     require_once __DIR__ . '/chat.php';
+                    require_once __DIR__ . '/event_tracking.php';
                     $booking_ref = '#BK-' . date('Y') . '-' . str_pad($bookingId,5,'0',STR_PAD_LEFT);
                     // provider's user id is available via getProviderInfo
                     $providerData = $this->getProviderInfo($providerId);
@@ -1465,6 +1466,16 @@ class AIBookingHandler
                 
                 // Log activity
                 $this->logActivity($clientId, 'ai_booking_created', "AI booking created: #{$bookingId}");
+
+                // Track booking created event
+                trackEvent('booking_created', 'booking', $bookingId, [
+                    'client_id' => $clientId,
+                    'provider_id' => $providerId,
+                    'ai_generated' => true,
+                    'location' => $extractedData['location']['location'] ?? 'Not specified',
+                    'preferred_date' => $extractedData['date']['date'],
+                    'preferred_time' => $extractedData['time']['time']
+                ], $clientId);
                 
                 return [
                     'success' => true,

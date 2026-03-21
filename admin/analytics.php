@@ -260,36 +260,161 @@ function getFinancialAnalytics($db, $start_date, $end_date) {
 // 🟠 4. Provider Performance Analytics
 function getProviderPerformance($db, $start_date, $end_date) {
     $analytics = [];
-    
-    // Provider performance metrics
+
+    // First, ensure performance data is up to date for recent providers
+    updateRecentProviderPerformance($db, $start_date, $end_date);
+
+    // Get comprehensive performance metrics
     $stmt = $db->prepare("
-        SELECT 
+        SELECT
+            pp.*,
             u.full_name,
             sp.profession,
             sp.location,
-            sp.average_rating,
-            sp.total_reviews,
-            sp.total_jobs,
-            COUNT(b.id) as completed_bookings,
-            ROUND(AVG(TIMESTAMPDIFF(HOUR, b.created_at, b.updated_at)), 2) as avg_completion_hours,
-            (SELECT COUNT(*) FROM reports r WHERE r.reported_user_id = u.id) as complaints_received,
-            CASE 
-                WHEN sp.average_rating >= 4.5 AND COUNT(b.id) >= 10 THEN 'Excellent'
-                WHEN sp.average_rating >= 4.0 AND COUNT(b.id) >= 5 THEN 'Good'
-                WHEN sp.average_rating >= 3.0 THEN 'Average'
-                ELSE 'Needs Improvement'
-            END as performance_grade
-        FROM service_providers sp
+            sp.verification_level,
+            sp.is_active,
+            sp.is_featured,
+            (SELECT COUNT(*) FROM provider_views pv WHERE pv.provider_id = sp.id AND pv.viewed_at BETWEEN ? AND ?) as profile_views,
+            (SELECT COUNT(*) FROM provider_shares ps WHERE ps.provider_id = sp.id AND ps.shared_at BETWEEN ? AND ?) as shares_count
+        FROM provider_performance pp
+        JOIN service_providers sp ON pp.provider_id = sp.id
         JOIN users u ON sp.user_id = u.id
-        LEFT JOIN bookings b ON sp.id = b.provider_id AND b.status = 'completed' AND b.created_at BETWEEN ? AND ?
-        GROUP BY sp.id
-        ORDER BY sp.average_rating DESC, completed_bookings DESC
-        LIMIT 20
+        WHERE pp.period_start = ? AND pp.period_end = ?
+        ORDER BY pp.overall_performance_score DESC
+        LIMIT 50
     ");
-    $stmt->execute([$start_date, $end_date . ' 23:59:59']);
+    $stmt->execute([$start_date, $end_date . ' 23:59:59', $start_date, $end_date . ' 23:59:59', $start_date, $end_date]);
     $analytics['provider_performance'] = $stmt->fetchAll();
-    
+
+    // Performance grade distribution
+    $stmt = $db->prepare("
+        SELECT performance_grade, COUNT(*) as count
+        FROM provider_performance
+        WHERE period_start = ? AND period_end = ?
+        GROUP BY performance_grade
+        ORDER BY
+            CASE performance_grade
+                WHEN 'excellent' THEN 1
+                WHEN 'good' THEN 2
+                WHEN 'average' THEN 3
+                WHEN 'needs_improvement' THEN 4
+            END
+    ");
+    $stmt->execute([$start_date, $end_date]);
+    $analytics['grade_distribution'] = $stmt->fetchAll();
+
+    // Top performers by different metrics
+    $stmt = $db->prepare("
+        SELECT 'Highest Rated' as category, u.full_name, sp.profession, pp.avg_rating as value, 'stars' as unit
+        FROM provider_performance pp
+        JOIN service_providers sp ON pp.provider_id = sp.id
+        JOIN users u ON sp.user_id = u.id
+        WHERE pp.period_start = ? AND pp.period_end = ?
+        ORDER BY pp.avg_rating DESC LIMIT 1
+        UNION ALL
+        SELECT 'Fastest Response' as category, u.full_name, sp.profession, pp.avg_response_time_hours as value, 'hours' as unit
+        FROM provider_performance pp
+        JOIN service_providers sp ON pp.provider_id = sp.id
+        JOIN users u ON sp.user_id = u.id
+        WHERE pp.period_start = ? AND pp.period_end = ? AND pp.avg_response_time_hours IS NOT NULL
+        ORDER BY pp.avg_response_time_hours ASC LIMIT 1
+        UNION ALL
+        SELECT 'Lowest Cancellation' as category, u.full_name, sp.profession, pp.cancellation_rate as value, '%' as unit
+        FROM provider_performance pp
+        JOIN service_providers sp ON pp.provider_id = sp.id
+        JOIN users u ON sp.user_id = u.id
+        WHERE pp.period_start = ? AND pp.period_end = ?
+        ORDER BY pp.cancellation_rate ASC LIMIT 1
+        UNION ALL
+        SELECT 'Most Reliable' as category, u.full_name, sp.profession, pp.on_time_completion_rate as value, '%' as unit
+        FROM provider_performance pp
+        JOIN service_providers sp ON pp.provider_id = sp.id
+        JOIN users u ON sp.user_id = u.id
+        WHERE pp.period_start = ? AND pp.period_end = ?
+        ORDER BY pp.on_time_completion_rate DESC LIMIT 1
+    ");
+    $stmt->execute([$start_date, $end_date, $start_date, $end_date, $start_date, $end_date, $start_date, $end_date]);
+    $analytics['top_performers'] = $stmt->fetchAll();
+
+    // Average metrics across all providers
+    $stmt = $db->prepare("
+        SELECT
+            AVG(avg_rating) as avg_rating,
+            AVG(cancellation_rate) as avg_cancellation_rate,
+            AVG(avg_response_time_hours) as avg_response_time,
+            AVG(on_time_completion_rate) as avg_on_time_rate,
+            AVG(client_satisfaction_score) as avg_satisfaction,
+            AVG(overall_performance_score) as avg_overall_score
+        FROM provider_performance
+        WHERE period_start = ? AND period_end = ?
+    ");
+    $stmt->execute([$start_date, $end_date]);
+    $analytics['averages'] = $stmt->fetch();
+
+    // Availability patterns analysis (booking patterns by day and time)
+    $stmt = $db->prepare("
+        SELECT
+            DAYOFWEEK(b.created_at) - 1 as day_index,
+            CASE
+                WHEN HOUR(b.created_at) BETWEEN 6 AND 11 THEN 'morning'
+                WHEN HOUR(b.created_at) BETWEEN 12 AND 17 THEN 'afternoon'
+                WHEN HOUR(b.created_at) BETWEEN 18 AND 23 THEN 'evening'
+                ELSE 'night'
+            END as time_period,
+            COUNT(*) as booking_count
+        FROM bookings b
+        WHERE b.created_at BETWEEN ? AND ?
+        GROUP BY day_index, time_period
+        ORDER BY day_index, time_period
+    ");
+    $stmt->execute([$start_date . ' 00:00:00', $end_date . ' 23:59:59']);
+    $patterns = $stmt->fetchAll();
+
+    // Initialize availability patterns array
+    $analytics['availability_patterns'] = [
+        'morning' => array_fill(0, 7, 0),
+        'afternoon' => array_fill(0, 7, 0),
+        'evening' => array_fill(0, 7, 0),
+        'night' => array_fill(0, 7, 0)
+    ];
+
+    // Fill in the booking counts
+    foreach ($patterns as $pattern) {
+        $day_index = (int)$pattern['day_index'];
+        $time_period = $pattern['time_period'];
+        $count = (int)$pattern['booking_count'];
+        
+        if (isset($analytics['availability_patterns'][$time_period][$day_index])) {
+            $analytics['availability_patterns'][$time_period][$day_index] = $count;
+        }
+    }
+
     return $analytics;
+}
+
+// Helper function to update performance data for recent providers
+function updateRecentProviderPerformance($db, $start_date, $end_date) {
+    require_once '../includes/provider_performance.php';
+    $performanceManager = new ProviderPerformanceManager();
+
+    // Get providers with recent activity
+    $stmt = $db->prepare("
+        SELECT DISTINCT sp.id
+        FROM service_providers sp
+        JOIN bookings b ON sp.id = b.provider_id
+        WHERE b.created_at BETWEEN ? AND ?
+        ORDER BY sp.id
+    ");
+    $stmt->execute([$start_date, $end_date]);
+    $active_providers = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    foreach ($active_providers as $provider_id) {
+        try {
+            $performanceManager->updateProviderPerformance($provider_id, $start_date, $end_date);
+        } catch (Exception $e) {
+            error_log("Failed to update performance for provider {$provider_id}: " . $e->getMessage());
+        }
+    }
 }
 
 // 🟢 5. Client Behavior Analytics
@@ -1056,8 +1181,66 @@ $districts = $db->query("SELECT DISTINCT location FROM service_providers WHERE l
             <div id="providers" class="tab-content">
                 <div class="analytics-section">
                     <h3 class="section-title">Provider Performance Dashboard</h3>
-                    
+
+                    <!-- Performance Summary Cards -->
+                    <div class="stats-grid mb-4">
+                        <div class="stat-card">
+                            <div class="stat-value"><?php echo number_format($provider_performance['averages']['avg_overall_score'] ?? 0, 1); ?>/100</div>
+                            <div class="stat-label">Avg Performance Score</div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-value"><?php echo number_format($provider_performance['averages']['avg_rating'] ?? 0, 1); ?>⭐</div>
+                            <div class="stat-label">Avg Rating</div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-value"><?php echo number_format($provider_performance['averages']['avg_cancellation_rate'] ?? 0, 1); ?>%</div>
+                            <div class="stat-label">Avg Cancellation Rate</div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-value"><?php echo count($provider_performance['provider_performance']); ?></div>
+                            <div class="stat-label">Active Providers</div>
+                        </div>
+                    </div>
+
+                    <!-- Performance Grade Distribution -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="chart-container">
+                                <h4>Performance Grade Distribution</h4>
+                                <canvas id="performanceGradeChart" height="200"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="chart-container">
+                                <h4>Top Performers</h4>
+                                <div class="top-performers-list">
+                                    <?php foreach ($provider_performance['top_performers'] as $performer): ?>
+                                        <div class="performer-item">
+                                            <div class="performer-category"><?php echo htmlspecialchars($performer['category']); ?></div>
+                                            <div class="performer-name"><?php echo htmlspecialchars($performer['full_name']); ?> (<?php echo htmlspecialchars($performer['profession']); ?>)</div>
+                                            <div class="performer-value"><?php echo htmlspecialchars($performer['value']); ?><?php echo htmlspecialchars($performer['unit']); ?></div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        </div>
+                    <!-- Availability Patterns Analysis -->
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <div class="chart-container">
+                                <h4>Provider Availability Patterns</h4>
+                                <p class="text-muted">Booking patterns by day of week and hour of day</p>
+                                <canvas id="availabilityPatternsChart" height="300"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="chart-container">
+                        <h4>Provider Performance Rankings</h4>
                         <div class="table-responsive">
                             <table class="table table-striped">
                                 <thead>
@@ -1065,11 +1248,13 @@ $districts = $db->query("SELECT DISTINCT location FROM service_providers WHERE l
                                         <th>Provider</th>
                                         <th>Profession</th>
                                         <th>Location</th>
+                                        <th>Overall Score</th>
                                         <th>Rating</th>
-                                        <th>Completed Jobs</th>
-                                        <th>Avg. Completion</th>
-                                        <th>Complaints</th>
-                                        <th>Performance</th>
+                                        <th>Response Time</th>
+                                        <th>Cancellation Rate</th>
+                                        <th>On-Time Rate</th>
+                                        <th>Grade</th>
+                                        <th>Verification</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1078,13 +1263,25 @@ $districts = $db->query("SELECT DISTINCT location FROM service_providers WHERE l
                                             <td><?php echo htmlspecialchars($provider['full_name']); ?></td>
                                             <td><?php echo htmlspecialchars($provider['profession']); ?></td>
                                             <td><?php echo htmlspecialchars($provider['location']); ?></td>
-                                            <td><?php echo number_format($provider['average_rating'], 1); ?> ⭐</td>
-                                            <td><?php echo $provider['completed_bookings']; ?></td>
-                                            <td><?php echo $provider['avg_completion_hours']; ?>h</td>
-                                            <td><?php echo $provider['complaints_received']; ?></td>
+                                            <td><strong><?php echo number_format($provider['overall_performance_score'], 1); ?>/100</strong></td>
+                                            <td><?php echo number_format($provider['avg_rating'], 1); ?> ⭐</td>
                                             <td>
-                                                <span class="performance-badge badge-<?php echo strtolower($provider['performance_grade']); ?>">
-                                                    <?php echo $provider['performance_grade']; ?>
+                                                <?php if ($provider['avg_response_time_hours'] !== null): ?>
+                                                    <?php echo number_format($provider['avg_response_time_hours'], 1); ?>h
+                                                <?php else: ?>
+                                                    <span class="text-muted">N/A</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td><?php echo number_format($provider['cancellation_rate'], 1); ?>%</td>
+                                            <td><?php echo number_format($provider['on_time_completion_rate'], 1); ?>%</td>
+                                            <td>
+                                                <span class="performance-badge badge-<?php echo $provider['performance_grade']; ?>">
+                                                    <?php echo ucfirst(str_replace('_', ' ', $provider['performance_grade'])); ?>
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span class="verification-badge badge-<?php echo strtolower($provider['verification_level']); ?>">
+                                                    <?php echo ucfirst($provider['verification_level']); ?>
                                                 </span>
                                             </td>
                                         </tr>
@@ -1348,6 +1545,44 @@ $districts = $db->query("SELECT DISTINCT location FROM service_providers WHERE l
             createLineChart('revenueGrowthChart', revenueGrowthData);
             
             createBarChart('detailedRevenueChart', revenueByCategoryData);
+            
+            // Provider performance charts
+            const performanceGradeData = {
+                labels: <?php echo json_encode(array_column($provider_performance['grade_distribution'], 'performance_grade')); ?>,
+                datasets: [{
+                    label: 'Providers',
+                    data: <?php echo json_encode(array_column($provider_performance['grade_distribution'], 'count')); ?>,
+                    backgroundColor: ['#d1fae5', '#dbeafe', '#fef3c7', '#fee2e2'],
+                    borderColor: ['#065f46', '#1e40af', '#92400e', '#991b1b'],
+                    borderWidth: 1
+                }]
+            };
+            createBarChart('performanceGradeChart', performanceGradeData);
+            
+            // Availability patterns chart
+            const availabilityPatternsData = {
+                labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                datasets: [{
+                    label: 'Morning (6-12)',
+                    data: <?php echo json_encode($provider_performance['availability_patterns']['morning'] ?? array_fill(0, 7, 0)); ?>,
+                    backgroundColor: 'rgba(13, 110, 253, 0.7)',
+                    borderColor: '#0d6efd',
+                    borderWidth: 1
+                }, {
+                    label: 'Afternoon (12-18)',
+                    data: <?php echo json_encode($provider_performance['availability_patterns']['afternoon'] ?? array_fill(0, 7, 0)); ?>,
+                    backgroundColor: 'rgba(25, 135, 84, 0.7)',
+                    borderColor: '#198754',
+                    borderWidth: 1
+                }, {
+                    label: 'Evening (18-24)',
+                    data: <?php echo json_encode($provider_performance['availability_patterns']['evening'] ?? array_fill(0, 7, 0)); ?>,
+                    backgroundColor: 'rgba(255, 193, 7, 0.7)',
+                    borderColor: '#ffc107',
+                    borderWidth: 1
+                }]
+            };
+            createBarChart('availabilityPatternsChart', availabilityPatternsData);
         });
 
         // Chart creation functions
