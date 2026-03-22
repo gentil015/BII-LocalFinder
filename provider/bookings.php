@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
         $stmt->execute([$booking_id, $provider['id']]);
         
         if ($stmt->fetch()) {
-            $stmt = $db->prepare("UPDATE bookings SET status = ?, updated_at = NOW() WHERE id = ?");
+            $stmt = $db->prepare("UPDATE bookings SET status = ?, responded_at = NOW(), updated_at = NOW() WHERE id = ?");
             if ($stmt->execute([$new_status, $booking_id])) {
                 // Update total_jobs if completed and mark payment as completed
                 if ($new_status === 'completed') {
@@ -135,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action'])) {
             
             $stmt = $db->prepare("
                 UPDATE bookings 
-                SET status = '$action', updated_at = NOW()
+                SET status = '$action', responded_at = NOW(), updated_at = NOW()
                 WHERE id IN ($placeholders) AND provider_id = ? AND status = 'pending'
             ");
             
@@ -289,6 +289,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['offer_action'])) {
         } elseif ($action === 'reject') {
             $stmt = $db->prepare("UPDATE service_offers SET status = 'rejected', responded_at = NOW() WHERE id = ?");
             if ($stmt->execute([$offer_id])) {
+                // Update booking responded_at for ML tracking
+                $stmt = $db->prepare("UPDATE bookings SET responded_at = NOW() WHERE id = (SELECT booking_id FROM service_offers WHERE id = ?)");
+                $stmt->execute([$offer_id]);
+                
                 $success = "Offer rejected successfully!";
             } else {
                 $errors[] = "Failed to reject offer";

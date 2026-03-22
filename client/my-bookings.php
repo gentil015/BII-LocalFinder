@@ -141,7 +141,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['offer_action'])) {
                 $stmt = $db->prepare("
                     UPDATE bookings 
                     SET status = 'confirmed', 
-                        responded_at = NOW(),
                         agreed_price = ?
                     WHERE id = ? AND client_id = ?
                 ");

@@ -76,6 +76,10 @@ class ServiceNegotiation {
             ");
             $stmt->execute([$offer_id]);
             
+            // Update booking responded_at for ML tracking
+            $this->db->prepare("UPDATE bookings SET responded_at = NOW() WHERE id = ?")
+                ->execute([$offer['booking_id']]);
+            
             // Create finalized price
             $this->finalizePrice(
                 $offer['booking_id'],
@@ -281,6 +285,10 @@ class ServiceNegotiation {
                 SET status = 'rejected', responded_at = NOW(), response_notes = ?
                 WHERE id = ?
             ")->execute([$notes, $offer_id]);
+            
+            // Update booking responded_at for ML tracking
+            $this->db->prepare("UPDATE bookings SET responded_at = NOW() WHERE id = ?")
+                ->execute([$offer['booking_id']]);
             
             // Log to history
             $this->logNegotiationHistory(

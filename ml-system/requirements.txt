@@ -1,0 +1,12 @@
+# ML System Python Dependencies
+# Install: pip install -r requirements.txt
+
+fastapi
+uvicorn[standard]
+pydantic
+scikit-learn
+pandas
+numpy
+joblib
+mysql-connector-python
+python-dotenv

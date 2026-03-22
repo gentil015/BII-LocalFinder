@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Mar 21, 2026 at 08:20 PM
+-- Generation Time: Mar 22, 2026 at 09:46 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -98,6 +98,7 @@ CREATE TABLE `bookings` (
   `preferred_date` date DEFAULT NULL,
   `preferred_time` time DEFAULT NULL,
   `status` enum('pending','confirmed','completed','cancelled') DEFAULT 'pending',
+  `provider_share_id` int(11) DEFAULT NULL,
   `cancellation_reason` varchar(255) DEFAULT NULL,
   `cancelled_at` datetime DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
@@ -111,38 +112,38 @@ CREATE TABLE `bookings` (
 -- Dumping data for table `bookings`
 --
 
-INSERT INTO `bookings` (`id`, `client_id`, `provider_id`, `location`, `service_id`, `service_description`, `amount`, `payment_status`, `preferred_date`, `preferred_time`, `status`, `cancellation_reason`, `cancelled_at`, `created_at`, `updated_at`, `booking_lead_time`, `responded_at`, `ai_generated`) VALUES
-(1, 11, 12, NULL, NULL, 'I need someone who can clean my window house', 0.00, 'pending', '2025-11-29', NULL, 'completed', NULL, NULL, '2025-11-27 15:47:00', '2025-12-15 17:31:10', NULL, NULL, 0),
-(2, 11, 12, NULL, NULL, 'I&#039;m interested in the &quot;Cleaning windows&quot; service.', 0.00, 'pending', '2025-12-04', '05:04:00', 'completed', NULL, NULL, '2025-11-28 08:59:20', '2025-12-15 17:31:10', NULL, NULL, 0),
-(3, 11, 16, NULL, NULL, 'I&#039;m interested in the &quot;Wedding Drive&quot; service.', 0.00, 'pending', '2025-12-07', '04:40:00', 'completed', NULL, NULL, '2025-11-29 12:34:40', '2025-12-15 17:31:10', NULL, NULL, 0),
-(4, 31, 12, NULL, NULL, 'I need some on who can clean my window.', 0.00, 'pending', '2025-12-04', '10:05:00', 'completed', NULL, NULL, '2025-12-01 18:02:17', '2025-12-15 17:31:10', NULL, NULL, 0),
-(9, 11, 12, 'Kayonza', NULL, 'Need a house cleaner in kayonza next Monday for deep cleaning', 0.00, 'pending', '2025-12-08', '10:00:00', 'cancelled', NULL, NULL, '2025-12-03 06:29:21', '2025-12-15 17:31:10', NULL, NULL, 1),
-(10, 11, 12, 'Kayonza', NULL, 'Need a house cleaner in kayonza next Monday for deep cleaning', 0.00, 'pending', '2025-12-08', '10:00:00', 'cancelled', NULL, NULL, '2025-12-03 06:31:37', '2025-12-15 17:36:18', NULL, NULL, 1),
-(11, 11, 12, 'Kayonza', NULL, 'Need a house cleaner in kayonza next Monday for deep cleaning', 0.00, 'pending', '2025-12-08', '10:00:00', 'cancelled', 'too expensive', '2026-03-21 11:06:11', '2025-12-03 06:33:06', '2026-03-21 18:06:11', NULL, NULL, 1),
-(12, 11, 15, 'Not specified', NULL, 'I need somw one to fix my toilet pipe', 0.00, 'pending', '2025-12-04', '10:00:00', 'pending', NULL, NULL, '2025-12-03 07:45:20', '2025-12-15 17:31:10', NULL, NULL, 1),
-(13, 11, 15, 'Not specified', NULL, 'I need somw one to fix my toilet pipe', 0.00, 'pending', '2025-12-04', '10:00:00', 'pending', NULL, NULL, '2025-12-03 07:47:34', '2025-12-15 17:31:10', NULL, NULL, 1),
-(14, 11, 16, 'Not specified', NULL, 'help me to find driver my balance is 2000 per hour', 0.00, 'pending', '2025-12-04', '10:00:00', 'pending', NULL, NULL, '2025-12-03 09:31:50', '2025-12-15 17:31:10', NULL, NULL, 1),
-(15, 11, 16, 'Rubavu', NULL, 'I need driver who drive me to kigali from rubavu just now', 0.00, 'pending', '2025-12-03', '10:00:00', 'pending', NULL, NULL, '2025-12-03 11:20:37', '2025-12-15 17:31:10', NULL, NULL, 1),
-(16, 31, 12, 'Not specified', NULL, 'I need driver urgent', 0.00, 'pending', '2025-12-04', '20:00:00', 'pending', NULL, NULL, '2025-12-04 18:48:59', '2025-12-15 17:31:10', NULL, NULL, 1),
-(17, 31, 12, 'Not specified', NULL, 'I need driver', 0.00, 'pending', '2025-12-06', '10:00:00', 'pending', NULL, NULL, '2025-12-05 09:30:12', '2025-12-15 17:31:10', NULL, NULL, 1),
-(18, 31, 12, 'Huye', NULL, 'I need driver just now I am located in huye', 0.00, 'pending', '2025-12-05', '10:00:00', 'pending', NULL, NULL, '2025-12-05 10:15:48', '2025-12-15 17:31:10', NULL, NULL, 1),
-(19, 31, 12, NULL, 47, 'I need dri', 20000.00, 'pending', '2025-12-25', '09:38:00', 'completed', NULL, NULL, '2025-12-13 17:38:09', '2025-12-15 17:31:07', NULL, NULL, 0),
-(20, 32, 12, NULL, 47, 'I need the driver who will drive me in every movement I made', NULL, 'pending', '2025-12-25', '00:00:00', 'confirmed', NULL, NULL, '2025-12-18 07:53:53', '2025-12-20 16:05:55', NULL, NULL, 0),
-(22, 33, 12, NULL, 47, 'I need driver who drive my child on school', NULL, 'completed', '2025-12-26', '09:30:00', 'completed', NULL, NULL, '2025-12-18 08:30:37', '2025-12-18 08:35:04', NULL, NULL, 0),
-(24, 32, 14, NULL, NULL, 'I need provider', NULL, 'pending', '2025-12-25', '00:00:00', 'pending', NULL, NULL, '2025-12-18 13:31:10', '2025-12-18 13:31:10', NULL, NULL, 0),
-(25, 32, 12, NULL, 47, 'I need the assitant driver', NULL, 'pending', '2025-12-31', '00:00:00', 'cancelled', NULL, NULL, '2025-12-26 12:02:25', '2025-12-26 12:26:27', NULL, NULL, 0),
-(27, 32, 12, NULL, 48, 'Price negotiation offer', NULL, 'pending', '2025-12-26', NULL, '', NULL, NULL, '2025-12-26 12:18:08', '2025-12-26 12:18:08', NULL, NULL, 0),
-(28, 32, 12, NULL, 48, 'Price negotiation offer', NULL, 'pending', '2025-12-26', NULL, '', NULL, NULL, '2025-12-26 12:22:22', '2025-12-26 12:22:22', NULL, NULL, 0),
-(30, 32, 12, NULL, 48, 'Price negotiation offer', NULL, 'pending', '2025-12-26', NULL, '', NULL, NULL, '2025-12-26 12:25:38', '2025-12-26 12:25:38', NULL, NULL, 0),
-(31, 32, 12, NULL, 48, 'Price negotiation offer', NULL, 'pending', '2025-12-27', NULL, '', NULL, NULL, '2025-12-27 08:46:25', '2025-12-27 08:46:25', NULL, NULL, 0),
-(32, 32, 12, NULL, 48, 'for me I live nearest of airport', NULL, 'pending', '2025-12-27', NULL, '', NULL, NULL, '2025-12-27 15:59:26', '2025-12-27 15:59:26', NULL, NULL, 0),
-(33, 32, 12, NULL, 48, 'Price negotiation offer', 40000.00, 'completed', '2026-01-15', NULL, 'completed', NULL, NULL, '2026-01-15 20:36:50', '2026-01-15 20:41:04', NULL, '2026-01-15 12:39:32', 0),
-(34, 32, 12, NULL, 47, 'I need driver who will drive in all week travel.', NULL, 'pending', '2026-03-17', '10:00:00', 'pending', NULL, NULL, '2026-02-28 17:54:54', '2026-02-28 17:54:54', NULL, NULL, 0),
-(35, 32, 12, '', 47, 'I need the some one who can drive in my weddings', NULL, 'pending', '2026-03-19', '09:00:00', 'confirmed', NULL, NULL, '2026-03-09 20:53:27', '2026-03-09 20:57:25', NULL, NULL, 0),
-(36, 32, 12, '', 47, 'Come early', NULL, 'pending', '2026-03-27', '14:00:00', 'pending', NULL, NULL, '2026-03-09 21:27:06', '2026-03-09 21:27:06', NULL, NULL, 0),
-(37, 32, 12, '', 48, ';hluh/.hkl/jiof;shvjsf;jbhvsdfjlbvl;shvbsjl/sjbhvsl/gvbaql/', NULL, 'pending', '2026-03-21', '14:00:00', 'cancelled', NULL, NULL, '2026-03-10 20:41:06', '2026-03-12 18:52:45', NULL, NULL, 0),
-(38, 32, 12, '', 48, 'I need someone to fix my lick pop', 60000.00, 'pending', '2026-03-26', '10:30:00', 'pending', NULL, NULL, '2026-03-20 16:16:56', '2026-03-20 16:16:56', NULL, NULL, 0),
-(39, 31, 12, '', 48, 'jhrdstgretgzserysxg', 78943.00, 'pending', '2026-03-29', '10:30:00', 'pending', NULL, NULL, '2026-03-21 12:07:42', '2026-03-21 12:07:42', NULL, NULL, 0);
+INSERT INTO `bookings` (`id`, `client_id`, `provider_id`, `location`, `service_id`, `service_description`, `amount`, `payment_status`, `preferred_date`, `preferred_time`, `status`, `provider_share_id`, `cancellation_reason`, `cancelled_at`, `created_at`, `updated_at`, `booking_lead_time`, `responded_at`, `ai_generated`) VALUES
+(1, 11, 12, NULL, NULL, 'I need someone who can clean my window house', 0.00, 'pending', '2025-11-29', NULL, 'completed', NULL, NULL, NULL, '2025-11-27 15:47:00', '2025-12-15 17:31:10', NULL, NULL, 0),
+(2, 11, 12, NULL, NULL, 'I&#039;m interested in the &quot;Cleaning windows&quot; service.', 0.00, 'pending', '2025-12-04', '05:04:00', 'completed', NULL, NULL, NULL, '2025-11-28 08:59:20', '2025-12-15 17:31:10', NULL, NULL, 0),
+(3, 11, 16, NULL, NULL, 'I&#039;m interested in the &quot;Wedding Drive&quot; service.', 0.00, 'pending', '2025-12-07', '04:40:00', 'completed', NULL, NULL, NULL, '2025-11-29 12:34:40', '2025-12-15 17:31:10', NULL, NULL, 0),
+(4, 31, 12, NULL, NULL, 'I need some on who can clean my window.', 0.00, 'pending', '2025-12-04', '10:05:00', 'completed', NULL, NULL, NULL, '2025-12-01 18:02:17', '2025-12-15 17:31:10', NULL, NULL, 0),
+(9, 11, 12, 'Kayonza', NULL, 'Need a house cleaner in kayonza next Monday for deep cleaning', 0.00, 'pending', '2025-12-08', '10:00:00', 'cancelled', NULL, NULL, NULL, '2025-12-03 06:29:21', '2025-12-15 17:31:10', NULL, NULL, 1),
+(10, 11, 12, 'Kayonza', NULL, 'Need a house cleaner in kayonza next Monday for deep cleaning', 0.00, 'pending', '2025-12-08', '10:00:00', 'cancelled', NULL, NULL, NULL, '2025-12-03 06:31:37', '2025-12-15 17:36:18', NULL, NULL, 1),
+(11, 11, 12, 'Kayonza', NULL, 'Need a house cleaner in kayonza next Monday for deep cleaning', 0.00, 'pending', '2025-12-08', '10:00:00', 'cancelled', NULL, 'too expensive', '2026-03-21 11:06:11', '2025-12-03 06:33:06', '2026-03-21 18:06:11', NULL, NULL, 1),
+(12, 11, 15, 'Not specified', NULL, 'I need somw one to fix my toilet pipe', 0.00, 'pending', '2025-12-04', '10:00:00', 'pending', NULL, NULL, NULL, '2025-12-03 07:45:20', '2025-12-15 17:31:10', NULL, NULL, 1),
+(13, 11, 15, 'Not specified', NULL, 'I need somw one to fix my toilet pipe', 0.00, 'pending', '2025-12-04', '10:00:00', 'pending', NULL, NULL, NULL, '2025-12-03 07:47:34', '2025-12-15 17:31:10', NULL, NULL, 1),
+(14, 11, 16, 'Not specified', NULL, 'help me to find driver my balance is 2000 per hour', 0.00, 'pending', '2025-12-04', '10:00:00', 'pending', NULL, NULL, NULL, '2025-12-03 09:31:50', '2025-12-15 17:31:10', NULL, NULL, 1),
+(15, 11, 16, 'Rubavu', NULL, 'I need driver who drive me to kigali from rubavu just now', 0.00, 'pending', '2025-12-03', '10:00:00', 'pending', NULL, NULL, NULL, '2025-12-03 11:20:37', '2025-12-15 17:31:10', NULL, NULL, 1),
+(16, 31, 12, 'Not specified', NULL, 'I need driver urgent', 0.00, 'pending', '2025-12-04', '20:00:00', 'pending', NULL, NULL, NULL, '2025-12-04 18:48:59', '2025-12-15 17:31:10', NULL, NULL, 1),
+(17, 31, 12, 'Not specified', NULL, 'I need driver', 0.00, 'pending', '2025-12-06', '10:00:00', 'pending', NULL, NULL, NULL, '2025-12-05 09:30:12', '2025-12-15 17:31:10', NULL, NULL, 1),
+(18, 31, 12, 'Huye', NULL, 'I need driver just now I am located in huye', 0.00, 'pending', '2025-12-05', '10:00:00', 'pending', NULL, NULL, NULL, '2025-12-05 10:15:48', '2025-12-15 17:31:10', NULL, NULL, 1),
+(19, 31, 12, NULL, 47, 'I need dri', 20000.00, 'pending', '2025-12-25', '09:38:00', 'completed', NULL, NULL, NULL, '2025-12-13 17:38:09', '2025-12-15 17:31:07', NULL, NULL, 0),
+(20, 32, 12, NULL, 47, 'I need the driver who will drive me in every movement I made', NULL, 'pending', '2025-12-25', '00:00:00', 'confirmed', NULL, NULL, NULL, '2025-12-18 07:53:53', '2025-12-20 16:05:55', NULL, NULL, 0),
+(22, 33, 12, NULL, 47, 'I need driver who drive my child on school', NULL, 'completed', '2025-12-26', '09:30:00', 'completed', NULL, NULL, NULL, '2025-12-18 08:30:37', '2025-12-18 08:35:04', NULL, NULL, 0),
+(24, 32, 14, NULL, NULL, 'I need provider', NULL, 'pending', '2025-12-25', '00:00:00', 'pending', NULL, NULL, NULL, '2025-12-18 13:31:10', '2025-12-18 13:31:10', NULL, NULL, 0),
+(25, 32, 12, NULL, 47, 'I need the assitant driver', NULL, 'pending', '2025-12-31', '00:00:00', 'cancelled', NULL, NULL, NULL, '2025-12-26 12:02:25', '2025-12-26 12:26:27', NULL, NULL, 0),
+(27, 32, 12, NULL, 48, 'Price negotiation offer', NULL, 'pending', '2025-12-26', NULL, '', NULL, NULL, NULL, '2025-12-26 12:18:08', '2025-12-26 12:18:08', NULL, NULL, 0),
+(28, 32, 12, NULL, 48, 'Price negotiation offer', NULL, 'pending', '2025-12-26', NULL, '', NULL, NULL, NULL, '2025-12-26 12:22:22', '2025-12-26 12:22:22', NULL, NULL, 0),
+(30, 32, 12, NULL, 48, 'Price negotiation offer', NULL, 'pending', '2025-12-26', NULL, '', NULL, NULL, NULL, '2025-12-26 12:25:38', '2025-12-26 12:25:38', NULL, NULL, 0),
+(31, 32, 12, NULL, 48, 'Price negotiation offer', NULL, 'pending', '2025-12-27', NULL, '', NULL, NULL, NULL, '2025-12-27 08:46:25', '2025-12-27 08:46:25', NULL, NULL, 0),
+(32, 32, 12, NULL, 48, 'for me I live nearest of airport', NULL, 'pending', '2025-12-27', NULL, '', NULL, NULL, NULL, '2025-12-27 15:59:26', '2025-12-27 15:59:26', NULL, NULL, 0),
+(33, 32, 12, NULL, 48, 'Price negotiation offer', 40000.00, 'completed', '2026-01-15', NULL, 'completed', NULL, NULL, NULL, '2026-01-15 20:36:50', '2026-01-15 20:41:04', NULL, '2026-01-15 12:39:32', 0),
+(34, 32, 12, NULL, 47, 'I need driver who will drive in all week travel.', NULL, 'pending', '2026-03-17', '10:00:00', 'pending', NULL, NULL, NULL, '2026-02-28 17:54:54', '2026-02-28 17:54:54', NULL, NULL, 0),
+(35, 32, 12, '', 47, 'I need the some one who can drive in my weddings', NULL, 'pending', '2026-03-19', '09:00:00', 'confirmed', NULL, NULL, NULL, '2026-03-09 20:53:27', '2026-03-09 20:57:25', NULL, NULL, 0),
+(36, 32, 12, '', 47, 'Come early', NULL, 'pending', '2026-03-27', '14:00:00', 'pending', NULL, NULL, NULL, '2026-03-09 21:27:06', '2026-03-09 21:27:06', NULL, NULL, 0),
+(37, 32, 12, '', 48, ';hluh/.hkl/jiof;shvjsf;jbhvsdfjlbvl;shvbsjl/sjbhvsl/gvbaql/', NULL, 'pending', '2026-03-21', '14:00:00', 'cancelled', NULL, NULL, NULL, '2026-03-10 20:41:06', '2026-03-12 18:52:45', NULL, NULL, 0),
+(38, 32, 12, '', 48, 'I need someone to fix my lick pop', 60000.00, 'pending', '2026-03-26', '10:30:00', 'pending', NULL, NULL, NULL, '2026-03-20 16:16:56', '2026-03-20 16:16:56', NULL, NULL, 0),
+(39, 31, 12, '', 48, 'jhrdstgretgzserysxg', 78943.00, 'pending', '2026-03-29', '10:30:00', 'pending', NULL, NULL, NULL, '2026-03-21 12:07:42', '2026-03-21 12:07:42', NULL, NULL, 0);
 
 -- --------------------------------------------------------
 
@@ -704,17 +705,30 @@ INSERT INTO `messages` (`id`, `sender_id`, `receiver_id`, `message`, `is_read`, 
 --
 
 CREATE TABLE `ml_interactions` (
-  `user_id` int(11) NOT NULL,
+  `id` int(11) NOT NULL,
   `provider_id` int(11) NOT NULL,
   `views` int(11) DEFAULT 0,
   `clicks` int(11) DEFAULT 0,
   `messages` int(11) DEFAULT 0,
-  `hired` tinyint(1) DEFAULT 0,
-  `rating` decimal(3,2) DEFAULT 0.00,
-  `price` decimal(10,2) DEFAULT NULL,
-  `avg_response_time` decimal(5,2) DEFAULT NULL,
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+  `rating` float DEFAULT 0,
+  `price` float DEFAULT 0,
+  `avg_response_time` float DEFAULT 0,
+  `hired` tinyint(4) DEFAULT 0,
+  `recorded_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `ml_interactions`
+--
+
+INSERT INTO `ml_interactions` (`id`, `provider_id`, `views`, `clicks`, `messages`, `rating`, `price`, `avg_response_time`, `hired`, `recorded_at`) VALUES
+(1, 4, 1, 0, 1, 0, 0, 24, 0, '2026-03-22 18:59:48'),
+(2, 6, 0, 0, 0, 0, 4000, 24, 0, '2026-03-22 18:59:48'),
+(3, 12, 1, 0, 13, 3.5, 17500, 0, 1, '2026-03-22 18:59:48'),
+(4, 13, 0, 0, 0, 0, 4000, 24, 0, '2026-03-22 18:59:48'),
+(5, 14, 0, 0, 0, 0, 0, 24, 0, '2026-03-22 18:59:48'),
+(6, 15, 0, 0, 0, 0, 0, 24, 0, '2026-03-22 18:59:48'),
+(7, 16, 0, 0, 0, 2, 0, 24, 1, '2026-03-22 18:59:48');
 
 -- --------------------------------------------------------
 
@@ -914,7 +928,22 @@ INSERT INTO `page_sessions` (`id`, `user_id`, `session_id`, `page_url`, `time_sp
 (11, 32, 'u43vhpe7e0hteh6bfkm90itahp', 'http://localhost/bii_localfinder/client/dashboard.php', 2, '2026-03-22 01:05:22', '2026-03-22 01:05:24', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
 (12, 32, 'u43vhpe7e0hteh6bfkm90itahp', 'http://localhost/bii_localfinder/client/dashboard.php', 3, '2026-03-22 01:07:20', '2026-03-22 01:07:23', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
 (13, NULL, '28kddg8591lkbal1vcr5l8rl62', 'http://localhost/bii_localfinder/client/dashboard.php', 1, '2026-03-22 02:06:01', '2026-03-22 02:06:03', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
-(14, NULL, '28kddg8591lkbal1vcr5l8rl62', 'http://localhost/bii_localfinder/client/dashboard.php', 1, '2026-03-22 02:06:13', '2026-03-22 02:06:15', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36');
+(14, NULL, '28kddg8591lkbal1vcr5l8rl62', 'http://localhost/bii_localfinder/client/dashboard.php', 1, '2026-03-22 02:06:13', '2026-03-22 02:06:15', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(15, 32, 'ftb7r35i9ll2em0i8hj6h943ho', 'http://localhost/bii_localfinder/client/dashboard.php', 11, '2026-03-23 02:20:23', '2026-03-23 02:20:34', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(16, 32, 'ftb7r35i9ll2em0i8hj6h943ho', 'http://localhost/bii_localfinder/client/providers.php', 9, '2026-03-23 02:20:37', '2026-03-23 02:20:47', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(17, 32, 'ftb7r35i9ll2em0i8hj6h943ho', 'http://localhost/bii_localfinder/client/providers.php', 9, '2026-03-23 02:20:52', '2026-03-23 02:21:02', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(18, 32, 'ftb7r35i9ll2em0i8hj6h943ho', 'http://localhost/bii_localfinder/client/dashboard.php', 13, '2026-03-23 02:21:03', '2026-03-23 02:21:16', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(19, 32, 'ftb7r35i9ll2em0i8hj6h943ho', 'http://localhost/bii_localfinder/client/dashboard.php', 18, '2026-03-23 02:21:20', '2026-03-23 02:21:38', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(20, 32, 'ftb7r35i9ll2em0i8hj6h943ho', 'http://localhost/bii_localfinder/client/dashboard.php', 2, '2026-03-23 02:21:44', '2026-03-23 02:21:46', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(21, 32, 'ftb7r35i9ll2em0i8hj6h943ho', 'http://localhost/bii_localfinder/client/dashboard.php', 1, '2026-03-23 02:25:37', '2026-03-23 02:25:38', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(22, 32, 'ftb7r35i9ll2em0i8hj6h943ho', 'http://localhost/bii_localfinder/client/dashboard.php', 7, '2026-03-23 02:31:19', '2026-03-23 02:31:27', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(23, 32, 'ftb7r35i9ll2em0i8hj6h943ho', 'http://localhost/bii_localfinder/client/dashboard.php', 2, '2026-03-23 02:35:30', '2026-03-23 02:35:33', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(24, 32, 'ftb7r35i9ll2em0i8hj6h943ho', 'http://localhost/bii_localfinder/client/dashboard.php', 1, '2026-03-23 02:36:49', '2026-03-23 02:36:50', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(25, 32, 'ftb7r35i9ll2em0i8hj6h943ho', 'http://localhost/bii_localfinder/client/providers.php?section=top-rated', 6, '2026-03-23 02:55:19', '2026-03-23 02:55:25', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(26, 32, 'ftb7r35i9ll2em0i8hj6h943ho', 'http://localhost/bii_localfinder/client/providers.php?section=top-rated', 1, '2026-03-23 02:56:06', '2026-03-23 02:56:07', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(27, 32, 'njhbol875q9jr1jfugj0jmqkuq', 'http://localhost/bii_localfinder/client/dashboard.php', 3, '2026-03-23 03:21:12', '2026-03-23 03:21:15', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(28, 32, 'njhbol875q9jr1jfugj0jmqkuq', 'http://localhost/bii_localfinder/client/dashboard.php', 1, '2026-03-23 03:21:22', '2026-03-23 03:21:24', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(29, 31, 'bai41pkbe9q21qug3el2u0upmd', 'http://localhost/bii_localfinder/client/dashboard.php', 3, '2026-03-23 03:29:38', '2026-03-23 03:29:41', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36');
 
 -- --------------------------------------------------------
 
@@ -959,7 +988,16 @@ INSERT INTO `page_views` (`id`, `user_id`, `page_url`, `page_title`, `referrer`,
 (18, 32, 'http://localhost/bii_localfinder/client/providers.php?query=carpenter&location=&category=', 'Find Service Providers - BII LocalFinder', 'http://localhost/bii_localfinder/client/providers.php?query=&location=&category=', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'u43vhpe7e0hteh6bfkm90itahp', '2026-03-21 17:22:55'),
 (19, 32, 'http://localhost/bii_localfinder/client/providers.php?query=carpenter&location=&category=', 'Find Service Providers - BII LocalFinder', 'http://localhost/bii_localfinder/client/providers.php?query=&location=&category=', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'u43vhpe7e0hteh6bfkm90itahp', '2026-03-21 17:35:43'),
 (20, 32, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/client/providers.php?query=carpenter&location=&category=', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'u43vhpe7e0hteh6bfkm90itahp', '2026-03-21 18:04:20'),
-(21, 32, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/client/providers.php?query=carpenter&location=&category=', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'u43vhpe7e0hteh6bfkm90itahp', '2026-03-21 18:05:22');
+(21, 32, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/client/providers.php?query=carpenter&location=&category=', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'u43vhpe7e0hteh6bfkm90itahp', '2026-03-21 18:05:22'),
+(22, 32, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/login.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'ftb7r35i9ll2em0i8hj6h943ho', '2026-03-22 19:20:23'),
+(23, 32, 'http://localhost/bii_localfinder/client/providers.php', 'Find Service Providers - BII LocalFinder', 'http://localhost/bii_localfinder/client/dashboard.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'ftb7r35i9ll2em0i8hj6h943ho', '2026-03-22 19:20:38'),
+(24, 32, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/client/providers.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'ftb7r35i9ll2em0i8hj6h943ho', '2026-03-22 19:21:03'),
+(25, 32, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/client/my-bookings.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'ftb7r35i9ll2em0i8hj6h943ho', '2026-03-22 19:21:21'),
+(26, 32, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/client/providers.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'ftb7r35i9ll2em0i8hj6h943ho', '2026-03-22 19:31:21'),
+(27, 32, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/client/providers.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'ftb7r35i9ll2em0i8hj6h943ho', '2026-03-22 19:35:31'),
+(28, 32, 'http://localhost/bii_localfinder/client/providers.php?section=top-rated', 'Find Service Providers - BII LocalFinder', 'http://localhost/bii_localfinder/client/providers.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'ftb7r35i9ll2em0i8hj6h943ho', '2026-03-22 19:55:14'),
+(29, 32, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/login.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'njhbol875q9jr1jfugj0jmqkuq', '2026-03-22 20:21:12'),
+(30, 31, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/login.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'bai41pkbe9q21qug3el2u0upmd', '2026-03-22 20:29:38');
 
 -- --------------------------------------------------------
 
@@ -1325,7 +1363,8 @@ INSERT INTO `provider_shares` (`id`, `provider_id`, `user_id`, `platform`, `shar
 (15, 13, 31, 'Link Copy', '2025-12-18 07:42:44'),
 (16, 12, 32, 'QR Code', '2025-12-18 13:25:25'),
 (17, 15, 32, 'Twitter', '2025-12-24 07:46:07'),
-(18, 15, 32, 'Facebook', '2025-12-27 16:35:48');
+(18, 15, 32, 'Facebook', '2025-12-27 16:35:48'),
+(19, 12, 32, 'profile_view', '2026-03-22 19:26:43');
 
 -- --------------------------------------------------------
 
@@ -1768,8 +1807,8 @@ INSERT INTO `users` (`id`, `full_name`, `email`, `phone`, `password`, `user_type
 (28, 'Kevin Mugisha', 'mugishakevin@gmail.com', '+2507948927349', '$2y$10$bAKfPqcZvcM7Emu1bsRWk.blYvvysRjEr9F9l91XSjogXnqAAdED2', 'provider', 1, 0, 0, 1, 'active', '2025-11-27 13:47:24', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-11-27 20:53:01', '2025-11-27 21:47:24', '984236', '2025-11-27 22:03:01', 0, 1, NULL),
 (29, 'Adrien migabo', 'adrienmigabo@gmail.com', '0783937989', '$2y$10$pUikfrD3cFMUw9EnKirTjuh/BwqOIAkb1H60OgGtLi7Zq8dJZGmh6', 'provider', 1, 0, 0, 1, 'active', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-11-27 20:54:38', '2025-11-27 20:55:49', '933410', '2025-11-27 22:04:38', 0, 1, NULL),
 (30, 'Kevin mugisha', 'kevinmugisha354@gmail.com', '+250795946213', '$2y$10$bES98RTdKieFyNNMRrcqwegwg3/B31YRg/swjsuVBx57MLEui7/ou', 'provider', 1, 0, 0, 1, 'active', '2025-12-17 23:59:58', NULL, NULL, NULL, NULL, NULL, NULL, 'profile_30_1764621887.jpg', '2025-11-29 12:26:23', '2025-12-18 07:59:58', NULL, NULL, 0, 1, NULL),
-(31, 'David Gakuba', 'technogystore@gmail.com', '+250795946213', '$2y$10$2/9aBz95VgDXg4LUsk98lO08Zco7BAMPZEDReOOqch4zucF8x7cre', 'client', 1, 0, 0, 1, 'active', '2026-03-21 05:06:18', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-12-01 17:57:23', '2026-03-21 12:06:18', NULL, NULL, 0, 1, NULL),
-(32, 'Mukundwa Aime', 'tuyizereaimely@gmail.com', '+250795946213', '$2y$10$8bK7Xp71icAO5YjNxSR/XeKb5tlHjnbIRT2uWC2Dv3VuMwj/RGoQO', 'client', 1, 0, 0, 1, 'active', '2026-03-21 10:21:59', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-12-17 17:22:25', '2026-03-21 17:21:59', NULL, NULL, 0, 1, NULL),
+(31, 'David Gakuba', 'technogystore@gmail.com', '+250795946213', '$2y$10$2/9aBz95VgDXg4LUsk98lO08Zco7BAMPZEDReOOqch4zucF8x7cre', 'client', 1, 0, 0, 1, 'active', '2026-03-22 13:29:37', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-12-01 17:57:23', '2026-03-22 20:29:37', NULL, NULL, 0, 1, NULL),
+(32, 'Mukundwa Aime', 'tuyizereaimely@gmail.com', '+250795946213', '$2y$10$8bK7Xp71icAO5YjNxSR/XeKb5tlHjnbIRT2uWC2Dv3VuMwj/RGoQO', 'client', 1, 0, 0, 1, 'active', '2026-03-22 13:21:12', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-12-17 17:22:25', '2026-03-22 20:21:12', NULL, NULL, 0, 1, NULL),
 (33, 'ELie', 'biitechnology0@gmail.com', '+250795946213', '$2y$10$2JXLkcGSiQBTYvu8hU7CMepoP3wDzFMDqsM1tanSsfgojK54eAPVm', 'client', 0, 0, 0, 1, 'active', '2025-12-18 00:36:01', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-12-18 08:23:26', '2025-12-18 08:46:53', NULL, NULL, 0, 1, NULL),
 (34, 'Test User', 'test@example.com', '', '\\/IGYLd.LQ5J4PGS', 'client', 1, 0, 0, 1, 'active', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-03-21 17:39:39', '2026-03-21 17:51:25', NULL, NULL, 0, 1, NULL);
 
@@ -2042,7 +2081,8 @@ INSERT INTO `user_logout_logs` (`id`, `user_id`, `user_type`, `logout_time`, `se
 (210, 32, 'unknown', '2026-03-21 00:54:13', 186, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-21 07:54:13'),
 (211, 26, 'unknown', '2026-03-21 01:43:26', 2917, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-21 08:43:26'),
 (212, 31, 'unknown', '2026-03-21 05:09:14', 176, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-21 12:09:14'),
-(213, 26, 'unknown', '2026-03-21 05:27:44', 1097, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-21 12:27:44');
+(213, 26, 'unknown', '2026-03-21 05:27:44', 1097, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-21 12:27:44'),
+(214, 32, 'unknown', '2026-03-22 13:29:19', 487, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-22 20:29:19');
 
 -- --------------------------------------------------------
 
@@ -2061,6 +2101,15 @@ CREATE TABLE `user_sessions` (
   `logout_time` timestamp NULL DEFAULT NULL,
   `is_active` tinyint(1) DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `user_sessions`
+--
+
+INSERT INTO `user_sessions` (`id`, `user_id`, `session_id`, `device`, `ip_address`, `user_agent`, `login_time`, `logout_time`, `is_active`) VALUES
+(1, 32, 'ftb7r35i9ll2em0i8hj6h943ho', 'Desktop', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-22 19:20:21', NULL, 1),
+(2, 32, 'njhbol875q9jr1jfugj0jmqkuq', 'Desktop', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-22 20:21:12', '2026-03-22 20:29:19', 0),
+(3, 31, 'bai41pkbe9q21qug3el2u0upmd', 'Desktop', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-22 20:29:37', NULL, 1);
 
 -- --------------------------------------------------------
 
@@ -2313,9 +2362,9 @@ ALTER TABLE `messages`
 -- Indexes for table `ml_interactions`
 --
 ALTER TABLE `ml_interactions`
-  ADD PRIMARY KEY (`user_id`,`provider_id`),
-  ADD KEY `idx_ml_provider` (`provider_id`),
-  ADD KEY `idx_ml_updated` (`updated_at`);
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `provider_id` (`provider_id`),
+  ADD KEY `recorded_at` (`recorded_at`);
 
 --
 -- Indexes for table `muted_chats`
@@ -2822,6 +2871,12 @@ ALTER TABLE `messages`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=29;
 
 --
+-- AUTO_INCREMENT for table `ml_interactions`
+--
+ALTER TABLE `ml_interactions`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+
+--
 -- AUTO_INCREMENT for table `muted_chats`
 --
 ALTER TABLE `muted_chats`
@@ -2867,13 +2922,13 @@ ALTER TABLE `notification_templates`
 -- AUTO_INCREMENT for table `page_sessions`
 --
 ALTER TABLE `page_sessions`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=30;
 
 --
 -- AUTO_INCREMENT for table `page_views`
 --
 ALTER TABLE `page_views`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=22;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=31;
 
 --
 -- AUTO_INCREMENT for table `payment_methods`
@@ -2957,7 +3012,7 @@ ALTER TABLE `provider_settings`
 -- AUTO_INCREMENT for table `provider_shares`
 --
 ALTER TABLE `provider_shares`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=19;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=20;
 
 --
 -- AUTO_INCREMENT for table `provider_social_links`
@@ -3047,13 +3102,13 @@ ALTER TABLE `user_activities`
 -- AUTO_INCREMENT for table `user_logout_logs`
 --
 ALTER TABLE `user_logout_logs`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=214;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=215;
 
 --
 -- AUTO_INCREMENT for table `user_sessions`
 --
 ALTER TABLE `user_sessions`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `user_settings`
@@ -3169,13 +3224,6 @@ ALTER TABLE `login_security`
 ALTER TABLE `messages`
   ADD CONSTRAINT `messages_ibfk_1` FOREIGN KEY (`sender_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`receiver_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
-
---
--- Constraints for table `ml_interactions`
---
-ALTER TABLE `ml_interactions`
-  ADD CONSTRAINT `ml_interactions_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `ml_interactions_ibfk_2` FOREIGN KEY (`provider_id`) REFERENCES `service_providers` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `negotiation_history`
