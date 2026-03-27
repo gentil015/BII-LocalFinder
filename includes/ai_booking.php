@@ -1443,6 +1443,16 @@ class AIBookingHandler
             if ($result) {
                 $bookingId = $this->db->lastInsertId();
                 
+                // Update user_profiles to track booking metrics
+                $update_profile = $this->db->prepare("
+                    INSERT INTO user_profiles (user_id, user_total_bookings, user_avg_price, user_avg_response_time) 
+                    VALUES (?, 1, 0, 24) 
+                    ON DUPLICATE KEY UPDATE 
+                        user_total_bookings = user_total_bookings + 1,
+                        updated_at = CURRENT_TIMESTAMP
+                ");
+                $update_profile->execute([$clientId]);
+                
                 // insert initial chat message so conversation exists
                 try {
                     require_once __DIR__ . '/chat.php';

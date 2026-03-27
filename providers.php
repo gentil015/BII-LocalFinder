@@ -227,6 +227,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quick_book'])) {
                 if ($stmt->execute([$_SESSION['user_id'], $provider_id, $service_description, $preferred_date])) {
                     $booking_id = $db->lastInsertId();
                     $booking_ref = '#BK-' . date('Y') . '-' . str_pad($booking_id,5,'0',STR_PAD_LEFT);
+                    
+                    // Update user_profiles to track booking metrics
+                    $update_profile = $db->prepare("
+                        INSERT INTO user_profiles (user_id, user_total_bookings, user_avg_price, user_avg_response_time) 
+                        VALUES (?, 1, 0, 24) 
+                        ON DUPLICATE KEY UPDATE 
+                            user_total_bookings = user_total_bookings + 1,
+                            updated_at = CURRENT_TIMESTAMP
+                    ");
+                    $update_profile->execute([$_SESSION['user_id']]);
+                    
                     $provider_user_id = $provider['user_id'] ?? $provider_id;
                     sendMessage($_SESSION['user_id'], $provider_user_id, "New booking created: " . $booking_ref);
                     header('Location: client/messages.php?with=' . $provider_user_id . '&booking_id=' . $booking_id);

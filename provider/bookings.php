@@ -65,6 +65,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
                     $stmt = $db->prepare("UPDATE bookings SET payment_status = 'completed' WHERE id = ?");
                     $stmt->execute([$booking_id]);
                     
+                    // Get booking details to update user profile
+                    $bookingDetailsStmt = $db->prepare("SELECT client_id, amount FROM bookings WHERE id = ?");
+                    $bookingDetailsStmt->execute([$booking_id]);
+                    $bookingDetails = $bookingDetailsStmt->fetch();
+                    
+                    if ($bookingDetails && $bookingDetails['client_id']) {
+                        // Update user profile with completed booking amount
+                        $updateProfileStmt = $db->prepare("
+                            UPDATE user_profiles 
+                            SET user_avg_price = (
+                                SELECT COALESCE(AVG(amount), 0) FROM bookings 
+                                WHERE client_id = ? AND status = 'completed'
+                            ),
+                            updated_at = CURRENT_TIMESTAMP
+                            WHERE user_id = ?
+                        ");
+                        $updateProfileStmt->execute([$bookingDetails['client_id'], $bookingDetails['client_id']]);
+                    }
+                    
                     // Check if rating is required after completion
                     if (isRatingRequiredAfterCompletion()) {
                         // You could trigger a review reminder here

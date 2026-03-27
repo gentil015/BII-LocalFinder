@@ -176,6 +176,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // Do not create the provider profile here. Provider details will be collected in the multi-step setup wizard.
 
+            // Insert user profile for tracking metrics
+            $profileStmt = $db->prepare("INSERT IGNORE INTO user_profiles (user_id, user_avg_price, user_avg_response_time, user_total_bookings) VALUES (?, 0, 24, 0)");
+            $profileStmt->execute([$user_id]);
+
             $db->commit();
 
             // ✅ Send OTP Email (non-blocking) if email verification is enabled

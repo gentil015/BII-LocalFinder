@@ -571,12 +571,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
                 $share_id ? $share_id : null
             ];
             if ($stmt->execute($params)) {
+                $booking_id = $db->lastInsertId();
+                
+                // Update user_profiles to track booking metrics
+                $update_profile = $db->prepare("
+                    INSERT INTO user_profiles (user_id, user_total_bookings, user_avg_price, user_avg_response_time) 
+                    VALUES (?, 1, 0, 24) 
+                    ON DUPLICATE KEY UPDATE 
+                        user_total_bookings = user_total_bookings + 1,
+                        updated_at = CURRENT_TIMESTAMP
+                ");
+                $update_profile->execute([$_SESSION['user_id']]);
+                
                 $booking_success = "Booking request sent successfully! The provider will contact you soon.";
                 
                 // Create notification for provider
                 try {
                     require_once '../includes/notifications.php';
-                    $booking_id = $db->lastInsertId();
                     $client_name = '';
                     
                     // Get client info

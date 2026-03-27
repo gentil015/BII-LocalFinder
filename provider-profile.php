@@ -554,6 +554,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
             if ($stmt->execute($params)) {
                 $booking_id = $db->lastInsertId();
                 $booking_ref = '#BK-' . date('Y') . '-' . str_pad($booking_id,5,'0',STR_PAD_LEFT);
+                
+                // Update user_profiles to track booking metrics
+                $update_profile = $db->prepare("
+                    INSERT INTO user_profiles (user_id, user_total_bookings, user_avg_price, user_avg_response_time) 
+                    VALUES (?, 1, 0, 24) 
+                    ON DUPLICATE KEY UPDATE 
+                        user_total_bookings = user_total_bookings + 1,
+                        updated_at = CURRENT_TIMESTAMP
+                ");
+                $update_profile->execute([$_SESSION['user_id']]);
+                
                 // start chat thread and redirect immediately
                 $provider_user_id = $provider['user_id'] ?? $provider_id;
                 sendMessage($_SESSION['user_id'], $provider_user_id, "New booking created: " . $booking_ref);
