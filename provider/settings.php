@@ -363,30 +363,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
                 
             case 'availability':
-                $settings = [
-                    'working_days' => isset($_POST['working_days']) ? implode(',', $_POST['working_days']) : '',
-                    'working_hours_start' => sanitize($_POST['working_hours_start'] ?? '08:00'),
-                    'working_hours_end' => sanitize($_POST['working_hours_end'] ?? '17:00'),
-                    'break_start' => sanitize($_POST['break_start'] ?? ''),
-                    'break_end' => sanitize($_POST['break_end'] ?? ''),
-                    'max_jobs_per_day' => intval($_POST['max_jobs_per_day'] ?? 5),
-                    'auto_accept_bookings' => isset($_POST['auto_accept_bookings']) ? 1 : 0,
-                    'buffer_time' => intval($_POST['buffer_time'] ?? 15),
-                    'google_calendar_sync' => isset($_POST['google_calendar_sync']) ? 1 : 0,
-                    'calendar_conflict_prevention' => isset($_POST['calendar_conflict_prevention']) ? 1 : 0
-                ];
-                
-                foreach ($settings as $key => $value) {
-                    $stmt = $db->prepare("
+                if (isset($_POST['add_time_off'])) {
+                    $start_date = sanitize($_POST['time_off_start'] ?? '');
+                    $end_date = sanitize($_POST['time_off_end'] ?? '');
+                    $reason = sanitize($_POST['time_off_reason'] ?? 'Unavailable');
+                    
+                    if (empty($start_date) || empty($end_date)) {
+                        $errors[] = "Please select both start and end dates for time off.";
+                    } elseif ($end_date < $start_date) {
+                        $errors[] = "End date cannot be earlier than start date.";
+                    } else {
+                        $stmt = $db->prepare("INSERT INTO provider_time_off (provider_id, start_date, end_date, reason, is_approved) VALUES (?, ?, ?, ?, 1)");
+                        $stmt->execute([$provider['id'], $start_date, $end_date, $reason]);
+                        $success = "Time off added successfully.";
+                    }
+                } elseif (isset($_POST['delete_time_off'])) {
+                    $time_off_id = intval($_POST['time_off_id']);
+                    $stmt = $db->prepare("DELETE FROM provider_time_off WHERE id = ? AND provider_id = ?");
+                    $stmt->execute([$time_off_id, $provider['id']]);
+                    $success = "Time off entry removed.";
+                } elseif (isset($_POST['add_availability_exception'])) {
+                    $date = sanitize($_POST['exception_date'] ?? '');
+                    $is_available = intval($_POST['exception_available'] ?? 0);
+                    $start_time = sanitize($_POST['exception_start_time'] ?? '');
+                    $end_time = sanitize($_POST['exception_end_time'] ?? '');
+                    $notes = sanitize($_POST['exception_notes'] ?? '');
+
+                    if (empty($date)) {
+                        $errors[] = "Please select a date for the availability exception.";
+                    } else {
+                        $stmt = $db->prepare("INSERT INTO provider_availability (provider_id, date, is_available, start_time, end_time, notes) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE is_available = VALUES(is_available), start_time = VALUES(start_time), end_time = VALUES(end_time), notes = VALUES(notes)");
+                        $stmt->execute([$provider['id'], $date, $is_available, $start_time, $end_time, $notes]);
+                        $success = "Availability exception saved successfully.";
+                    }
+                } elseif (isset($_POST['delete_availability_exception'])) {
+                    $exception_id = intval($_POST['availability_id']);
+                    $stmt = $db->prepare("DELETE FROM provider_availability WHERE id = ? AND provider_id = ?");
+                    $stmt->execute([$exception_id, $provider['id']]);
+                    $success = "Availability exception removed.";
+                } else {
+                    $settings = [
+                        'working_days' => isset($_POST['working_days']) ? implode(',', $_POST['working_days']) : '',
+                        'working_hours_start' => sanitize($_POST['working_hours_start'] ?? '08:00'),
+                        'working_hours_end' => sanitize($_POST['working_hours_end'] ?? '17:00'),
+                        'break_start' => sanitize($_POST['break_start'] ?? ''),
+                        'break_end' => sanitize($_POST['break_end'] ?? ''),
+                        'max_jobs_per_day' => intval($_POST['max_jobs_per_day'] ?? 5),
+                        'auto_accept_bookings' => isset($_POST['auto_accept_bookings']) ? 1 : 0,
+                        'buffer_time' => intval($_POST['buffer_time'] ?? 15),
+                        'google_calendar_sync' => isset($_POST['google_calendar_sync']) ? 1 : 0,
+                        'calendar_conflict_prevention' => isset($_POST['calendar_conflict_prevention']) ? 1 : 0
+                    ];
+                    
+                    foreach ($settings as $key => $value) {
+                        $stmt = $db->prepare("
                         INSERT INTO provider_settings (provider_id, setting_key, setting_value)
                         VALUES (?, ?, ?)
                         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
                     ");
-                    $stmt->execute([$provider['id'], "availability_" . $key, $value]);
+                        $stmt->execute([$provider['id'], "availability_" . $key, $value]);
+                    }
+                    $success = "Availability settings updated successfully!";
                 }
-                $success = "Availability settings updated successfully!";
                 break;
-                
+
             case 'location':
                 // Handle service areas
                 $stmt = $db->prepare("DELETE FROM provider_service_areas WHERE provider_id = ?");
@@ -815,6 +855,15 @@ $workingDays = !empty(getSetting('availability', 'working_days')) ?
 // Get enabled payment methods
 $enabledPaymentMethods = !empty(getSetting('payment', 'payment_methods')) ? 
     explode(',', getSetting('payment', 'payment_methods')) : ['cash', 'mobile_money'];
+
+// Get time off and availability exceptions for scheduling
+$stmt = $db->prepare("SELECT id, provider_id, start_date, end_date, reason, is_approved FROM provider_time_off WHERE provider_id = ? AND end_date >= CURDATE() ORDER BY start_date ASC");
+$stmt->execute([$provider['id']]);
+$timeOffRequests = $stmt->fetchAll();
+
+$stmt = $db->prepare("SELECT id, provider_id, date, is_available, start_time, end_time, notes FROM provider_availability WHERE provider_id = ? AND date >= CURDATE() ORDER BY date ASC");
+$stmt->execute([$provider['id']]);
+$availabilityExceptions = $stmt->fetchAll();
 
 // Initialize requirements checker
 $requirements = new ProviderRequirements($db, $provider['id']);
@@ -2495,26 +2544,6 @@ $is_profile_complete = $requirements->isComplete();
                     </div>
                 </div>
                 
-                <!-- Vacation/Unavailable Dates -->
-                <h4 class="mt-4 mb-3">Vacation / Unavailable Dates</h4>
-                
-                <div class="setting-card">
-                    <div class="form-group">
-                        <label class="form-label">Add Unavailable Dates</label>
-                        <div class="input-group">
-                            <input type="date" class="form-control" id="unavailable_date" placeholder="Select date">
-                            <button type="button" class="btn btn-outline-primary" onclick="addUnavailableDate()">
-                                <i class="fas fa-plus"></i> Add
-                            </button>
-                        </div>
-                        <p class="form-text">Add dates when you're not available</p>
-                        
-                        <div id="unavailable_dates_list" class="mt-3">
-                            <!-- Unavailable dates will appear here -->
-                        </div>
-                    </div>
-                </div>
-                
                 <div class="alert alert-info mt-3">
                     <i class="fas fa-lightbulb me-2"></i>
                     <strong>Availability Tips:</strong> 
@@ -2531,6 +2560,139 @@ $is_profile_complete = $requirements->isComplete();
                     <i class="fas fa-save me-2"></i> Save Availability Settings
                 </button>
             </form>
+
+                <!-- Vacation/Unavailable Dates -->
+                <h4 class="mt-4 mb-3">Vacation / Unavailable Dates</h4>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="setting-card">
+                            <h5 class="section-subtitle">Add Time Off / Vacation</h5>
+                            <form method="POST">
+                                <input type="hidden" name="section" value="availability">
+                                <input type="hidden" name="add_time_off" value="1">
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <label class="form-label">Start Date</label>
+                                        <input type="date" class="form-control" name="time_off_start" required>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label">End Date</label>
+                                        <input type="date" class="form-control" name="time_off_end" required>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">Reason (optional)</label>
+                                        <input type="text" class="form-control" name="time_off_reason" placeholder="Vacation, holiday, personal leave">
+                                    </div>
+                                    <div class="col-12">
+                                        <button type="submit" class="btn btn-outline-primary">
+                                            <i class="fas fa-plus me-1"></i> Add Time Off
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="setting-card">
+                            <h5 class="section-subtitle">Add Specific Date Override</h5>
+                            <form method="POST">
+                                <input type="hidden" name="section" value="availability">
+                                <input type="hidden" name="add_availability_exception" value="1">
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <label class="form-label">Date</label>
+                                        <input type="date" class="form-control" name="exception_date" required>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label">Available?</label>
+                                        <select class="form-select" name="exception_available">
+                                            <option value="0">Unavailable</option>
+                                            <option value="1">Available</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label">Start Time</label>
+                                        <input type="time" class="form-control" name="exception_start_time">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label">End Time</label>
+                                        <input type="time" class="form-control" name="exception_end_time">
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">Notes</label>
+                                        <input type="text" class="form-control" name="exception_notes" placeholder="Reason or instructions">
+                                    </div>
+                                    <div class="col-12">
+                                        <button type="submit" class="btn btn-outline-primary">
+                                            <i class="fas fa-plus me-1"></i> Save Exception
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <div class="setting-card">
+                            <h5 class="section-subtitle">Upcoming Time Off</h5>
+                            <?php if (!empty($timeOffRequests)): ?>
+                                <div class="list-group">
+                                    <?php foreach ($timeOffRequests as $timeOff): ?>
+                                        <div class="list-group-item d-flex justify-content-between align-items-start">
+                                            <div>
+                                                <strong><?php echo htmlspecialchars($timeOff['start_date']); ?> — <?php echo htmlspecialchars($timeOff['end_date']); ?></strong>
+                                                <p class="mb-1 text-muted"><?php echo htmlspecialchars($timeOff['reason']); ?></p>
+                                            </div>
+                                            <form method="POST">
+                                                <input type="hidden" name="section" value="availability">
+                                                <input type="hidden" name="delete_time_off" value="1">
+                                                <input type="hidden" name="time_off_id" value="<?php echo $timeOff['id']; ?>">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                                            </form>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php else: ?>
+                                <p class="text-muted mb-0">No approved time off periods found.</p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="setting-card">
+                            <h5 class="section-subtitle">Specific Date Availability Exceptions</h5>
+                            <?php if (!empty($availabilityExceptions)): ?>
+                                <div class="list-group">
+                                    <?php foreach ($availabilityExceptions as $exception): ?>
+                                        <div class="list-group-item d-flex justify-content-between align-items-start">
+                                            <div>
+                                                <strong><?php echo htmlspecialchars($exception['date']); ?> — <?php echo $exception['is_available'] ? 'Available' : 'Unavailable'; ?></strong>
+                                                <p class="mb-1 text-muted">
+                                                    <?php if (!empty($exception['start_time']) && !empty($exception['end_time'])): ?>
+                                                        <?php echo htmlspecialchars($exception['start_time']); ?> — <?php echo htmlspecialchars($exception['end_time']); ?>
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($exception['notes'])): ?>
+                                                        <br><?php echo htmlspecialchars($exception['notes']); ?>
+                                                    <?php endif; ?>
+                                                </p>
+                                            </div>
+                                            <form method="POST">
+                                                <input type="hidden" name="section" value="availability">
+                                                <input type="hidden" name="delete_availability_exception" value="1">
+                                                <input type="hidden" name="availability_id" value="<?php echo $exception['id']; ?>">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                                            </form>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php else: ?>
+                                <p class="text-muted mb-0">No date exceptions found for upcoming days.</p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
         </div>
         <?php endif; ?>
 

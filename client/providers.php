@@ -1,1793 +1,1296 @@
 <?php
-/**
- * providers.php  —  BII LocalFinder
- * ===================================
- * Modern provider discovery page with:
- *  • Advanced ML-powered recommendations
- *  • Real-time search and filtering
- *  • Interactive provider cards
- *  • Location-based discovery
- *  • AI-enhanced search capabilities
- */
-
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
-require_once '../includes/mailer.php';
 require_once '../includes/event_tracking.php';
 
-// Conditionally load AI helper (non-fatal if missing)
-if (file_exists(__DIR__ . '/../includes/ai_helpers.php')) {
-    require_once '../includes/ai_helpers.php';
+if (!isLoggedIn()) { redirect('login.php'); }
+if (isProvider())  { redirect('provider/dashboard.php'); }
+
+$db  = Database::getInstance()->getConnection();
+$uid = (int)$_SESSION['user_id'];
+
+// ── Settings ─────────────────────────────────────────────────────────────────
+function getSetting($db, $key, $default = '') {
+    $s = $db->prepare("SELECT setting_value FROM system_settings WHERE setting_key = ?");
+    $s->execute([$key]);
+    $r = $s->fetch(PDO::FETCH_COLUMN);
+    return $r !== false ? $r : $default;
+}
+$platform_name = getSetting($db, 'platform_name', 'BII LocalFinder');
+
+// ── Client profile ────────────────────────────────────────────────────────────
+$stmt = $db->prepare("SELECT * FROM users WHERE id = ?");
+$stmt->execute([$uid]);
+$client = $stmt->fetch();
+$clientLocation = trim($client['location'] ?? '');
+$clientName     = $client['full_name'] ?? 'there';
+
+// ── Client behavior fingerprint ───────────────────────────────────────────────
+// Previously booked professions (weighted)
+$stmt = $db->prepare("
+    SELECT sp.profession, COUNT(*) as cnt
+    FROM bookings b JOIN service_providers sp ON b.provider_id = sp.id
+    WHERE b.client_id = ?
+    GROUP BY sp.profession ORDER BY cnt DESC LIMIT 6
+");
+$stmt->execute([$uid]);
+$bookedProfessions = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);   // profession => cnt
+
+// Favorited provider IDs
+$favIds = [];
+try {
+    $stmt = $db->prepare("SELECT provider_id FROM favorites WHERE client_id = ?");
+    $stmt->execute([$uid]);
+    $favIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+} catch (Throwable $e) { $favIds = []; }
+
+// Recently viewed providers (click_logs)
+$recentlyViewedIds = [];
+try {
+    $stmt = $db->prepare("
+        SELECT DISTINCT target_id FROM click_logs
+        WHERE user_id = ? AND target_type = 'provider' AND target_id IS NOT NULL
+        ORDER BY created_at DESC LIMIT 10
+    ");
+    $stmt->execute([$uid]);
+    $recentlyViewedIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+} catch (Throwable $e) { $recentlyViewedIds = []; }
+
+// User booking stats for ML
+$stmt = $db->prepare("SELECT COUNT(*) FROM bookings WHERE client_id = ?");
+$stmt->execute([$uid]);
+$userTotalBookings = (int)$stmt->fetchColumn();
+
+$userAvgPrice = 0.0; $userAvgResp = 24.0;
+try {
+    $s = $db->prepare("SELECT user_avg_price, user_avg_response_time FROM user_profiles WHERE user_id = ?");
+    $s->execute([$uid]);
+    $up = $s->fetch(PDO::FETCH_ASSOC);
+    if ($up) { $userAvgPrice = (float)($up['user_avg_price'] ?? 0); $userAvgResp = (float)($up['user_avg_response_time'] ?? 24); }
+} catch (Throwable $e) {}
+
+// ── Filters ────────────────────────────────────────────────────────────────────
+$search    = trim($_GET['search']    ?? '');
+$category  = trim($_GET['category']  ?? '');
+$location  = trim($_GET['location']  ?? '');
+$sort      = trim($_GET['sort']      ?? 'ml');   // ml | rating | reviews | newest | price_asc | price_desc
+$avail     = trim($_GET['avail']     ?? '');      // available | busy | ''
+$minRating = (float)($_GET['min_rating'] ?? 0);
+$verified  = isset($_GET['verified']) ? (bool)$_GET['verified'] : false;
+$page      = max(1, (int)($_GET['page'] ?? 1));
+$perPage   = 12;
+$offset    = ($page - 1) * $perPage;
+
+// ── All categories for filter bar ─────────────────────────────────────────────
+$stmt = $db->prepare("
+    SELECT sp.profession as cat, COUNT(DISTINCT sp.id) as cnt
+    FROM service_providers sp WHERE sp.is_active=1 AND sp.is_banned=0
+    GROUP BY sp.profession ORDER BY cnt DESC LIMIT 16
+");
+$stmt->execute();
+$allCats = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// ── All districts for filter ───────────────────────────────────────────────────
+$stmt = $db->prepare("
+    SELECT DISTINCT sp.location FROM service_providers sp
+    JOIN users u ON sp.user_id = u.id
+    WHERE sp.is_active=1 AND sp.is_banned=0 AND sp.location != ''
+    ORDER BY sp.location LIMIT 30
+");
+$stmt->execute();
+$allLocations = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+// ── Build provider query ───────────────────────────────────────────────────────
+$where   = ["sp.is_active = 1", "sp.is_banned = 0", "u.user_type = 'provider'"];
+$params  = [];
+
+if ($search !== '') {
+    $where[]  = "(u.full_name LIKE ? OR sp.profession LIKE ? OR sp.bio LIKE ?)";
+    $params[] = "%$search%"; $params[] = "%$search%"; $params[] = "%$search%";
+}
+if ($category !== '') {
+    $where[]  = "sp.profession = ?";
+    $params[] = $category;
+}
+if ($location !== '') {
+    $where[]  = "sp.location = ?";
+    $params[] = $location;
+}
+if ($avail !== '') {
+    $where[]  = "sp.availability = ?";
+    $params[] = $avail;
+}
+if ($minRating > 0) {
+    $where[]  = "sp.average_rating >= ?";
+    $params[] = $minRating;
+}
+if ($verified) {
+    $where[] = "(sp.is_verified = 1 OR u.is_verified = 1)";
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GUARD: login required
-// ─────────────────────────────────────────────────────────────────────────────
-if (!isLoggedIn()) {
-    header('Location: login.php');
-    exit;
-}
+$whereSQL = implode(' AND ', $where);
 
-$db = Database::getInstance()->getConnection();
+// Count total
+$countSQL = "SELECT COUNT(DISTINCT sp.id) FROM service_providers sp JOIN users u ON sp.user_id = u.id WHERE $whereSQL";
+$cStmt    = $db->prepare($countSQL);
+$cStmt->execute($params);
+$totalProviders = (int)$cStmt->fetchColumn();
+$totalPages     = max(1, (int)ceil($totalProviders / $perPage));
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SECTION 1 — Platform settings (cached static)
-// ─────────────────────────────────────────────────────────────────────────────
-function getPlatformSetting(PDO $db, string $key, string $default = ''): string {
-    static $cache = null;
-    if ($cache === null) {
-        try {
-            $cache = $db->query("SELECT setting_key, setting_value FROM system_settings")
-                        ->fetchAll(PDO::FETCH_KEY_PAIR);
-        } catch (Throwable $e) {
-            $cache = [];
-        }
-    }
-    return (string)($cache[$key] ?? $default);
-}
+// Fetch provider rows (fetch all for ML scoring, then paginate after)
+$fetchLimit = ($sort === 'ml') ? min($totalProviders, 80) : $perPage;
+$fetchOffset = ($sort === 'ml') ? 0 : $offset;
 
-$cfg = [
-    'platform_name'    => getPlatformSetting($db, 'platform_name',    'BII LocalFinder'),
-    'contact_email'    => getPlatformSetting($db, 'contact_email',     'info@biilocalfinder.com'),
-    'contact_phone'    => getPlatformSetting($db, 'contact_phone',     '+250 788 000 000'),
-    'timezone'         => getPlatformSetting($db, 'timezone',          'Africa/Kigali'),
-    'enable_email'     => getPlatformSetting($db, 'enable_email_notifications', '1'),
-    'enable_ai'        => getPlatformSetting($db, 'enable_ai_features', '1'),
-    'enable_ml'        => getPlatformSetting($db, 'enable_ml_recommendations', '1'),
-    'ml_api_url'       => getPlatformSetting($db, 'ml_api_base_url',   'http://localhost:8000'),
-    'provider_reg'     => getPlatformSetting($db, 'provider_registration', '1'),
-];
+$orderBy = match($sort) {
+    'rating'     => "sp.average_rating DESC, sp.total_reviews DESC",
+    'reviews'    => "sp.total_reviews DESC, sp.average_rating DESC",
+    'newest'     => "sp.created_at DESC",
+    'price_asc'  => "avg_price ASC NULLS LAST",
+    'price_desc' => "avg_price DESC",
+    default      => "sp.average_rating DESC, sp.total_reviews DESC",
+};
 
-date_default_timezone_set($cfg['timezone']);
+$favCheck   = count($favIds) > 0 ? "(sp.id IN (" . implode(',', array_fill(0, count($favIds), '?')) . ")) as is_fav" : "0 as is_fav";
+$favParams  = count($favIds) > 0 ? $favIds : [];
 
-$aiHelper = null;
-if ($cfg['enable_ai'] === '1' && class_exists('AIHelper')) {
-    $aiHelper = new AIHelper($db);
-}
-
-// Load ML Recommender
-$mlRecommender = null;
-if (file_exists(__DIR__ . '/../includes/MLRecommender.php')) {
-    require_once '../includes/MLRecommender.php';
-    $mlRecommender = new MLRecommender($db, $cfg['ml_api_url']);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SECTION 2 — Geolocation helpers
-// ─────────────────────────────────────────────────────────────────────────────
-function getUserLocation(): array {
-    $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
-    if ($ip === '127.0.0.1' || $ip === '::1') {
-        return ['city' => 'Kigali', 'country' => 'Rwanda', 'lat' => -1.9403, 'lng' => 29.8739];
-    }
-    try {
-        $ch = curl_init("https://ipapi.co/{$ip}/json/");
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 3]);
-        $raw = curl_exec($ch);
-        curl_close($ch);
-        if ($raw) {
-            $d = json_decode($raw, true);
-            if (!empty($d['city'])) {
-                return ['city' => $d['city'], 'country' => $d['country_name'] ?? 'Rwanda',
-                        'lat'  => (float)($d['latitude']  ?? -1.9403),
-                        'lng'  => (float)($d['longitude'] ?? 29.8739)];
-            }
-        }
-    } catch (Throwable $e) {}
-    return ['city' => 'Kigali', 'country' => 'Rwanda', 'lat' => -1.9403, 'lng' => 29.8739];
-}
-
-function haversine(float $lat1, float $lon1, float $lat2, float $lon2): float {
-    $R   = 6371;
-    $dLa = deg2rad($lat2 - $lat1);
-    $dLo = deg2rad($lon2 - $lon1);
-    $a   = sin($dLa/2)**2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLo/2)**2;
-    return $R * 2 * atan2(sqrt($a), sqrt(1 - $a));
-}
-
-function cityCoords(string $city): array {
-    static $map = [
-        'kigali'    => [-1.9403, 29.8739], 'rubavu'    => [-1.6778, 29.2664],
-        'musanze'   => [-1.4997, 29.6384], 'huye'      => [-2.5976, 29.7389],
-        'rusizi'    => [-2.4889, 28.9078], 'muhanga'   => [-2.0845, 29.7424],
-        'rwamagana' => [-1.9486, 30.4348], 'nyagatare' => [-1.2974, 30.3245],
-        'gisenyi'   => [-1.7029, 29.2564], 'kibuye'    => [-2.0606, 29.3475],
-    ];
-    $key = strtolower(trim($city));
-    return $map[$key] ?? $map['kigali'];
-}
-
-$userLoc  = getUserLocation();
-$userCity = $userLoc['city'];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SECTION 3 — ML Recommender (uses MLRecommender class)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Fetch top-N ML recommended providers for the hero section.
- * Independent from the search results.
- */
-function fetchMLRecommendations(PDO $db, $mlRecommender, array $cfg, int $limit = 6, int $userId = null): array {
-    if (!$mlRecommender || $cfg['enable_ml'] !== '1') return [];
-
-    try {
-        $stmt = $db->query("
-            SELECT sp.id, sp.profession, sp.location, sp.availability,
-                   sp.average_rating, sp.total_reviews, sp.is_featured,
-                   sp.verification_level, sp.user_id,
-                   u.full_name, u.profile_image
-            FROM service_providers sp
-            JOIN users u ON sp.user_id = u.id
-            WHERE sp.is_active=1 AND sp.is_banned=0 AND u.is_active=1 AND u.is_verified=1
-            ORDER BY sp.average_rating DESC, sp.total_reviews DESC
-            LIMIT 40
-        ");
-        $pool = $stmt->fetchAll();
-    } catch (Throwable $e) {
-        return [];
-    }
-
-    if (empty($pool)) return [];
-
-    // Use MLRecommender to rank providers with user personalization
-    $rankedProviders = $mlRecommender->rankProviders($pool, $userId);
-
-    return array_slice($rankedProviders, 0, $limit);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SECTION 4 — POST handlers (emergency / complaint)
-// ─────────────────────────────────────────────────────────────────────────────
-$flash_success = '';
-$flash_errors  = [];
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-
-    // — Emergency report ——————————————————————————————————————————————————————
-    if (isset($_POST['emergency_report'])) {
-        $pid   = intval($_POST['provider_id']);
-        $type  = sanitize($_POST['emergency_type'] ?? '');
-        $desc  = sanitize($_POST['emergency_description'] ?? '');
-
-        if ($aiHelper) {
-            $tc = $aiHelper->detectToxicity($desc);
-            if (($tc['score'] ?? 0) > 0.9) {
-                $flash_errors[] = "Please describe the emergency without inappropriate language.";
-                try {
-                    $db->prepare("INSERT INTO toxic_content_logs(user_id,content_type,toxicity_score,original_text) VALUES(?,?,?,?)")
-                       ->execute([$_SESSION['user_id'], 'emergency', $tc['score'], substr($desc, 0, 500)]);
-                } catch (Throwable $e) {}
-            }
-        }
-
-        if (empty($flash_errors)) {
-            try {
-                $db->prepare("INSERT INTO emergency_reports(user_id,provider_id,emergency_type,description,status,created_at) VALUES(?,?,?,?,'pending',NOW())")
-                   ->execute([$_SESSION['user_id'], $pid, $type, $desc]);
-
-                if ($cfg['enable_email'] === '1') {
-                    $admins = $db->query("SELECT email FROM users WHERE user_type='admin' AND is_active=1")->fetchAll();
-                    foreach ($admins as $admin) {
-                        Mailer::sendEmergencyReport($admin['email'], $pid, $type, $desc);
-                    }
-                }
-                $flash_success = "Emergency report submitted. Our team will respond immediately.";
-            } catch (Throwable $e) {
-                $flash_errors[] = "Failed to submit emergency report.";
-            }
-        }
-    }
-
-    // — Complaint ——————————————————————————————————————————————————————————————
-    if (isset($_POST['submit_complaint'])) {
-        $pid  = intval($_POST['provider_id']);
-        $type = sanitize($_POST['complaint_type'] ?? '');
-        $desc = sanitize($_POST['complaint_description'] ?? '');
-
-        if ($aiHelper) {
-            $tc = $aiHelper->detectToxicity($desc);
-            if ($tc['is_toxic'] ?? false) {
-                $flash_errors[] = "Your complaint contains inappropriate language. Please revise.";
-            }
-        }
-
-        if (empty($flash_errors)) {
-            try {
-                $db->prepare("INSERT INTO complaints(user_id,provider_id,complaint_type,description,status,created_at) VALUES(?,?,?,?,'open',NOW())")
-                   ->execute([$_SESSION['user_id'], $pid, $type, $desc]);
-                $flash_success = "Complaint submitted. We'll investigate and respond soon.";
-            } catch (Throwable $e) {
-                $flash_errors[] = "Failed to submit complaint.";
-            }
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SECTION 5 — AJAX endpoints (return JSON early)
-// ─────────────────────────────────────────────────────────────────────────────
-if (isset($_GET['improve_text']) && $aiHelper) {
-    header('Content-Type: application/json');
-    $text = $_GET['text'] ?? '';
-    if (!empty($text) && strlen($text) > 10) {
-        $improved = $aiHelper->cleanBookingDescription($text);
-        echo json_encode(['success' => true, 'improved' => $improved]);
-    } else {
-        echo json_encode(['success' => false, 'error' => 'Text too short']);
-    }
-    exit;
-}
-
-if (isset($_GET['track_share'])) {
-    header('Content-Type: application/json');
-    $data = json_decode(file_get_contents('php://input'), true) ?? [];
-    $pid  = intval($data['provider_id'] ?? 0);
-    $plat = sanitize($data['platform'] ?? 'direct');
-    if ($pid > 0) {
-        try {
-            $db->prepare("INSERT IGNORE INTO provider_shares(provider_id,user_id,platform) VALUES(?,?,?)")
-               ->execute([$pid, $_SESSION['user_id'], $plat]);
-            echo json_encode(['success' => true]);
-        } catch (Throwable $e) { echo json_encode(['success' => false]); }
-    } else { echo json_encode(['success' => false]); }
-    exit;
-}
-
-if (isset($_GET['get_share_stats'])) {
-    header('Content-Type: application/json');
-    $pid = intval($_GET['provider_id'] ?? 0);
-    if ($pid > 0) {
-        try {
-            $sc = fetchScalar($db, "SELECT COUNT(*) FROM provider_shares WHERE provider_id=? AND shared_at>=DATE_SUB(NOW(),INTERVAL 30 DAY)", [$pid]);
-            $vc = fetchScalar($db, "SELECT COUNT(*) FROM provider_views  WHERE provider_id=? AND viewed_at >=DATE_SUB(NOW(),INTERVAL 30 DAY)", [$pid]);
-            echo json_encode(['success' => true, 'share_count' => (int)$sc, 'view_count' => (int)$vc]);
-        } catch (Throwable $e) { echo json_encode(['success' => false]); }
-    } else { echo json_encode(['success' => false]); }
-    exit;
-}
-
-// ML health ping (used by front-end status indicator)
-if (isset($_GET['ml_health'])) {
-    header('Content-Type: application/json');
-    $online = $mlRecommender ? $mlRecommender->isApiHealthy() : false;
-    echo json_encode(['online' => $online]);
-    exit;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SECTION 6 — Search & filter parameters
-// ─────────────────────────────────────────────────────────────────────────────
-$searchQuery   = trim($_GET['query']        ?? '');
-$locationQuery = trim($_GET['location']     ?? '');
-$categoryId    = isset($_GET['category'])   ? (int)$_GET['category'] : null;
-$minRating     = isset($_GET['min_rating']) ? (float)$_GET['min_rating'] : 0;
-$availability  = trim($_GET['availability'] ?? '');
-$sortBy        = trim($_GET['sort']         ?? 'recommended');
-$page          = max(1, (int)($_GET['page'] ?? 1));
-$perPage       = min(48, max(6, (int)($_GET['page_size'] ?? 12)));
-$offset        = ($page - 1) * $perPage;
-
-// AI category classification
-if ($aiHelper && !empty($searchQuery) && !$categoryId) {
-    $aiResult = $aiHelper->classifyServiceFromQuery($searchQuery);
-    if (is_array($aiResult) && isset($aiResult['id'])) {
-        $categoryId = (int)$aiResult['id'];
-        $_SESSION['ai_suggested_category'] = $categoryId;
-    } elseif (is_int($aiResult)) {
-        $categoryId = $aiResult;
-        $_SESSION['ai_suggested_category'] = $categoryId;
-    }
-}
-
-// Fetch categories for filter dropdown
-$categories = $db->query("SELECT id, name FROM categories WHERE is_active=1 ORDER BY name")->fetchAll();
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SECTION 7 — Provider search query
-// ─────────────────────────────────────────────────────────────────────────────
-$sqlBase = "
-    SELECT sp.*, u.full_name, u.email, u.profile_image, u.user_id AS user_row_id,
-           GROUP_CONCAT(DISTINCT c.name SEPARATOR ', ') AS category_names,
-           (
-               CASE
-                   WHEN sp.profession = :es           THEN 100
-                   WHEN LOWER(sp.profession) = LOWER(:es) THEN 95
-                   WHEN u.full_name = :es             THEN 90
-                   WHEN sp.profession LIKE CONCAT(:ss,'%') THEN 70
-                   WHEN u.full_name   LIKE CONCAT(:ss,'%') THEN 65
-                   WHEN sp.profession LIKE CONCAT('%',:sl,'%') THEN 50
-                   WHEN u.full_name   LIKE CONCAT('%',:sl,'%') THEN 45
-                   WHEN sp.location   LIKE CONCAT('%',:sl,'%') THEN 40
-                   WHEN sp.bio        LIKE CONCAT('%',:sl,'%') THEN 30
-                   ELSE 0
-               END
-               + (sp.average_rating  * 5)
-               + (CASE WHEN sp.total_reviews > 20 THEN 15 WHEN sp.total_reviews > 5 THEN 8 ELSE 0 END)
-               + (CASE WHEN sp.availability = 'available' THEN 10 ELSE 0 END)
-               + (CASE WHEN sp.verification_level IN ('premium','gold') THEN 20 WHEN sp.verification_level='verified' THEN 10 ELSE 0 END)
-               + (CASE WHEN sp.is_featured = 1 THEN 25 ELSE 0 END)
-           ) AS relevance_score
+$mainSQL = "
+    SELECT sp.*, u.full_name, u.email, u.profile_image,
+           sp.location as provider_location, u.is_verified as user_verified,
+           $favCheck,
+           (SELECT AVG(price) FROM provider_services ps WHERE ps.provider_id=sp.id AND ps.is_available=1) as avg_price,
+           (SELECT COUNT(*) FROM bookings b WHERE b.provider_id=sp.id AND b.status='completed') as completed_jobs,
+           (SELECT COUNT(*) FROM provider_views pv WHERE pv.provider_id=sp.id) as view_count
     FROM service_providers sp
     JOIN users u ON sp.user_id = u.id
-    LEFT JOIN provider_services ps ON sp.id = ps.provider_id
-    LEFT JOIN categories c ON ps.category_id = c.id
+    WHERE $whereSQL
+    ORDER BY $orderBy
+    LIMIT $fetchLimit OFFSET $fetchOffset
 ";
 
-$where  = ["u.is_verified=1", "sp.is_active=1", "sp.is_banned=0", "u.is_active=1"];
-$params = [':es' => $searchQuery, ':ss' => $searchQuery, ':sl' => $searchQuery];
+$mainParams = array_merge($favParams, $params);
+$stmt = $db->prepare($mainSQL);
+$stmt->execute($mainParams);
+$rawProviders = $stmt->fetchAll();
 
-if ($categoryId)          { $where[] = "ps.category_id = :catId";   $params[':catId']     = $categoryId; }
-if (!empty($locationQuery)) {
-    $where[] = "(sp.location LIKE :locE OR sp.location LIKE :locL OR sp.district LIKE :locL OR sp.sector LIKE :locL)";
-    $params[':locE'] = $locationQuery;
-    $params[':locL'] = "%$locationQuery%";
-}
-if ($minRating > 0)       { $where[] = "sp.average_rating >= :mr";  $params[':mr']        = $minRating; }
-if (!empty($availability)){ $where[] = "sp.availability = :avail";  $params[':avail']     = $availability; }
+// ── ML RANKING (only when sort=ml) ────────────────────────────────────────────
+$mlApiStatus = 'fallback';
+$mlScoreMap  = [];
 
-$sql  = $sqlBase . " WHERE " . implode(" AND ", $where) . " GROUP BY sp.id";
-if (!empty($searchQuery)) $sql .= " HAVING relevance_score > 0";
+if ($sort === 'ml' && !empty($rawProviders)) {
+    // Build feature vectors
+    $batchPayload = [];
+    foreach ($rawProviders as $p) {
+        $pid = (int)$p['id'];
 
-// Determine sort
-$isSortNearest    = in_array($sortBy, ['nearest', 'recommended'], true);
-$isSortML         = $sortBy === 'ml' || $sortBy === 'recommended';
-if ($sortBy === 'rating')        $sql .= " ORDER BY sp.average_rating DESC, sp.total_reviews DESC";
-elseif ($sortBy === 'reviews')   $sql .= " ORDER BY sp.total_reviews DESC, sp.average_rating DESC";
-elseif ($sortBy === 'newest')    $sql .= " ORDER BY sp.created_at DESC";
-else                             $sql .= " ORDER BY relevance_score DESC, sp.average_rating DESC";
+        // clicks from click_logs
+        $clicks = 0.0;
+        try {
+            $s = $db->prepare("SELECT COUNT(*) FROM click_logs WHERE target_type='provider' AND target_id=?");
+            $s->execute([$pid]); $clicks = (float)$s->fetchColumn();
+        } catch (Throwable $e) {}
 
-try {
-    if ($isSortNearest) {
-        // Fetch all, compute distance, sort, then slice
-        $stmt = $db->prepare($sql);
-        foreach ($params as $k => $v) $stmt->bindValue($k, $v);
-        $stmt->execute();
-        $allProviders = $stmt->fetchAll();
+        // messages
+        $msgs = 0.0;
+        try {
+            $s = $db->prepare("SELECT COUNT(*) FROM messages WHERE receiver_id=?");
+            $s->execute([(int)($p['user_id'] ?? 0)]); $msgs = (float)$s->fetchColumn();
+        } catch (Throwable $e) {}
 
-        foreach ($allProviders as &$p) {
-            [$la, $lo]      = cityCoords($p['location'] ?? '');
-            $p['distance']  = haversine($userLoc['lat'], $userLoc['lng'], $la, $lo);
-        }
-        unset($p);
-        usort($allProviders, fn($a,$b) => ($a['distance']??0) <=> ($b['distance']??0));
-        $totalProviders = count($allProviders);
-        $providers      = array_slice($allProviders, $offset, $perPage);
+        // avg response time
+        $avgResp = 24.0;
+        try {
+            $s = $db->prepare("SELECT AVG(TIMESTAMPDIFF(HOUR,created_at,responded_at)) FROM bookings WHERE provider_id=? AND responded_at IS NOT NULL");
+            $s->execute([$pid]);
+            $ar = $s->fetchColumn();
+            if ($ar !== null && $ar !== false) $avgResp = (float)$ar;
+        } catch (Throwable $e) {}
 
-    } else {
-        // Count for pagination
-        $cntSql  = preg_replace('/^SELECT\s+.*?\s+FROM\s+/is', 'SELECT COUNT(DISTINCT sp.id) FROM ', $sqlBase);
-        $cntSql .= " WHERE " . implode(" AND ", $where);
-        $cntStmt = $db->prepare($cntSql);
-        foreach ($params as $k => $v) $cntStmt->bindValue($k, $v);
-        $cntStmt->execute();
-        $totalProviders = (int)$cntStmt->fetchColumn();
-
-        $stmt = $db->prepare($sql . " LIMIT :off, :pp");
-        foreach ($params as $k => $v) $stmt->bindValue($k, $v);
-        $stmt->bindValue(':off', $offset, PDO::PARAM_INT);
-        $stmt->bindValue(':pp',  $perPage, PDO::PARAM_INT);
-        $stmt->execute();
-        $providers = $stmt->fetchAll();
+        $batchPayload[] = [
+            'provider_id' => $pid,
+            'features' => [
+                'views'                  => max(0.0, (float)($p['view_count'] ?? 0)),
+                'clicks'                 => max(0.0, $clicks),
+                'messages'               => max(0.0, $msgs),
+                'rating'                 => min(5.0, max(0.0, (float)($p['average_rating'] ?? 0))),
+                'price'                  => max(0.0, (float)($p['avg_price'] ?? 0)),
+                'avg_response_time'      => max(0.0, $avgResp),
+                'user_avg_price'         => max(0.0, $userAvgPrice),
+                'user_avg_response_time' => max(0.0, $userAvgResp),
+                'user_total_bookings'    => max(0, $userTotalBookings),
+            ]
+        ];
     }
-} catch (Throwable $e) {
-    error_log("Provider search error: " . $e->getMessage());
-    $providers      = [];
-    $totalProviders = 0;
-}
 
-$totalPages = max(1, (int)ceil($totalProviders / $perPage));
+    // Call FastAPI
+    $ch = curl_init('http://localhost:8000/predict/batch');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS     => json_encode($batchPayload),
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        CURLOPT_TIMEOUT => 3, CURLOPT_CONNECTTIMEOUT => 2,
+    ]);
+    $mlRaw   = curl_exec($ch);
+    $mlErrno = curl_errno($ch);
+    curl_close($ch);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SECTION 8 — ML scoring for search results
-// ─────────────────────────────────────────────────────────────────────────────
-$mlApiOnline = false;
-
-if ($mlRecommender && $cfg['enable_ml'] === '1' && !empty($providers)) {
-    // Use MLRecommender to rank providers with user personalization (includes fallback logic)
-    $providers = $mlRecommender->rankProviders($providers, $_SESSION['user_id'] ?? null);
-    $mlApiOnline = true; // Assume online if class exists and we got results
-
-    // Re-sort by ML score if sort=recommended or sort=ml
-    if ($isSortML) {
-        // Already sorted by MLRecommender->rankProviders(), but ensure proper order
-        usort($providers, function($a, $b) {
-            $sa = $a['ml_score'] ?? 0;
-            $sb = $b['ml_score'] ?? 0;
-            if (abs($sa - $sb) < 0.001) {
-                // Fallback: sort by rating and response time
-                $a_rating = $a['average_rating'] ?? 0;
-                $b_rating = $b['average_rating'] ?? 0;
-                if (abs($a_rating - $b_rating) < 0.1) {
-                    // If ratings are similar, prefer faster response time
-                    $a_response = $a['avg_response_time'] ?? 24;
-                    $b_response = $b['avg_response_time'] ?? 24;
-                    return $a_response <=> $b_response; // Lower response time first
-                }
-                return $b_rating <=> $a_rating; // Higher rating first
+    if (!$mlErrno && $mlRaw) {
+        $mlResults = json_decode($mlRaw, true);
+        if (is_array($mlResults) && !empty($mlResults)) {
+            foreach ($mlResults as $r) {
+                $mlScoreMap[(int)$r['provider_id']] = [
+                    'score'      => (float)$r['probability'],
+                    'prediction' => (int)$r['prediction'],
+                    'confidence' => (string)$r['confidence'],
+                ];
             }
-            return $sb <=> $sa; // Higher ML score first
-        });
+            $mlApiStatus = 'ml';
+        }
     }
+
+    // Attach scores
+    foreach ($rawProviders as &$p) {
+        $pid = (int)$p['id'];
+        $ml  = $mlScoreMap[$pid] ?? null;
+
+        // Personalization boost (private to this client — not stored globally)
+        $personalBoost = 0.0;
+        if (isset($bookedProfessions[$p['profession']])) {
+            $personalBoost += min(0.15, $bookedProfessions[$p['profession']] * 0.03);
+        }
+        if (in_array($pid, $favIds)) {
+            $personalBoost += 0.12;
+        }
+        if (($p['provider_location'] ?? '') === $clientLocation && $clientLocation !== '') {
+            $personalBoost += 0.08;
+        }
+        if (in_array($pid, $recentlyViewedIds)) {
+            $personalBoost += 0.05;
+        }
+
+        $baseScore = $ml ? $ml['score'] : (
+            (float)($p['average_rating'] ?? 0) / 5 * 0.5 +
+            min(0.3, (int)($p['total_reviews'] ?? 0) / 100 * 0.3)
+        );
+
+        $p['ml_score']       = min(1.0, $baseScore + $personalBoost);
+        $p['ml_raw_score']   = $ml ? $ml['score'] : $baseScore;
+        $p['ml_confidence']  = $ml ? $ml['confidence'] : 'low';
+        $p['personal_boost'] = $personalBoost;
+    }
+    unset($p);
+
+    // Sort by personalized ML score
+    usort($rawProviders, fn($a, $b) => $b['ml_score'] <=> $a['ml_score']);
+
+    // Paginate after sorting
+    $providers = array_slice($rawProviders, $offset, $perPage);
+
+} else {
+    // Non-ML sort: rows already limited by SQL
+    foreach ($rawProviders as &$p) {
+        $p['ml_score']      = 0.0;
+        $p['ml_raw_score']  = 0.0;
+        $p['ml_confidence'] = 'n/a';
+        $p['personal_boost']= 0.0;
+    }
+    unset($p);
+    $providers = $rawProviders;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SECTION 9 — ML Recommendation strip (top picks, independent of search)
-// ─────────────────────────────────────────────────────────────────────────────
-$mlRecommended = [];
-$showMLStrip   = (empty($searchQuery) && empty($locationQuery) && !$categoryId);
-if ($showMLStrip) {
-    $mlRecommended = fetchMLRecommendations($db, $mlRecommender, $cfg, 6, $_SESSION['user_id'] ?? null);
-    $mlApiOnline   = $mlApiOnline || !empty($mlRecommended);
-}
-
-// Track search events
-if (!empty($searchQuery)) {
+// ── "For You" strip (top 6 personalized, different from main list) ─────────────
+$forYouProviders = [];
+if (!empty($bookedProfessions) || !empty($favIds)) {
+    $profList = array_keys($bookedProfessions);
+    $fyWhere  = ["sp.is_active=1","sp.is_banned=0","u.user_type='provider'","sp.average_rating>=3.5"];
+    $fyParams = [];
+    if (!empty($profList)) {
+        $ph = implode(',', array_fill(0, count($profList), '?'));
+        $fyWhere[]  = "sp.profession IN ($ph)";
+        $fyParams   = array_merge($fyParams, $profList);
+    }
+    if (!empty($providers)) {
+        $shownIds = array_column($providers, 'id');
+        if (!empty($shownIds)) {
+            $ph2 = implode(',', array_fill(0, count($shownIds), '?'));
+            $fyWhere[] = "sp.id NOT IN ($ph2)";
+            $fyParams  = array_merge($fyParams, $shownIds);
+        }
+    }
+    $fySQL = "SELECT sp.*, u.full_name, u.profile_image, sp.location as provider_location,
+                     (SELECT AVG(price) FROM provider_services ps WHERE ps.provider_id=sp.id AND ps.is_available=1) as avg_price
+              FROM service_providers sp JOIN users u ON sp.user_id=u.id
+              WHERE " . implode(' AND ', $fyWhere) . "
+              ORDER BY sp.average_rating DESC LIMIT 6";
     try {
-        trackEvent('search', 'search', null, [
-            'query'         => $searchQuery,
-            'location'      => $locationQuery,
-            'category_id'   => $categoryId,
-            'results_count' => $totalProviders,
-            'sort'          => $sortBy,
-        ]);
-    } catch (Throwable $e) {}
+        $s = $db->prepare($fySQL); $s->execute($fyParams);
+        $forYouProviders = $s->fetchAll();
+    } catch (Throwable $e) { $forYouProviders = []; }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SECTION 10 — AI category suggestion label
-// ─────────────────────────────────────────────────────────────────────────────
-$aiCatName = '';
-if (isset($_SESSION['ai_suggested_category'])) {
-    $acid = (int)$_SESSION['ai_suggested_category'];
-    foreach ($categories as $cat) {
-        if ((int)$cat['id'] === $acid) { $aiCatName = $cat['name']; break; }
-    }
-    unset($_SESSION['ai_suggested_category']);
-}
+// ── Category icon map ─────────────────────────────────────────────────────────
+$catIcons = [
+    'Plumbing'=>'fa-wrench','Plumber'=>'fa-wrench','Electrical'=>'fa-bolt','Electrician'=>'fa-bolt',
+    'Construction'=>'fa-hammer','Carpenter'=>'fa-hammer','Carpentry'=>'fa-hammer',
+    'Cleaning'=>'fa-broom','Painting'=>'fa-paint-brush','Painter'=>'fa-paint-brush',
+    'Landscaping'=>'fa-leaf','Gardener'=>'fa-leaf','HVAC'=>'fa-fan','Roofing'=>'fa-house-damage',
+    'Welding'=>'fa-fire','Masonry'=>'fa-cube','Mechanic'=>'fa-tools','Hairdresser'=>'fa-scissors',
+    'Tutoring'=>'fa-book','IT Support'=>'fa-laptop','Photography'=>'fa-camera',
+    'default'=>'fa-star'
+];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPERS for view layer
-// ─────────────────────────────────────────────────────────────────────────────
-function renderStars(float $rating, string $size = '0.85rem'): string {
-    $out = '';
-    for ($i = 1; $i <= 5; $i++) {
-        if ($i <= floor($rating))            $out .= '<i class="fas fa-star"></i>';
-        elseif ($i <= ceil($rating) && fmod($rating, 1) > 0.3) $out .= '<i class="fas fa-star-half-alt"></i>';
-        else                                  $out .= '<i class="far fa-star"></i>';
-    }
-    return "<span class='stars' style='font-size:{$size};color:#f59e0b;'>{$out}</span>";
-}
-
-function mlScoreColor(float $prob): string {
-    if ($prob >= 0.75) return '#10b981';
-    if ($prob >= 0.50) return '#3b82f6';
-    if ($prob >= 0.30) return '#f59e0b';
-    return '#6b7280';
-}
-
-function mlScoreLabel(float $prob): string {
-    if ($prob >= 0.80) return 'Top Match';
-    if ($prob >= 0.60) return 'Great Fit';
-    if ($prob >= 0.40) return 'Good Pick';
-    return 'Suggested';
-}
-
-function avatarInitial(string $name): string {
-    return strtoupper(substr(trim($name), 0, 1)) ?: '?';
-}
-
-function verificationBadge(string $level): string {
-    $badges = [
-        'premium'  => ['bg:#4f46e5', 'Premium'],
-        'gold'     => ['bg:#d97706', 'Gold'],
-        'verified' => ['bg:#059669', 'Verified'],
-    ];
-    $b = $badges[$level] ?? null;
-    if (!$b) return '';
-    [$bg, $label] = $b;
-    return "<span class='vbadge' style='{$bg}'><i class='fas fa-shield-alt'></i> {$label}</span>";
-}
-
+// Track page view
+try { trackEvent('providers_page_view','page',0,['filters'=>compact('search','category','location','sort','avail')],$uid); } catch(Throwable $e){}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Find Providers — <?= htmlspecialchars($cfg['platform_name']) ?></title>
+<title>Find Providers — <?php echo htmlspecialchars($platform_name); ?></title>
 <link rel="stylesheet" href="../bootstrap/css/bootstrap.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet">
-
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
 <style>
+/* ══════════════════════════════════════════════════════
+   DESIGN SYSTEM  —  Uber-adjacent precision tool aesthetic
+   Cool slate palette · Syne display · DM Sans body
+   ══════════════════════════════════════════════════════ */
 :root {
-    --primary: #0d6efd;
-    --secondary: #6c757d;
-    --success: #198754;
-    --danger: #dc3545;
-    --warning: #ffc107;
-    --info: #0dcaf0;
-    --light: #f8f9fa;
-    --dark: #212529;
-    --surface: #ffffff;
-    --surface-2: #f7f8fc;
-    --border: #e8eaf0;
-    --border-subtle: #f0f2f7;
-    --text-primary: #0f1117;
-    --text-secondary: #6b7280;
-    --text-muted: #9ca3af;
-    --accent: #0d6efd;
-    --accent-light: #eff4ff;
-    --radius-sm: 8px;
-    --radius-md: 12px;
-    --radius-lg: 16px;
-    --radius-xl: 20px;
-    --shadow-xs: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-    --shadow-sm: 0 2px 8px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05);
-    --shadow-md: 0 4px 16px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.05);
-    --shadow-lg: 0 8px 32px rgba(0,0,0,0.10), 0 4px 12px rgba(0,0,0,0.06);
-    --transition: all 0.22s cubic-bezier(0.4,0,0.2,1);
-    --sidebar-width: 260px;
-    --sidebar-collapsed-width: 72px;
-    --ml-green: #10b981;
-    --ml-blue: #3b82f6;
-    --ml-amber: #f59e0b;
+  --bg:          #f7f8fc;
+  --bg-2:        #ffffff;
+  --bg-3:        #f3f4f6;
+  --surface:     #ffffff;
+  --surface-2:   #f7f8fc;
+  --border:      #e8eaf0;
+  --border-light:#f0f2f7;
+  --text-primary:#0f1117;
+  --text-secondary:#6b7280;
+  --text-muted:  #9ca3af;
+  --accent:      #0d6efd;
+  --accent-2:    #3d6fe8;
+  --accent-glow: rgba(13,110,253,.12);
+  --green:       #198754;
+  --green-dim:   rgba(25,135,84,.15);
+  --amber:       #f59e0b;
+  --amber-dim:   rgba(245,158,11,.15);
+  --red:         #dc3545;
+  --red-dim:     rgba(220,53,69,.15);
+  --text-1:      #0f1117;
+  --text-2:      #6b7280;
+  --text-3:      #9ca3af;
+  --sidebar-w:   260px;
+  --r-sm:        8px;
+  --r-md:        12px;
+  --r-lg:        16px;
+  --r-xl:        22px;
+  --shadow-glow: 0 0 0 1px rgba(13,110,253,.12), 0 8px 32px rgba(0,0,0,.08);
+  --transition:  all .2s cubic-bezier(.4,0,.2,1);
 }
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-html { scroll-behavior: smooth; }
+*,*::before,*::after { box-sizing: border-box; margin:0; padding:0; }
 
 body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font-body);
-    -webkit-font-smoothing: antialiased;
-    min-height: 100vh;
-    overflow-x: hidden;
+  background: var(--bg);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: var(--text-1);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
 }
 
-/* ── Background noise texture ── */
-body::before {
-    content: '';
-    position: fixed; inset: 0;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
-    pointer-events: none;
-    z-index: 0;
-}
+h1,h2,h3,h4,h5 { font-family: 'Syne', sans-serif; }
 
-h1,h2,h3,h4,h5 { font-family: var(--font-head); letter-spacing: -0.02em; }
-
-/* ── SIDEBAR ── */
+/* ── SIDEBAR ─────────────────────────────────────── */
 .sidebar {
-    width: var(--sidebar-width);
-    background: #ffffff;
-    border-right: 1px solid var(--border);
-    color: var(--text-primary);
-    position: fixed;
-    height: 100vh;
-    left: 0;
-    top: 0;
-    transition: var(--transition);
-    z-index: 1000;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+  width: var(--sidebar-w);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  position: fixed; height: 100vh; left:0; top:0;
+  z-index: 1000; display: flex; flex-direction: column;
+  transition: var(--transition);
 }
-
-.sidebar.collapsed { width: var(--sidebar-collapsed-width); }
-
-.sidebar-brand {
-    padding: 1.5rem 1.25rem 1.25rem;
-    border-bottom: 1px solid var(--border-subtle);
-    display: flex;
-    align-items: center;
-    gap: 0.875rem;
+.sidebar-header {
+  padding: 1.5rem 1.25rem 1.25rem;
+  border-bottom: 1px solid var(--border-light);
 }
-
-.sidebar-brand-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-sm);
-    background: var(--accent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-weight: 800;
-    font-size: 1.1rem;
-    flex-shrink: 0;
-}
-
-.sidebar-brand-text {
-    flex: 1;
-    min-width: 0;
-}
-
-.sidebar-brand-name {
-    display: block;
-    font-weight: 800;
-    font-size: 1.15rem;
-    color: var(--accent);
-    letter-spacing: -0.3px;
-    margin-bottom: 0.125rem;
-}
-
-.sidebar-brand-role {
-    display: block;
-    color: var(--text-muted);
-    font-size: 0.78rem;
-    font-weight: 500;
-}
-
-.sidebar-toggle {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    padding: 0.5rem;
-    border-radius: var(--radius-sm);
-    transition: var(--transition);
-    cursor: pointer;
-    flex-shrink: 0;
-}
-
-.sidebar-toggle:hover {
-    background: var(--accent-light);
-    color: var(--accent);
-}
-
-.sidebar-nav {
-    flex: 1;
-    padding: 0.75rem;
-    overflow-y: auto;
-}
-
-.nav-section-label {
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin: 1rem 0 0.5rem;
-    padding: 0 0.5rem;
-}
-
-.sidebar-menu {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-
-.sidebar-menu li { margin: 0.15rem 0; }
-
+.sidebar-header h2 { font-size:1.1rem; font-weight:800; color: var(--accent); }
+.sidebar-header p  { font-size:.75rem; color: var(--text-3); margin-top:.25rem; }
+.sidebar-menu { list-style:none; padding:.75rem; flex:1; overflow-y:auto; }
+.sidebar-menu li { margin:.1rem 0; }
 .sidebar-menu a {
-    color: var(--text-secondary);
-    text-decoration: none;
-    padding: 0.65rem 0.85rem;
-    display: flex;
-    align-items: center;
-    transition: var(--transition);
-    border-radius: var(--radius-sm);
-    font-size: 0.875rem;
-    font-weight: 500;
-    gap: 0.65rem;
+  color: var(--text-2); text-decoration:none;
+  padding:.6rem .85rem; display:flex; align-items:center; gap:.65rem;
+  border-radius: var(--r-sm); font-size:.875rem; font-weight:500;
+  transition: var(--transition);
+}
+.sidebar-menu a:hover { background: rgba(13,110,253,.08); color: var(--accent); }
+.sidebar-menu a.active { background: var(--accent); color:#fff; font-weight:600; }
+.sidebar-menu i { width:18px; font-size:.875rem; flex-shrink:0; }
+
+/* ── MAIN CONTENT ────────────────────────────────── */
+.main-content { margin-left: var(--sidebar-w); min-height:100vh; }
+
+/* ── TOP SEARCH BAR ──────────────────────────────── */
+.search-header {
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  padding: 1.25rem 2rem;
+  position: sticky; top:0; z-index:100;
+  backdrop-filter: blur(16px);
+}
+.search-bar-row {
+  display: flex; gap: .75rem; align-items: center; flex-wrap: wrap;
+}
+.search-input-wrap {
+  flex: 1; min-width: 260px; position: relative;
+}
+.search-input-wrap i {
+  position:absolute; left:.875rem; top:50%; transform:translateY(-50%);
+  color: var(--text-3); font-size:.875rem;
+}
+.search-input {
+  width:100%; background: var(--surface); border: 1px solid var(--border);
+  color: var(--text-1); padding: .65rem .875rem .65rem 2.5rem;
+  border-radius: var(--r-md); font-size:.9rem; font-family:inherit;
+  transition: var(--transition); outline:none;
+}
+.search-input::placeholder { color: var(--text-3); }
+.search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+.filter-select {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text-1); padding: .65rem 1rem;
+  border-radius: var(--r-md); font-size:.85rem; font-family:inherit;
+  cursor:pointer; outline:none; transition: var(--transition);
+  appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238892aa' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right .75rem center;
+  padding-right: 2.25rem;
+}
+.filter-select:focus { border-color: var(--accent); }
+
+.btn-search {
+  background: var(--accent); color:#fff; border:none;
+  padding: .65rem 1.5rem; border-radius: var(--r-md);
+  font-weight:700; font-size:.875rem; cursor:pointer;
+  transition: var(--transition); font-family:inherit;
+  display:flex; align-items:center; gap:.4rem; white-space:nowrap;
+}
+.btn-search:hover { background: var(--accent-2); transform:translateY(-1px); }
+
+/* ── CATEGORY CHIPS BAR ──────────────────────────── */
+.cat-bar {
+  background: var(--bg-2); border-bottom: 1px solid var(--border);
+  padding: .75rem 2rem; display:flex; gap:.5rem; overflow-x:auto;
+  -webkit-overflow-scrolling: touch;
+}
+.cat-bar::-webkit-scrollbar { display:none; }
+.cat-chip {
+  display: inline-flex; align-items:center; gap:.4rem;
+  padding: .4rem .875rem; border-radius: 100px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-2); font-size:.78rem; font-weight:600;
+  cursor:pointer; text-decoration:none; transition: var(--transition);
+  white-space:nowrap; flex-shrink:0;
+}
+.cat-chip:hover  { border-color: var(--accent); color: var(--accent); }
+.cat-chip.active { background: var(--accent); border-color: var(--accent); color:#fff; }
+.cat-chip i { font-size:.7rem; }
+
+/* ── PAGE BODY ────────────────────────────────────── */
+.page-body { padding: 1.75rem 2rem; }
+
+/* ── PERSONALIZED BANNER ─────────────────────────── */
+.pers-banner {
+  background: linear-gradient(135deg, #1a2540 0%, #0f1829 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 1.5rem 2rem;
+  margin-bottom: 1.75rem;
+  position: relative; overflow:hidden;
+  display:flex; align-items:center; gap:1.5rem; flex-wrap:wrap;
+}
+.pers-banner::before {
+  content:''; position:absolute; top:-40%; right:-5%;
+  width:320px; height:320px;
+  background: radial-gradient(circle, rgba(79,140,255,.12) 0%, transparent 65%);
+}
+.pers-banner-icon {
+  width:52px; height:52px; border-radius: var(--r-md);
+  background: rgba(79,140,255,.15); border: 1px solid rgba(79,140,255,.25);
+  display:flex; align-items:center; justify-content:center;
+  font-size:1.4rem; color: var(--accent); flex-shrink:0;
+}
+.pers-banner-text h3 { font-size:1.1rem; font-weight:800; margin-bottom:.2rem; }
+.pers-banner-text p  { font-size:.83rem; color: var(--text-2); margin:0; }
+.pers-pill {
+  display:inline-flex; align-items:center; gap:.35rem;
+  background: rgba(79,140,255,.12); border: 1px solid rgba(79,140,255,.25);
+  color: var(--accent); border-radius:100px; padding:.25rem .7rem;
+  font-size:.7rem; font-weight:700; margin:.2rem .2rem 0 0;
 }
 
-.sidebar-menu a:hover { background: var(--accent-light); color: var(--accent); }
-.sidebar-menu a.active { background: var(--accent); color: white; font-weight: 600; }
-
-.sidebar-menu i {
-    width: 18px;
-    font-size: 0.9rem;
-    flex-shrink: 0;
+/* ── FOR-YOU STRIP ────────────────────────────────── */
+.section-label {
+  font-size:.7rem; font-weight:800; text-transform:uppercase; letter-spacing:.09em;
+  color: var(--text-3); margin-bottom:1rem;
+  display:flex; align-items:center; gap:.5rem;
 }
-}
-.sidebar-nav a.active::before {
-    content: '';
-    position: absolute; left: 0; top: 20%; bottom: 20%;
-    width: 2px; background: var(--accent);
-    border-radius: 99px; box-shadow: 0 0 8px var(--accent-glow);
-}
-.sidebar-nav i { width: 18px; font-size: .85rem; flex-shrink: 0; opacity: .8; }
-.sidebar-nav a.active i { opacity: 1; color: var(--accent); }
-
-.nav-badge {
-    margin-left: auto;
-    background: var(--accent); color: #fff;
-    font-size: .6rem; font-weight: 800;
-    padding: 1px 6px; border-radius: 99px;
+.section-label::after {
+  content:''; flex:1; height:1px; background: var(--border);
 }
 
-/* ── MAIN CONTENT ── */
-.main-content {
-    margin-left: var(--sidebar-width);
-    padding: 1.75rem 2rem;
-    min-height: 100vh;
-    transition: margin-left 0.3s ease;
+.foryou-strip {
+  display:flex; gap:1rem; overflow-x:auto; padding-bottom:.75rem;
+  margin-bottom:2rem; -webkit-overflow-scrolling:touch;
 }
+.foryou-strip::-webkit-scrollbar { height:4px; }
+.foryou-strip::-webkit-scrollbar-track { background: var(--border); border-radius:99px; }
+.foryou-strip::-webkit-scrollbar-thumb { background: var(--border-light); border-radius:99px; }
 
-.sidebar.collapsed ~ .main-content { margin-left: var(--sidebar-collapsed-width); }
+.foryou-card {
+  flex: 0 0 180px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding:1.1rem; text-align:center; text-decoration:none;
+  color: var(--text-1); transition: var(--transition);
+}
+.foryou-card:hover {
+  border-color: var(--accent); transform:translateY(-4px);
+  box-shadow: var(--shadow-glow); color: var(--text-1);
+}
+.foryou-avatar {
+  width:54px; height:54px; border-radius: var(--r-md);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  margin:0 auto .75rem; display:flex; align-items:center;
+  justify-content:center; font-size:1.3rem; font-weight:800;
+  color:#fff; overflow:hidden;
+}
+.foryou-avatar img { width:100%; height:100%; object-fit:cover; border-radius:inherit; }
+.foryou-name { font-size:.82rem; font-weight:700; margin-bottom:.2rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.foryou-prof { font-size:.7rem; color: var(--accent); font-weight:600; margin-bottom:.4rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.foryou-rating { font-size:.72rem; color: var(--amber); }
+.foryou-price { font-size:.75rem; font-weight:700; color: var(--text-2); margin-top:.4rem; }
 
-/* ── TOP BAR ── */
-.topbar {
-    background: var(--surface);
-    border-radius: var(--radius-lg);
-    padding: 1.25rem 1.75rem;
-    margin-bottom: 1.75rem;
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow-xs);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 1rem;
-}
-
-.topbar-title {
-    font-size: 1.5rem;
-    font-weight: 800;
-    color: var(--text-primary);
-    letter-spacing: -0.5px;
-    margin: 0;
-}
-
-.topbar-subtitle {
-    color: var(--text-muted);
-    font-size: 0.85rem;
-    margin: 0.25rem 0 0;
-}
-
-.topbar-actions {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-
-.ml-status {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    font-weight: 600;
-}
-
-.ml-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--ml-green);
-    box-shadow: 0 0 6px var(--ml-green);
-    animation: pulse-dot 2s infinite;
-}
-
-.ml-dot.offline { background: #ef4444; box-shadow: none; animation: none; }
-
-@keyframes pulse-dot {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}
-    display: flex; align-items: center;
-    padding: .45rem .45rem .45rem 1rem;
-    gap: .5rem;
-    transition: border-color .2s;
-}
-.topbar-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
-.topbar-search input {
-    flex: 1; background: none; border: none; outline: none;
-    color: var(--text); font-size: .875rem; font-family: var(--font-body);
-}
-.topbar-search input::placeholder { color: var(--text-3); }
-.topbar-search button {
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    border: none; border-radius: 99px;
-    padding: .4rem .85rem; color: #fff;
-    font-size: .78rem; font-weight: 700; cursor: pointer;
-    transition: opacity .18s;
-}
-.topbar-search button:hover { opacity: .88; }
-
-.ml-status {
-    display: flex; align-items: center; gap: .4rem;
-    font-size: .72rem; color: var(--text-3); font-weight: 500;
-}
-.ml-dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--text-3);
-    box-shadow: 0 0 0 2px rgba(255,255,255,.06);
-    transition: background .4s;
-}
-.ml-dot.online  { background: var(--ml-green); box-shadow: 0 0 6px var(--ml-green); animation: pulse-dot 2s infinite; }
-.ml-dot.offline { background: #ef4444; }
-
-@keyframes pulse-dot {
-    0%,100% { box-shadow: 0 0 6px var(--ml-green); }
-    50%      { box-shadow: 0 0 14px var(--ml-green); }
-}
-
-/* ── Page content ── */
-.page-body { padding: 1.75rem 2rem 4rem; }
-
-/* ── Section header ── */
-.section-head {
-    display: flex; align-items: flex-end; justify-content: space-between;
-    margin-bottom: 1.25rem; flex-wrap: wrap; gap: .75rem;
-}
-.section-head h2 {
-    font-size: 1.25rem; font-weight: 800; color: var(--text);
-    display: flex; align-items: center; gap: .5rem;
-}
-.section-head h2 .ico {
-    width: 30px; height: 30px;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: .8rem; color: #fff;
-    box-shadow: 0 4px 12px var(--accent-glow);
-}
-.section-sub { font-size: .82rem; color: var(--text-3); }
-
-/* ════════════════════════════════════════════════════════
-   ML RECOMMENDATION STRIP
-   ════════════════════════════════════════════════════════ */
-.ml-strip {
-    background: linear-gradient(135deg, rgba(99,102,241,.07), rgba(139,92,246,.04));
-    border: 1px solid rgba(99,102,241,.18);
-    border-radius: var(--radius-lg);
-    padding: 1.75rem;
-    margin-bottom: 2rem;
-    position: relative;
-    overflow: hidden;
-}
-
-.ml-strip::before {
-    content: '';
-    position: absolute; top: -40px; right: -40px;
-    width: 200px; height: 200px;
-    background: radial-gradient(circle, rgba(99,102,241,.15) 0%, transparent 70%);
-    pointer-events: none;
-}
-
-.ml-strip-header {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 1.25rem; flex-wrap: wrap; gap: .75rem;
-}
-
-.ml-strip-title {
-    display: flex; align-items: center; gap: .65rem;
-}
-
-.ml-brain-icon {
-    width: 38px; height: 38px;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: .9rem; color: #fff;
-    box-shadow: 0 4px 16px var(--accent-glow);
-    animation: brain-pulse 3s ease-in-out infinite;
-}
-
-@keyframes brain-pulse {
-    0%,100% { box-shadow: 0 4px 16px rgba(99,102,241,.35); }
-    50%      { box-shadow: 0 4px 28px rgba(99,102,241,.65); }
-}
-
-.ml-strip-title h3 { font-size: 1.05rem; font-weight: 800; }
-.ml-strip-title p  { font-size: .78rem; color: var(--text-3); margin-top: 1px; }
-
-.ml-strip-badge {
-    background: linear-gradient(90deg, var(--accent), var(--accent-2));
-    color: #fff; font-size: .68rem; font-weight: 800;
-    padding: .3rem .75rem; border-radius: 99px;
-    letter-spacing: .05em;
-    box-shadow: 0 2px 12px var(--accent-glow);
-}
-
-/* ML card grid */
-.ml-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-    gap: 1rem;
-}
-
-.ml-card {
-    background: var(--bg-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-    transition: transform .22s cubic-bezier(.34,1.56,.64,1), border-color .2s, box-shadow .2s;
-    position: relative;
-    cursor: pointer;
-    text-decoration: none;
-    color: inherit;
-    display: block;
-    animation: card-in .5s cubic-bezier(.34,1.56,.64,1) both;
-}
-
-.ml-card:nth-child(1) { animation-delay: .05s }
-.ml-card:nth-child(2) { animation-delay: .10s }
-.ml-card:nth-child(3) { animation-delay: .15s }
-.ml-card:nth-child(4) { animation-delay: .20s }
-.ml-card:nth-child(5) { animation-delay: .25s }
-.ml-card:nth-child(6) { animation-delay: .30s }
-
-@keyframes card-in {
-    from { opacity: 0; transform: translateY(18px) scale(.97); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.ml-card:hover {
-    transform: translateY(-6px) scale(1.01);
-    border-color: rgba(99,102,241,.4);
-    box-shadow: 0 12px 32px rgba(0,0,0,.5), 0 0 0 1px rgba(99,102,241,.25);
-    text-decoration: none; color: inherit;
-}
-
-/* ML score arc at top of card */
-.ml-card-score {
-    position: absolute; top: .6rem; right: .6rem;
-    z-index: 2;
-}
-
-.score-pill {
-    display: flex; align-items: center; gap: .3rem;
-    padding: .22rem .55rem;
-    border-radius: 99px;
-    font-size: .65rem; font-weight: 800;
-    backdrop-filter: blur(12px);
-    background: rgba(0,0,0,.55);
-    border: 1px solid rgba(255,255,255,.12);
-    letter-spacing: .03em;
-}
-
-.ml-card-img {
-    height: 130px; overflow: hidden; position: relative;
-}
-
-.ml-card-img img {
-    width: 100%; height: 100%; object-fit: cover;
-    transition: transform .4s ease;
-}
-.ml-card:hover .ml-card-img img { transform: scale(1.06); }
-
-.ml-card-avatar {
-    width: 100%; height: 100%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 2.5rem; font-weight: 800; color: rgba(255,255,255,.85);
-    font-family: var(--font-head);
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-}
-
-.ml-avail-dot {
-    position: absolute; bottom: .5rem; left: .5rem;
-    display: flex; align-items: center; gap: .3rem;
-    background: rgba(0,0,0,.7); backdrop-filter: blur(8px);
-    border: 1px solid rgba(255,255,255,.1);
-    border-radius: 99px; padding: .2rem .55rem;
-    font-size: .65rem; font-weight: 600;
-}
-.ml-avail-dot .dot {
-    width: 6px; height: 6px; border-radius: 50%;
-}
-.dot-available { background: var(--ml-green); box-shadow: 0 0 6px var(--ml-green); }
-.dot-busy      { background: var(--ml-amber); }
-.dot-unavailable{background: #ef4444; }
-
-.ml-card-body { padding: .85rem; }
-.ml-card-name  { font-size: .88rem; font-weight: 700; color: var(--text); margin-bottom: .15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ml-card-prof  { font-size: .72rem; color: var(--accent-2); font-weight: 600; margin-bottom: .5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-.ml-card-meta {
-    display: flex; align-items: center; justify-content: space-between;
-}
-.ml-card-rating { display: flex; align-items: center; gap: .3rem; font-size: .72rem; color: var(--text-2); }
-.ml-card-reviews{ font-size: .68rem; color: var(--text-3); }
-
-/* ML score bar */
-.ml-score-bar {
-    height: 3px; border-radius: 99px;
-    background: var(--border);
-    margin-top: .6rem; overflow: hidden;
-}
-.ml-score-fill {
-    height: 100%; border-radius: 99px;
-    background: linear-gradient(90deg, var(--accent), var(--accent-2));
-    transition: width .6s cubic-bezier(.4,0,.2,1);
-    box-shadow: 0 0 8px var(--accent-glow);
-}
-
-.ml-fallback {
-    text-align: center; padding: 2rem;
-    color: var(--text-3); font-size: .875rem;
-}
-.ml-fallback i { font-size: 2rem; display: block; margin-bottom: .75rem; color: var(--text-3); }
-
-/* ════════════════════════════════════════════════════════
-   FILTERS BAR
-   ════════════════════════════════════════════════════════ */
-.filters-bar {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1.125rem 1.5rem;
-    margin-bottom: 1.5rem;
-    display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end;
-}
-
-.fgroup { display: flex; flex-direction: column; gap: .35rem; min-width: 140px; flex: 1; }
-.fgroup label { font-size: .72rem; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; }
-.fgroup input, .fgroup select {
-    background: var(--bg-2); border: 1px solid var(--border);
-    color: var(--text); border-radius: var(--radius-sm);
-    padding: .5rem .75rem; font-size: .875rem; font-family: var(--font-body);
-    outline: none; transition: border-color .18s;
-    -webkit-appearance: none;
-}
-.fgroup input:focus, .fgroup select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
-.fgroup select option { background: #1a1a2e; }
-
-.filter-chips { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .5rem; }
-.chip {
-    display: inline-flex; align-items: center; gap: .35rem;
-    padding: .3rem .75rem; border-radius: 99px;
-    border: 1px solid var(--border); background: var(--surface);
-    font-size: .75rem; font-weight: 600; color: var(--text-2);
-    cursor: pointer; transition: all .18s; white-space: nowrap;
-}
-.chip:hover { border-color: var(--accent); color: var(--accent); background: rgba(99,102,241,.08); }
-.chip.active { border-color: var(--accent); background: rgba(99,102,241,.15); color: var(--accent); }
-
-.btn-filter {
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color: #fff; border: none; border-radius: var(--radius-sm);
-    padding: .55rem 1.25rem; font-size: .875rem; font-weight: 700;
-    cursor: pointer; transition: opacity .18s, transform .18s;
-    white-space: nowrap; font-family: var(--font-body);
-    box-shadow: 0 4px 16px var(--accent-glow);
-}
-.btn-filter:hover { opacity: .9; transform: translateY(-1px); }
-
-.btn-reset {
-    background: var(--surface-2); color: var(--text-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: .55rem 1rem; font-size: .875rem; font-weight: 600;
-    cursor: pointer; transition: all .18s; white-space: nowrap; font-family: var(--font-body);
-    text-decoration: none;
-}
-.btn-reset:hover { border-color: var(--border-hi); color: var(--text); text-decoration: none; }
-
-/* ════════════════════════════════════════════════════════
-   RESULTS HEADER
-   ════════════════════════════════════════════════════════ */
+/* ── RESULTS HEADER ──────────────────────────────── */
 .results-header {
-    display: flex; align-items: center; justify-content: space-between;
-    flex-wrap: wrap; gap: .75rem; margin-bottom: 1.25rem;
+  display:flex; justify-content:space-between; align-items:center;
+  flex-wrap:wrap; gap:.75rem; margin-bottom:1.25rem;
 }
-.results-count {
-    font-size: .875rem; color: var(--text-2);
-}
-.results-count strong { color: var(--text); font-weight: 700; }
+.results-count { font-size:.85rem; color: var(--text-2); }
+.results-count strong { color: var(--text-1); font-weight:700; }
 
-.sort-row { display: flex; align-items: center; gap: .5rem; }
-.sort-row label { font-size: .78rem; color: var(--text-3); font-weight: 600; }
-.sort-row select {
-    background: var(--surface-2); border: 1px solid var(--border);
-    color: var(--text); border-radius: var(--radius-sm);
-    padding: .35rem .75rem; font-size: .8rem; font-family: var(--font-body);
-    outline: none; cursor: pointer;
+.ml-status-pill {
+  display:inline-flex; align-items:center; gap:.4rem;
+  padding:.3rem .8rem; border-radius:100px; font-size:.72rem; font-weight:700;
 }
+.ml-status-pill.live { background: var(--green-dim); border:1px solid rgba(34,197,94,.3); color: var(--green); }
+.ml-status-pill.heur { background: var(--amber-dim); border:1px solid rgba(245,158,11,.3); color: var(--amber); }
+.ml-dot { width:6px; height:6px; border-radius:50%; }
+.ml-dot.live { background: var(--green); box-shadow:0 0 6px var(--green); animation: blink 2s infinite; }
+.ml-dot.heur { background: var(--amber); }
+@keyframes blink { 0%,100%{opacity:1}50%{opacity:.4} }
 
-/* ════════════════════════════════════════════════════════
-   PROVIDER GRID
-   ════════════════════════════════════════════════════════ */
-.provider-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 1.125rem;
+.sort-chips { display:flex; gap:.4rem; flex-wrap:wrap; }
+.sort-chip {
+  padding:.35rem .8rem; border-radius:100px; font-size:.72rem; font-weight:700;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-2); cursor:pointer; transition: var(--transition);
+  text-decoration:none;
 }
+.sort-chip:hover  { border-color: var(--accent); color: var(--accent); }
+.sort-chip.active { background: var(--accent); border-color: var(--accent); color:#fff; }
 
-.pcard {
-    background: var(--bg-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-    transition: transform .22s cubic-bezier(.34,1.56,.64,1), box-shadow .2s, border-color .2s;
-    position: relative;
-    display: flex; flex-direction: column;
+/* ── PROVIDER GRID ───────────────────────────────── */
+.providers-grid {
+  display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap:1.25rem;
 }
 
-.pcard:hover {
-    transform: translateY(-5px);
-    border-color: rgba(99,102,241,.3);
-    box-shadow: var(--shadow-card), var(--shadow-glow);
+.prov-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-xl); overflow:hidden; position:relative;
+  transition: var(--transition); display:flex; flex-direction:column;
+}
+.prov-card:hover {
+  border-color: var(--accent); transform:translateY(-4px);
+  box-shadow: var(--shadow-glow);
+}
+.prov-card.top-pick { border-color: rgba(79,140,255,.45); }
+.prov-card.top-pick::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background: linear-gradient(90deg, var(--accent), #a78bfa);
 }
 
-.pcard-img {
-    height: 150px; overflow: hidden; position: relative;
-    background: linear-gradient(135deg, #1a1a2e, #16162a);
+/* card banner */
+.prov-banner {
+  height:100px; position:relative;
+  background: linear-gradient(135deg, #1a2540 0%, #0f1829 100%);
+  display:flex; align-items:flex-end; padding:.875rem 1rem;
 }
-.pcard-img img { width: 100%; height: 100%; object-fit: cover; transition: transform .4s ease; }
-.pcard:hover .pcard-img img { transform: scale(1.05); }
-.pcard-initial {
-    width: 100%; height: 100%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 2.8rem; font-weight: 800; color: rgba(255,255,255,.75);
-    font-family: var(--font-head);
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+.prov-banner-pattern {
+  position:absolute; inset:0; opacity:.08;
+  background-image: repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%);
+  background-size:12px 12px;
 }
-
-.pcard-featured {
-    position: absolute; top: .6rem; left: .6rem;
-    background: linear-gradient(90deg, #f59e0b, #ef4444);
-    color: #fff; font-size: .62rem; font-weight: 800;
-    padding: .22rem .6rem; border-radius: 99px;
-    letter-spacing: .04em;
-    box-shadow: 0 2px 8px rgba(239,68,68,.4);
+.prov-avatar-wrap {
+  position:relative; z-index:2;
+  width:60px; height:60px; border-radius: var(--r-md);
+  border: 2px solid rgba(255,255,255,.12); overflow:hidden;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  display:flex; align-items:center; justify-content:center;
+  font-size:1.5rem; font-weight:800; color:#fff; flex-shrink:0;
 }
+.prov-avatar-wrap img { width:100%; height:100%; object-fit:cover; }
 
-.pcard-avail {
-    position: absolute; bottom: .5rem; right: .5rem;
-    display: flex; align-items: center; gap: .3rem;
-    background: rgba(0,0,0,.7); backdrop-filter: blur(8px);
-    border: 1px solid rgba(255,255,255,.1);
-    border-radius: 99px; padding: .2rem .55rem;
-    font-size: .65rem; font-weight: 600;
+.prov-banner-meta {
+  position:absolute; top:.6rem; right:.75rem; z-index:2;
+  display:flex; flex-direction:column; align-items:flex-end; gap:.3rem;
 }
-
-.pcard-ml {
-    position: absolute; top: .6rem; right: .6rem;
+.ml-score-badge {
+  background: rgba(13,110,253,.12);
+  border: 1px solid rgba(13,110,253,.2);
+  color: var(--accent);
+  padding:.2rem .55rem; border-radius:100px;
+  font-size:.65rem; font-weight:800; letter-spacing:.02em;
+  display:flex; align-items:center; gap:.3rem;
 }
+.ml-score-badge .dot { width:5px; height:5px; border-radius:50%; flex-shrink:0; }
+.dot-green { background: var(--green); }
+.dot-blue  { background: var(--accent); }
+.dot-gray  { background: var(--text-3); }
 
-.pcard-body { padding: 1rem; flex: 1; display: flex; flex-direction: column; gap: .5rem; }
-
-.pcard-name {
-    font-size: .93rem; font-weight: 700;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    color: var(--text);
+.avail-badge {
+  padding:.18rem .5rem; border-radius:100px; font-size:.62rem; font-weight:700;
 }
+.avail-badge.available { background: var(--green-dim); color: var(--green); border:1px solid rgba(34,197,94,.3); }
+.avail-badge.busy      { background: var(--amber-dim); color: var(--amber); border:1px solid rgba(245,158,11,.3); }
+.avail-badge.unavailable { background: var(--red-dim); color: var(--red); border:1px solid rgba(239,68,68,.3); }
 
-.pcard-prof {
-    font-size: .75rem; color: var(--accent-2); font-weight: 600;
-    display: flex; align-items: center; gap: .3rem;
+/* card body */
+.prov-body { padding:1rem 1.125rem; flex:1; display:flex; flex-direction:column; }
+.prov-name-row { display:flex; align-items:center; gap:.5rem; margin-bottom:.15rem; }
+.prov-name { font-size:.975rem; font-weight:800; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.prov-verified { color: var(--green); font-size:.8rem; flex-shrink:0; }
+.prov-profession { font-size:.75rem; color: var(--accent); font-weight:600; margin-bottom:.6rem; }
+
+.prov-stats { display:flex; gap:.75rem; margin-bottom:.75rem; }
+.prov-stat { display:flex; align-items:center; gap:.3rem; font-size:.75rem; color: var(--text-2); }
+.prov-stat i { font-size:.7rem; }
+.prov-stat strong { color: var(--text-1); font-weight:700; }
+
+/* ML bar */
+.ml-bar-wrap { margin-bottom:.75rem; }
+.ml-bar-label {
+  display:flex; justify-content:space-between; font-size:.65rem;
+  color: var(--text-3); margin-bottom:.25rem;
 }
-
-.pcard-loc {
-    font-size: .75rem; color: var(--text-3);
-    display: flex; align-items: center; gap: .3rem;
+.ml-bar-label span:last-child { color: var(--text-1); font-weight:700; }
+.ml-bar-track {
+  height:3px; background: var(--border); border-radius:99px; overflow:hidden;
 }
-
-.pcard-row {
-    display: flex; align-items: center; justify-content: space-between;
-    flex-wrap: wrap; gap: .35rem; margin-top: auto;
+.ml-bar-fill {
+  height:100%; border-radius:99px; transition: width 1.2s cubic-bezier(.4,0,.2,1);
 }
+.ml-fill-high   { background: linear-gradient(90deg, var(--green), #16a34a); }
+.ml-fill-medium { background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+.ml-fill-low    { background: var(--text-3); }
 
-.pcard-rating { display: flex; align-items: center; gap: .4rem; }
-.pcard-rnum { font-size: .78rem; font-weight: 700; color: var(--text); }
-.pcard-rcount { font-size: .7rem; color: var(--text-3); }
-
-/* vbadge (inline verification) */
-.vbadge {
-    display: inline-flex; align-items: center; gap: .25rem;
-    font-size: .62rem; font-weight: 700;
-    padding: .18rem .5rem; border-radius: 99px; color: #fff;
-    background: var(--accent);
+/* personalization tags */
+.pers-tags { display:flex; flex-wrap:wrap; gap:.3rem; margin-bottom:.75rem; }
+.pers-tag {
+  padding:.18rem .55rem; border-radius:100px; font-size:.62rem; font-weight:700;
 }
+.pers-tag.booked   { background:rgba(34,197,94,.12); color:var(--green); border:1px solid rgba(34,197,94,.2); }
+.pers-tag.fav      { background:rgba(239,68,68,.12); color:#ef4444; border:1px solid rgba(239,68,68,.2); }
+.pers-tag.nearby   { background:rgba(79,140,255,.12); color:var(--accent); border:1px solid rgba(79,140,255,.2); }
+.pers-tag.viewed   { background:rgba(245,158,11,.12); color:var(--amber); border:1px solid rgba(245,158,11,.2); }
 
-/* pcard actions */
-.pcard-actions {
-    display: flex; gap: .4rem; padding: .75rem 1rem;
-    border-top: 1px solid var(--border);
+.prov-location { font-size:.73rem; color: var(--text-3); display:flex; align-items:center; gap:.3rem; margin-bottom:.875rem; }
+
+/* card footer */
+.prov-footer {
+  border-top: 1px solid var(--border); padding:.875rem 1.125rem;
+  display:flex; gap:.5rem; background: var(--bg-2);
 }
-
-.btn-view {
-    flex: 1; background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color: #fff; border: none; border-radius: var(--radius-sm);
-    padding: .5rem; font-size: .78rem; font-weight: 700;
-    cursor: pointer; transition: opacity .18s;
-    text-decoration: none; text-align: center;
-    display: flex; align-items: center; justify-content: center; gap: .3rem;
-    font-family: var(--font-body);
+.btn-view-prof {
+  flex:1; background: var(--accent); color:#fff; border:none;
+  padding:.55rem; border-radius: var(--r-sm); font-size:.8rem; font-weight:700;
+  cursor:pointer; text-decoration:none; text-align:center;
+  display:flex; align-items:center; justify-content:center; gap:.35rem;
+  transition: var(--transition); font-family:inherit;
 }
-.btn-view:hover { opacity: .9; color: #fff; text-decoration: none; }
-
-.btn-icon {
-    width: 34px; height: 34px; background: var(--surface-2);
-    border: 1px solid var(--border); border-radius: var(--radius-sm);
-    display: flex; align-items: center; justify-content: center;
-    font-size: .78rem; color: var(--text-2);
-    cursor: pointer; transition: all .18s;
-    text-decoration: none;
+.btn-view-prof:hover { background: var(--accent-2); color:#fff; transform:scale(1.02); }
+.btn-fav {
+  width:36px; height:36px; border: 1px solid var(--border); background: transparent;
+  color: var(--text-3); border-radius: var(--r-sm); cursor:pointer;
+  display:flex; align-items:center; justify-content:center; font-size:.875rem;
+  transition: var(--transition);
 }
-.btn-icon:hover { border-color: var(--border-hi); color: var(--text); text-decoration: none; }
-.btn-icon.danger:hover { border-color: #ef4444; color: #ef4444; }
-.btn-icon.warn:hover   { border-color: var(--ml-amber); color: var(--ml-amber); }
+.btn-fav:hover          { border-color:#ef4444; color:#ef4444; }
+.btn-fav.favorited      { background:#ef4444; border-color:#ef4444; color:#fff; }
+.btn-fav.favorited:hover{ background:#dc2626; }
 
-/* ML score bar on provider card */
-.pcard-score-bar { height: 3px; background: var(--border); border-radius: 99px; overflow: hidden; }
-.pcard-score-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--ml-green), #34d399); transition: width .8s cubic-bezier(.4,0,.2,1); }
+/* price chip */
+.prov-price {
+  font-size:.82rem; font-weight:800; color: var(--text-1);
+  margin-bottom:.875rem;
+}
+.prov-price span { color: var(--text-3); font-size:.7rem; font-weight:400; }
 
-/* ════════════════════════════════════════════════════════
-   EMPTY & PAGINATION
-   ════════════════════════════════════════════════════════ */
+/* ── EMPTY STATE ─────────────────────────────────── */
 .empty-state {
-    text-align: center; padding: 4rem 2rem; color: var(--text-3);
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
+  text-align:center; padding:4rem 2rem; color: var(--text-3);
+  grid-column:1/-1;
 }
-.empty-state i { font-size: 3rem; display: block; margin-bottom: 1rem; opacity: .4; }
-.empty-state h3 { font-size: 1.15rem; color: var(--text-2); margin-bottom: .4rem; }
-.empty-state p { font-size: .875rem; }
+.empty-state i { font-size:2.5rem; margin-bottom:1rem; display:block; }
+.empty-state h3 { color: var(--text-2); font-size:1.1rem; margin-bottom:.4rem; }
+.empty-state p  { font-size:.85rem; margin-bottom:1.25rem; }
+.btn-reset {
+  display:inline-flex; align-items:center; gap:.4rem;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text-1); padding:.6rem 1.25rem;
+  border-radius: var(--r-md); font-size:.85rem; font-weight:600;
+  text-decoration:none; transition: var(--transition);
+}
+.btn-reset:hover { border-color: var(--accent); color: var(--accent); }
 
-.pagination-wrap { display: flex; justify-content: center; gap: .4rem; margin-top: 2rem; flex-wrap: wrap; }
+/* ── ADVANCED FILTERS DRAWER ─────────────────────── */
+.adv-filters-btn {
+  display:flex; align-items:center; gap:.4rem;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text-2); padding:.55rem 1rem; border-radius: var(--r-md);
+  font-size:.82rem; font-weight:600; cursor:pointer; transition: var(--transition);
+  font-family:inherit;
+}
+.adv-filters-btn:hover { border-color: var(--accent); color: var(--accent); }
+.adv-filters-btn .badge-count {
+  background: var(--accent); color:#fff; border-radius:100px;
+  padding:0 .5rem; font-size:.65rem; font-weight:800;
+}
 
+.filter-drawer {
+  display:none; background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding:1.25rem;
+  margin-bottom:1.25rem; animation: slideDown .2s ease;
+}
+.filter-drawer.open { display:block; }
+@keyframes slideDown { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+.filter-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:1rem; }
+.filter-label { font-size:.72rem; font-weight:700; color: var(--text-3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:.4rem; display:block; }
+.filter-check { display:flex; align-items:center; gap:.5rem; font-size:.82rem; color: var(--text-2); cursor:pointer; }
+.filter-check input { accent-color: var(--accent); }
+.rating-pills { display:flex; gap:.4rem; flex-wrap:wrap; }
+.rating-pill {
+  padding:.3rem .65rem; border-radius:100px; font-size:.72rem; font-weight:700;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-2); cursor:pointer; text-decoration:none; transition: var(--transition);
+}
+.rating-pill:hover, .rating-pill.active { background: var(--amber); border-color: var(--amber); color:#000; }
+
+/* ── PAGINATION ──────────────────────────────────── */
+.pagination-wrap { display:flex; justify-content:center; gap:.4rem; margin-top:2.5rem; flex-wrap:wrap; }
 .page-btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: .35rem;
-    min-width: 36px; height: 36px; padding: 0 .65rem;
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius-sm); color: var(--text-2);
-    font-size: .8rem; font-weight: 600; text-decoration: none;
-    transition: all .18s;
+  padding:.45rem .9rem; border-radius: var(--r-sm); font-size:.8rem; font-weight:700;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-2); text-decoration:none; transition: var(--transition);
+  display:inline-flex; align-items:center; gap:.35rem;
 }
-.page-btn:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
-.page-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.page-btn:hover { border-color: var(--accent); color: var(--accent); }
+.page-btn.active { background: var(--accent); border-color: var(--accent); color:#fff; }
 
-/* ════════════════════════════════════════════════════════
-   ALERTS
-   ════════════════════════════════════════════════════════ */
-.flash {
-    border-radius: var(--radius-sm); padding: .875rem 1.125rem;
-    margin-bottom: 1.25rem; font-size: .875rem;
-    border: 1px solid transparent;
-    display: flex; align-items: flex-start; gap: .5rem;
-}
-.flash.success { background: rgba(16,185,129,.1); border-color: rgba(16,185,129,.25); color: #6ee7b7; }
-.flash.danger  { background: rgba(239,68,68,.1);  border-color: rgba(239,68,68,.25);  color: #fca5a5; }
-
-/* ════════════════════════════════════════════════════════
-   MODAL (dark)
-   ════════════════════════════════════════════════════════ */
-.dmodal {
-    display: none; position: fixed; inset: 0; z-index: 2000;
-    background: rgba(0,0,0,.72); backdrop-filter: blur(8px);
-    align-items: center; justify-content: center; padding: 1rem;
-}
-.dmodal.open { display: flex; animation: modal-in .2s ease; }
-
-@keyframes modal-in {
-    from { opacity: 0; }
-    to   { opacity: 1; }
-}
-
-.dmodal-box {
-    background: var(--bg-2); border: 1px solid var(--border-hi);
-    border-radius: var(--radius-lg);
-    width: 100%; max-width: 440px; max-height: 90vh; overflow-y: auto;
-    box-shadow: 0 32px 64px rgba(0,0,0,.7);
-    animation: modal-up .25s cubic-bezier(.34,1.56,.64,1);
-}
-
-@keyframes modal-up {
-    from { transform: translateY(24px); opacity: 0; }
-    to   { transform: translateY(0);    opacity: 1; }
-}
-
-.dmodal-head {
-    padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: space-between;
-}
-.dmodal-head h4 { font-size: 1rem; font-weight: 800; }
-.dmodal-close {
-    width: 30px; height: 30px; background: var(--surface-2);
-    border: 1px solid var(--border); border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer; color: var(--text-2); font-size: .8rem;
-    transition: all .18s;
-}
-.dmodal-close:hover { background: rgba(239,68,68,.15); border-color: #ef4444; color: #ef4444; }
-
-.dmodal-body { padding: 1.25rem 1.5rem; }
-.dmodal-body .form-group { margin-bottom: 1rem; }
-.dmodal-body label { display: block; font-size: .78rem; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .05em; margin-bottom: .4rem; }
-.dmodal-body input,
-.dmodal-body select,
-.dmodal-body textarea {
-    width: 100%; background: var(--bg);
-    border: 1px solid var(--border); border-radius: var(--radius-sm);
-    color: var(--text); padding: .6rem .85rem;
-    font-family: var(--font-body); font-size: .875rem; outline: none;
-    transition: border-color .18s;
-}
-.dmodal-body input:focus,
-.dmodal-body select:focus,
-.dmodal-body textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
-.dmodal-body select option { background: #1a1a2e; }
-.dmodal-body textarea { resize: vertical; min-height: 100px; }
-
-.dmodal-foot {
-    padding: 1rem 1.5rem; border-top: 1px solid var(--border);
-    display: flex; gap: .5rem; justify-content: flex-end;
-}
-
-.btn-submit {
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color: #fff; border: none; border-radius: var(--radius-sm);
-    padding: .6rem 1.25rem; font-size: .875rem; font-weight: 700;
-    cursor: pointer; font-family: var(--font-body);
-    box-shadow: 0 4px 14px var(--accent-glow);
-    transition: opacity .18s;
-}
-.btn-submit:hover { opacity: .9; }
-.btn-submit.danger { background: linear-gradient(135deg, #ef4444, #b91c1c); box-shadow: 0 4px 14px rgba(239,68,68,.35); }
-
-.btn-cancel-m {
-    background: var(--surface-2); color: var(--text-2);
-    border: 1px solid var(--border); border-radius: var(--radius-sm);
-    padding: .6rem 1rem; font-size: .875rem; font-weight: 600;
-    cursor: pointer; font-family: var(--font-body);
-    transition: all .18s;
-}
-.btn-cancel-m:hover { border-color: var(--border-hi); color: var(--text); }
-
-/* AI suggestion box */
-.ai-box {
-    background: rgba(99,102,241,.08); border: 1px solid rgba(99,102,241,.2);
-    border-radius: var(--radius-sm); padding: .875rem 1rem;
-    margin-bottom: 1.25rem; font-size: .875rem; color: var(--text-2);
-    display: flex; align-items: flex-start; gap: .6rem;
-}
-.ai-box i { color: var(--accent); margin-top: 2px; flex-shrink: 0; }
-
-/* ════════════════════════════════════════════════════════
-   RESPONSIVE
-   ════════════════════════════════════════════════════════ */
+/* ── MOBILE ──────────────────────────────────────── */
 .mobile-toggle {
-    display: none;
-    position: fixed; top: .875rem; left: .875rem; z-index: 1100;
-    width: 40px; height: 40px;
-    background: var(--accent); color: #fff; border: none;
-    border-radius: var(--radius-sm); cursor: pointer; font-size: 1rem;
-    box-shadow: 0 4px 14px var(--accent-glow);
-    align-items: center; justify-content: center;
+  display:none; position:fixed; top:1rem; left:1rem; z-index:1100;
+  background: var(--accent); color:#fff; border:none;
+  border-radius: var(--r-sm); width:42px; height:42px;
+  align-items:center; justify-content:center; cursor:pointer;
+  box-shadow: 0 4px 16px rgba(0,0,0,.4); font-size:1.1rem;
 }
-
-.overlay-mob {
-    display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,.6); z-index: 999; backdrop-filter: blur(4px);
+.overlay {
+  display:none; position:fixed; inset:0;
+  background:rgba(0,0,0,.65); z-index:999; backdrop-filter:blur(3px);
 }
+.overlay.active { display:block; }
 
-@media (max-width: 900px) {
-    .sidebar { transform: translateX(-100%); }
-    .sidebar.open { transform: translateX(0); box-shadow: 8px 0 32px rgba(0,0,0,.5); }
-    .main { margin-left: 0; }
-    .mobile-toggle { display: flex; }
-    .overlay-mob.active { display: block; }
-    .page-body { padding: 1.25rem 1rem 3rem; }
-    .topbar { padding: .75rem 1rem .75rem 3.5rem; }
-    .ml-cards { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
-    .provider-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
-    .filters-bar { gap: .5rem; }
-    .fgroup { min-width: 100%; }
+@media (max-width:992px) {
+  .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); box-shadow:4px 0 24px rgba(0,0,0,.4); }
+  .main-content { margin-left:0; }
+  .mobile-toggle { display:flex !important; }
+  .search-header, .cat-bar, .page-body { padding-left:1rem; padding-right:1rem; }
+  .providers-grid { grid-template-columns: repeat(auto-fill, minmax(240px,1fr)); }
 }
-
-@media (max-width: 480px) {
-    .ml-cards { grid-template-columns: 1fr 1fr; }
-    .provider-grid { grid-template-columns: 1fr; }
+@media (max-width:640px) {
+  .providers-grid { grid-template-columns:1fr; }
+  .pers-banner { flex-direction:column; gap:1rem; }
+  .results-header { flex-direction:column; align-items:flex-start; }
 }
 </style>
 </head>
 <body>
-    <!-- Sidebar -->
-    <?php include __DIR__ . '/includes/sidebar.php'; ?>
 
-    <!-- Main Content -->
-    <div class="main-content">
-        <!-- Top Bar -->
-        <div class="topbar">
-            <div>
-                <h1 class="topbar-title">Find Providers</h1>
-                <p class="topbar-subtitle">Discover verified professionals for your needs</p>
-            </div>
-            <div class="topbar-actions">
-                <div class="ml-status">
-                    <div class="ml-dot" id="mlDot"></div>
-                    <span id="mlStatusText">ML Engine</span>
-                </div>
-            </div>
+<!-- Mobile toggle -->
+<button class="mobile-toggle" id="mobileToggle"><i class="fas fa-bars"></i></button>
+<div class="overlay" id="overlay"></div>
+
+<!-- Sidebar -->
+<?php include __DIR__ . '/includes/sidebar.php'; ?>
+
+<!-- Main -->
+<div class="main-content">
+
+  <!-- ── STICKY SEARCH HEADER ───────────────────────── -->
+  <div class="search-header">
+    <form method="GET" action="providers.php" id="searchForm">
+      <div class="search-bar-row">
+        <div class="search-input-wrap">
+          <i class="fas fa-search"></i>
+          <input type="text" name="search" class="search-input"
+                 placeholder="Search providers, professions, skills…"
+                 value="<?php echo htmlspecialchars($search); ?>"
+                 autocomplete="off">
         </div>
-
-        <!-- Search & Filters -->
-        <div class="search-section">
-            <form method="GET" action="providers.php" class="search-form">
-                <div class="search-input-group">
-                    <i class="fas fa-search search-icon"></i>
-                    <input type="text" name="query" class="search-input"
-                           placeholder="Search by skill, name, or service..."
-                           value="<?= htmlspecialchars($searchQuery) ?>"
-                           autocomplete="off">
-                </div>
-
-                <div class="filters-row">
-                    <div class="filter-group">
-                        <label class="filter-label">Category</label>
-                        <select name="category" class="filter-select">
-                            <option value="">All Categories</option>
-                            <?php foreach ($categories as $cat): ?>
-                                <option value="<?= $cat['id'] ?>" <?= $categoryId == $cat['id'] ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($cat['name']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <div class="filter-group">
-                        <label class="filter-label">Location</label>
-                        <input type="text" name="location" class="filter-input"
-                               placeholder="Enter location..."
-                               value="<?= htmlspecialchars($locationQuery) ?>">
-                    </div>
-
-                    <div class="filter-group">
-                        <label class="filter-label">Min Rating</label>
-                        <select name="min_rating" class="filter-select">
-                            <option value="0">Any Rating</option>
-                            <option value="3" <?= $minRating >= 3 ? 'selected' : '' ?>>3+ Stars</option>
-                            <option value="4" <?= $minRating >= 4 ? 'selected' : '' ?>>4+ Stars</option>
-                            <option value="4.5" <?= $minRating >= 4.5 ? 'selected' : '' ?>>4.5+ Stars</option>
-                        </select>
-                    </div>
-
-                    <div class="filter-group">
-                        <label class="filter-label">Availability</label>
-                        <select name="availability" class="filter-select">
-                            <option value="">Any Status</option>
-                            <option value="available" <?= $availability === 'available' ? 'selected' : '' ?>>Available Now</option>
-                            <option value="busy" <?= $availability === 'busy' ? 'selected' : '' ?>>Busy</option>
-                        </select>
-                    </div>
-
-                    <div class="filter-group">
-                        <label class="filter-label">&nbsp;</label>
-                        <button type="submit" class="btn-filter">
-                            <i class="fas fa-search" style="margin-right: 0.5rem;"></i>Search
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Active Filters -->
-                <?php
-                $activeFilters = [];
-                if ($searchQuery) $activeFilters[] = "Query: {$searchQuery}";
-                if ($locationQuery) $activeFilters[] = "Location: {$locationQuery}";
-                if ($categoryId) $activeFilters[] = "Category: " . ($categories[array_search($categoryId, array_column($categories, 'id'))]['name'] ?? 'Unknown');
-                if ($minRating > 0) $activeFilters[] = "Rating: {$minRating}+";
-                if ($availability) $activeFilters[] = "Status: " . ucfirst($availability);
-                ?>
-
-                <?php if (!empty($activeFilters)): ?>
-                <div class="filter-chips">
-                    <?php foreach ($activeFilters as $filter): ?>
-                        <span class="chip active"><?= htmlspecialchars($filter) ?></span>
-                    <?php endforeach; ?>
-                    <a href="providers.php" class="chip">Clear All</a>
-                </div>
-                <?php endif; ?>
-            </form>
-        </div>
-
-        <!-- ML Recommendations -->
-        <?php if ($showMLStrip && !empty($mlRecommended)): ?>
-        <div class="ml-recommendations">
-            <div class="ml-header">
-                <div class="ml-title-section">
-                    <div class="ml-brain-icon">
-                        <i class="fas fa-brain"></i>
-                    </div>
-                    <div>
-                        <h2 class="ml-title">AI-Powered Recommendations</h2>
-                        <p class="ml-subtitle">Personalized suggestions based on your preferences and booking history</p>
-                    </div>
-                </div>
-                <span class="ml-badge">
-                    <i class="fas fa-microchip" style="margin-right: 0.375rem;"></i>ML Powered
-                </span>
-            </div>
-
-            <div class="ml-grid">
-                <?php foreach (array_slice($mlRecommended, 0, 6) as $rec):
-                    $pid = (int)$rec['id'];
-                    $name = htmlspecialchars($rec['full_name'] ?? '');
-                    $prof = htmlspecialchars($rec['profession'] ?? '');
-                    $img = $rec['profile_image'] ?? '';
-                    $rating = $rec['average_rating'] ?? 0;
-                    $reviews = $rec['total_reviews'] ?? 0;
-                    $score = $rec['ml_score'] ?? null;
-                ?>
-                <div class="ml-card">
-                    <div class="ml-card-header">
-                        <div class="ml-card-avatar">
-                            <?php if ($img): ?>
-                                <img src="../uploads/profiles/<?= htmlspecialchars($img) ?>" alt="<?= $name ?>">
-                            <?php else: ?>
-                                <?= substr($name, 0, 1) ?>
-                            <?php endif; ?>
-                        </div>
-                        <div class="ml-card-info">
-                            <div class="ml-card-name"><?= $name ?></div>
-                            <div class="ml-card-profession"><?= $prof ?></div>
-                        </div>
-                        <?php if ($score !== null): ?>
-                        <span class="ml-score-badge"><?= round($score * 100) ?>%</span>
-                        <?php endif; ?>
-                    </div>
-
-                    <div class="ml-card-meta">
-                        <div class="ml-rating">
-                            <div class="ml-stars">
-                                <?php for ($i = 1; $i <= 5; $i++): ?>
-                                    <i class="fas fa-star<?= $i <= $rating ? '' : '-half-alt' ?>"></i>
-                                <?php endfor; ?>
-                            </div>
-                            <span class="ml-rating-text"><?= number_format($rating, 1) ?></span>
-                        </div>
-                        <span class="ml-reviews">(<?= $reviews ?> reviews)</span>
-                    </div>
-
-                    <p class="ml-card-description">
-                        Professional <?= $prof ?> with excellent track record and high customer satisfaction.
-                    </p>
-
-                    <div class="ml-card-actions">
-                        <a href="provider-profile.php?id=<?= $pid ?>" class="btn-ml-primary">
-                            View Profile
-                        </a>
-                        <button class="btn-ml-secondary" onclick="trackProviderClick(<?= $pid ?>)">
-                            <i class="fas fa-heart" style="margin-right: 0.375rem;"></i>Save
-                        </button>
-                    </div>
-                </div>
-                <?php endforeach; ?>
-            </div>
-        </div>
+        <select name="location" class="filter-select">
+          <option value="">All locations</option>
+          <?php foreach ($allLocations as $loc): ?>
+            <option value="<?php echo htmlspecialchars($loc); ?>" <?php echo $location === $loc ? 'selected' : ''; ?>>
+              <?php echo htmlspecialchars($loc); ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+        <select name="avail" class="filter-select" style="min-width:140px;">
+          <option value="">Any status</option>
+          <option value="available" <?php echo $avail==='available'?'selected':''; ?>>Available now</option>
+          <option value="busy"      <?php echo $avail==='busy'     ?'selected':''; ?>>Busy</option>
+        </select>
+        <!-- preserve other params -->
+        <input type="hidden" name="category"   value="<?php echo htmlspecialchars($category); ?>">
+        <input type="hidden" name="sort"        value="<?php echo htmlspecialchars($sort); ?>">
+        <input type="hidden" name="min_rating"  value="<?php echo htmlspecialchars($minRating); ?>">
+        <?php if ($verified): ?><input type="hidden" name="verified" value="1"><?php endif; ?>
+        <button type="submit" class="btn-search"><i class="fas fa-search"></i> Search</button>
+        <?php if ($search||$category||$location||$avail||$minRating||$verified): ?>
+          <a href="providers.php" class="btn-search" style="background:var(--surface);border:1px solid var(--border);color:var(--text-2);">
+            <i class="fas fa-times"></i> Clear
+          </a>
         <?php endif; ?>
+      </div>
+    </form>
+  </div>
 
-        <!-- Providers Grid -->
-        <div class="providers-section">
-            <div class="providers-header">
-                <div>
-                    <h2 class="providers-title">
-                        <?php if ($searchQuery): ?>
-                            Search Results
-                        <?php elseif ($categoryId): ?>
-                            <?= htmlspecialchars($categories[array_search($categoryId, array_column($categories, 'id'))]['name'] ?? 'Category') ?> Providers
-                        <?php else: ?>
-                            All Providers
-                        <?php endif; ?>
-                    </h2>
-                    <p class="providers-count">
-                        <?php if ($totalProviders > 0): ?>
-                            Showing <?= min($perPage, $totalProviders) ?> of <?= $totalProviders ?> providers
-                        <?php else: ?>
-                            No providers found matching your criteria
-                        <?php endif; ?>
-                    </p>
-                </div>
+  <!-- ── CATEGORY CHIPS ─────────────────────────────── -->
+  <div class="cat-bar">
+    <a href="providers.php?sort=<?php echo urlencode($sort); ?>" class="cat-chip <?php echo $category===''?'active':''; ?>">
+      <i class="fas fa-globe"></i> All
+    </a>
+    <?php foreach ($allCats as $c):
+      $ic = $catIcons[$c['cat']] ?? $catIcons['default'];
+    ?>
+    <a href="providers.php?category=<?php echo urlencode($c['cat']); ?>&sort=<?php echo urlencode($sort); ?><?php echo $location?'&location='.urlencode($location):''; ?>"
+       class="cat-chip <?php echo $category===$c['cat']?'active':''; ?>">
+      <i class="fas <?php echo $ic; ?>"></i>
+      <?php echo htmlspecialchars($c['cat']); ?>
+      <span style="font-weight:400;color:inherit;opacity:.6;">(<?php echo $c['cnt']; ?>)</span>
+    </a>
+    <?php endforeach; ?>
+  </div>
 
-                <?php if ($totalProviders > 0): ?>
-                <div class="sort-controls">
-                    <label class="sort-label">Sort by:</label>
-                    <select class="sort-select" onchange="changeSort(this.value)">
-                        <option value="recommended" <?= $sortBy === 'recommended' ? 'selected' : '' ?>>Recommended</option>
-                        <option value="rating" <?= $sortBy === 'rating' ? 'selected' : '' ?>>Highest Rated</option>
-                        <option value="reviews" <?= $sortBy === 'reviews' ? 'selected' : '' ?>>Most Reviews</option>
-                        <option value="newest" <?= $sortBy === 'newest' ? 'selected' : '' ?>>Newest</option>
-                        <option value="nearest" <?= $sortBy === 'nearest' ? 'selected' : '' ?>>Nearest</option>
-                    </select>
-                </div>
-                <?php endif; ?>
-            </div>
+  <!-- ── PAGE BODY ──────────────────────────────────── -->
+  <div class="page-body">
 
-            <?php if ($totalProviders > 0): ?>
-            <div class="providers-grid">
-                <?php foreach ($providers as $provider):
-                    $pid = (int)$provider['id'];
-                    $name = htmlspecialchars($provider['full_name'] ?? '');
-                    $prof = htmlspecialchars($provider['profession'] ?? '');
-                    $loc = htmlspecialchars($provider['location'] ?? '');
-                    $img = $provider['profile_image'] ?? '';
-                    $rating = $provider['average_rating'] ?? 0;
-                    $reviews = $provider['total_reviews'] ?? 0;
-                    $rate = $provider['hourly_rate'] ?? 0;
-                    $avail = $provider['availability'] ?? 'available';
-                    $mlScore = $mlScores[$pid] ?? null;
-                ?>
-                <div class="provider-card">
-                    <div class="provider-image">
-                        <?php if ($img): ?>
-                            <img src="../uploads/profiles/<?= htmlspecialchars($img) ?>" alt="<?= $name ?>">
-                        <?php else: ?>
-                            <div class="provider-avatar">
-                                <?= substr($name, 0, 1) ?>
-                            </div>
-                        <?php endif; ?>
-                        <div class="provider-status <?= $avail !== 'available' ? 'offline' : '' ?>"></div>
-                    </div>
-
-                    <div class="provider-content">
-                        <div class="provider-header">
-                            <div class="provider-info">
-                                <h3 class="provider-name"><?= $name ?></h3>
-                                <p class="provider-profession"><?= $prof ?></p>
-                            </div>
-                        </div>
-
-                        <div class="provider-rating">
-                            <div class="rating-stars">
-                                <?php for ($i = 1; $i <= 5; $i++): ?>
-                                    <i class="fas fa-star<?= $i <= $rating ? '' : ($i - 0.5 <= $rating ? '-half-alt' : '') ?>"></i>
-                                <?php endfor; ?>
-                            </div>
-                            <span class="rating-text"><?= number_format($rating, 1) ?> (<?= $reviews ?>)</span>
-                        </div>
-
-                        <div class="provider-details">
-                            <?php if ($loc): ?>
-                            <div class="detail-row">
-                                <i class="fas fa-map-marker-alt detail-icon"></i>
-                                <span><?= $loc ?></span>
-                            </div>
-                            <?php endif; ?>
-
-                            <?php if ($rate > 0): ?>
-                            <div class="detail-row">
-                                <i class="fas fa-dollar-sign detail-icon"></i>
-                                <span>$<?= number_format($rate, 0) ?>/hour</span>
-                            </div>
-                            <?php endif; ?>
-
-                            <div class="detail-row">
-                                <i class="fas fa-clock detail-icon"></i>
-                                <span class="availability-<?= $avail ?>">
-                                    <?= ucfirst($avail) ?>
-                                </span>
-                            </div>
-                        </div>
-
-                        <div class="provider-actions">
-                            <a href="provider-profile.php?id=<?= $pid ?>" class="btn-primary">
-                                View Profile
-                            </a>
-                            <a href="#" class="btn-secondary" onclick="toggleFavorite(<?= $pid ?>)">
-                                <i class="fas fa-heart"></i>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-                <?php endforeach; ?>
-            </div>
-
-            <!-- Pagination -->
-            <?php if ($totalPages > 1): ?>
-            <div class="pagination" style="text-align: center; margin-top: 2rem;">
-                <?php if ($page > 1): ?>
-                    <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page - 1])) ?>" class="btn-secondary" style="margin-right: 0.5rem;">Previous</a>
-                <?php endif; ?>
-
-                <?php
-                $startPage = max(1, $page - 2);
-                $endPage = min($totalPages, $page + 2);
-
-                if ($startPage > 1): ?>
-                    <a href="?<?= http_build_query(array_merge($_GET, ['page' => 1])) ?>" class="btn-secondary" style="margin-right: 0.5rem;">1</a>
-                    <?php if ($startPage > 2): ?>
-                        <span style="margin-right: 0.5rem;">...</span>
-                    <?php endif; ?>
-                <?php endif; ?>
-
-                <?php for ($i = $startPage; $i <= $endPage; $i++): ?>
-                    <a href="?<?= http_build_query(array_merge($_GET, ['page' => $i])) ?>"
-                       class="btn-<?= $i === $page ? 'primary' : 'secondary' ?>"
-                       style="margin-right: 0.5rem;">
-                        <?= $i ?>
-                    </a>
-                <?php endfor; ?>
-
-                <?php if ($endPage < $totalPages): ?>
-                    <?php if ($endPage < $totalPages - 1): ?>
-                        <span style="margin-right: 0.5rem;">...</span>
-                    <?php endif; ?>
-                    <a href="?<?= http_build_query(array_merge($_GET, ['page' => $totalPages])) ?>" class="btn-secondary" style="margin-right: 0.5rem;"><?= $totalPages ?></a>
-                <?php endif; ?>
-
-                <?php if ($page < $totalPages): ?>
-                    <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page + 1])) ?>" class="btn-secondary">Next</a>
-                <?php endif; ?>
-            </div>
-            <?php endif; ?>
-
-            <?php else: ?>
-            <div class="text-center" style="padding: 3rem;">
-                <i class="fas fa-search" style="font-size: 3rem; color: var(--text-muted); margin-bottom: 1rem;"></i>
-                <h3 style="color: var(--text-secondary); margin-bottom: 0.5rem;">No providers found</h3>
-                <p style="color: var(--text-muted);">Try adjusting your search criteria or browse all providers.</p>
-                <a href="providers.php" class="btn-primary" style="margin-top: 1rem;">Browse All Providers</a>
-            </div>
-            <?php endif; ?>
+    <!-- Personalized Banner (only if client has booking history) -->
+    <?php if (!empty($bookedProfessions) && empty($search) && empty($category)): ?>
+    <div class="pers-banner">
+      <div class="pers-banner-icon"><i class="fas fa-wand-magic-sparkles"></i></div>
+      <div style="flex:1; position:relative; z-index:2;">
+        <div class="pers-banner-text">
+          <h3>Personalized for <?php echo htmlspecialchars($clientName); ?></h3>
+          <p>Results ranked by our ML model using your booking history, preferences, and location.</p>
         </div>
+        <div style="margin-top:.6rem;">
+          <?php foreach (array_keys($bookedProfessions) as $prof): ?>
+            <span class="pers-pill"><i class="fas fa-history"></i> <?php echo htmlspecialchars($prof); ?></span>
+          <?php endforeach; ?>
+          <?php if (!empty($favIds)): ?>
+            <span class="pers-pill"><i class="fas fa-heart"></i> <?php echo count($favIds); ?> Favorites</span>
+          <?php endif; ?>
+          <?php if ($clientLocation): ?>
+            <span class="pers-pill"><i class="fas fa-map-pin"></i> <?php echo htmlspecialchars($clientLocation); ?></span>
+          <?php endif; ?>
+        </div>
+      </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- For You Strip -->
+    <?php if (!empty($forYouProviders) && empty($search) && empty($category)): ?>
+    <div class="section-label"><i class="fas fa-sparkles" style="color:var(--accent);"></i> Based on your history</div>
+    <div class="foryou-strip">
+      <?php foreach ($forYouProviders as $fy):
+        $fyInit = strtoupper(substr($fy['full_name'] ?? '', 0, 1)) ?: '?';
+      ?>
+      <a href="provider-profile.php?id=<?php echo $fy['id']; ?>" class="foryou-card"
+         onclick="trackClick('for_you_card_click','provider',<?php echo $fy['id']; ?>)">
+        <div class="foryou-avatar">
+          <?php if (!empty($fy['profile_image'])): ?>
+            <img src="../uploads/profiles/<?php echo htmlspecialchars($fy['profile_image']); ?>"
+                 alt="" onerror="this.style.display='none';this.parentNode.textContent='<?php echo addslashes($fyInit); ?>'">
+          <?php else: ?><?php echo $fyInit; ?><?php endif; ?>
+        </div>
+        <div class="foryou-name"><?php echo htmlspecialchars($fy['full_name']); ?></div>
+        <div class="foryou-prof"><?php echo htmlspecialchars($fy['profession']); ?></div>
+        <div class="foryou-rating">
+          <?php for ($i=1;$i<=5;$i++) echo $i<=(int)($fy['average_rating']??0)?'★':'☆'; ?>
+          <span style="color:var(--text-3);margin-left:.25rem;font-size:.68rem;">(<?php echo $fy['total_reviews']??0; ?>)</span>
+        </div>
+        <?php if (!empty($fy['avg_price'])): ?>
+          <div class="foryou-price">~RWF <?php echo number_format((float)$fy['avg_price'], 0); ?>/service</div>
+        <?php endif; ?>
+      </a>
+      <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+
+    <!-- Results header -->
+    <div class="results-header">
+      <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
+        <span class="results-count">
+          <strong><?php echo number_format($totalProviders); ?></strong>
+          provider<?php echo $totalProviders!==1?'s':''; ?> found
+          <?php if ($search): ?> for "<strong><?php echo htmlspecialchars($search); ?></strong>"<?php endif; ?>
+          <?php if ($category): ?> in <strong><?php echo htmlspecialchars($category); ?></strong><?php endif; ?>
+        </span>
+        <?php if ($sort === 'ml'): ?>
+          <span class="ml-status-pill <?php echo $mlApiStatus==='ml'?'live':'heur'; ?>">
+            <span class="ml-dot <?php echo $mlApiStatus==='ml'?'live':'heur'; ?>"></span>
+            <?php echo $mlApiStatus==='ml'?'ML Ranked':'Heuristic Ranked'; ?>
+          </span>
+        <?php endif; ?>
+      </div>
+
+      <!-- Sort chips -->
+      <div class="sort-chips">
+        <?php
+        $sorts = ['ml'=>'✦ Smart','rating'=>'⭐ Rating','reviews'=>'💬 Reviews','newest'=>'🆕 Newest','price_asc'=>'↑ Price','price_desc'=>'↓ Price'];
+        foreach ($sorts as $sv => $sl):
+          $href = 'providers.php?sort='.$sv
+            .($search    ? '&search='.urlencode($search)    : '')
+            .($category  ? '&category='.urlencode($category): '')
+            .($location  ? '&location='.urlencode($location): '')
+            .($avail     ? '&avail='.urlencode($avail)      : '')
+            .($minRating ? '&min_rating='.$minRating        : '')
+            .($verified  ? '&verified=1'                    : '');
+        ?>
+        <a href="<?php echo $href; ?>" class="sort-chip <?php echo $sort===$sv?'active':''; ?>"><?php echo $sl; ?></a>
+        <?php endforeach; ?>
+
+        <!-- Advanced filters toggle -->
+        <?php $activeFiltersCount = (int)($minRating>0) + (int)$verified; ?>
+        <button class="adv-filters-btn" onclick="toggleDrawer()">
+          <i class="fas fa-sliders-h"></i> Filters
+          <?php if ($activeFiltersCount>0): ?><span class="badge-count"><?php echo $activeFiltersCount; ?></span><?php endif; ?>
+        </button>
+      </div>
     </div>
 
-    <!-- JavaScript -->
-    <script>
-        // ML Status Indicator
-        function updateMLStatus() {
-            const dot = document.getElementById('mlDot');
-            const text = document.getElementById('mlStatusText');
+    <!-- Advanced Filters Drawer -->
+    <div class="filter-drawer" id="filterDrawer">
+      <form method="GET" action="providers.php">
+        <input type="hidden" name="search"   value="<?php echo htmlspecialchars($search); ?>">
+        <input type="hidden" name="category" value="<?php echo htmlspecialchars($category); ?>">
+        <input type="hidden" name="location" value="<?php echo htmlspecialchars($location); ?>">
+        <input type="hidden" name="avail"    value="<?php echo htmlspecialchars($avail); ?>">
+        <input type="hidden" name="sort"     value="<?php echo htmlspecialchars($sort); ?>">
+        <div class="filter-grid">
+          <div>
+            <span class="filter-label">Minimum Rating</span>
+            <div class="rating-pills">
+              <?php foreach ([0,3,3.5,4,4.5] as $r): ?>
+                <a href="providers.php?min_rating=<?php echo $r; ?>&sort=<?php echo urlencode($sort); ?>&search=<?php echo urlencode($search); ?>&category=<?php echo urlencode($category); ?>&location=<?php echo urlencode($location); ?>&avail=<?php echo urlencode($avail); ?><?php echo $verified?'&verified=1':''; ?>"
+                   class="rating-pill <?php echo $minRating==$r?'active':''; ?>">
+                  <?php echo $r==0?'Any':'⭐ '.$r.'+'; ?>
+                </a>
+              <?php endforeach; ?>
+            </div>
+          </div>
+          <div>
+            <span class="filter-label">Provider Status</span>
+            <label class="filter-check" style="cursor:pointer;">
+              <input type="checkbox" name="verified" value="1" <?php echo $verified?'checked':''; ?>>
+              Verified providers only
+            </label>
+          </div>
+        </div>
+        <button type="submit" class="btn-search" style="margin-top:1rem;">Apply Filters</button>
+      </form>
+    </div>
 
-            fetch('providers.php?ml_health=1')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.online) {
-                        dot.classList.remove('offline');
-                        text.textContent = 'ML Online';
-                    } else {
-                        dot.classList.add('offline');
-                        text.textContent = 'ML Offline';
-                    }
-                })
-                .catch(() => {
-                    dot.classList.add('offline');
-                    text.textContent = 'ML Offline';
-                });
-        }
+    <!-- ── PROVIDER GRID ──────────────────────────── -->
+    <div class="providers-grid">
+      <?php if (empty($providers)): ?>
+        <div class="empty-state">
+          <i class="fas fa-user-slash"></i>
+          <h3>No providers found</h3>
+          <p>Try adjusting your search or removing some filters</p>
+          <a href="providers.php" class="btn-reset"><i class="fas fa-redo"></i> Reset search</a>
+        </div>
+      <?php else: ?>
+        <?php foreach ($providers as $idx => $p):
+          $pid      = (int)$p['id'];
+          $init     = strtoupper(substr($p['full_name'] ?? '', 0, 1)) ?: '?';
+          $hasImg   = !empty($p['profile_image']);
+          $mlScore  = (float)($p['ml_score'] ?? 0);
+          $mlRaw    = (float)($p['ml_raw_score'] ?? 0);
+          $mlConf   = $p['ml_confidence'] ?? 'n/a';
+          $pBoost   = (float)($p['personal_boost'] ?? 0);
+          $isTopPick= $mlScore >= 0.6;
+          $isFav    = in_array($pid, $favIds);
+          $isBooked = isset($bookedProfessions[$p['profession']]);
+          $isNearby = ($p['provider_location'] ?? '') === $clientLocation && $clientLocation !== '';
+          $isViewed = in_array($pid, $recentlyViewedIds);
+          $avStatus = $p['availability'] ?? 'available';
+          $isVerif  = ($p['is_verified'] ?? false) || ($p['user_verified'] ?? false);
+          $rating   = (float)($p['average_rating'] ?? 0);
+          $reviews  = (int)($p['total_reviews'] ?? 0);
+          $avgPrice = (float)($p['avg_price'] ?? 0);
+          $jobs     = (int)($p['completed_jobs'] ?? 0);
 
-        // Sort change handler
-        function changeSort(sortValue) {
-            const url = new URL(window.location);
-            url.searchParams.set('sort', sortValue);
-            url.searchParams.set('page', '1');
-            window.location = url;
-        }
+          // Dot color for ML score badge
+          $dotClass = $mlScore >= 0.6 ? 'dot-green' : ($mlScore >= 0.35 ? 'dot-blue' : 'dot-gray');
+          // Bar fill class
+          $fillClass = $mlScore >= 0.6 ? 'ml-fill-high' : ($mlScore >= 0.35 ? 'ml-fill-medium' : 'ml-fill-low');
+        ?>
+        <div class="prov-card <?php echo $isTopPick ? 'top-pick' : ''; ?>"
+             id="pcard-<?php echo $pid; ?>">
 
-        // Favorite toggle
-        function toggleFavorite(providerId) {
-            // Implementation for favorite toggle
-            console.log('Toggle favorite for provider:', providerId);
-        }
+          <!-- Banner -->
+          <div class="prov-banner">
+            <div class="prov-banner-pattern"></div>
+            <div class="prov-avatar-wrap">
+              <?php if ($hasImg): ?>
+                <img src="../uploads/profiles/<?php echo htmlspecialchars($p['profile_image']); ?>"
+                     alt="<?php echo htmlspecialchars($p['full_name']); ?>"
+                     onerror="this.style.display='none';this.parentNode.textContent='<?php echo addslashes($init); ?>'">
+              <?php else: ?><?php echo $init; ?><?php endif; ?>
+            </div>
+            <div class="prov-banner-meta">
+              <?php if ($sort === 'ml'): ?>
+              <div class="ml-score-badge">
+                <span class="dot <?php echo $dotClass; ?>"></span>
+                <?php echo round($mlScore * 100); ?>% match
+              </div>
+              <?php endif; ?>
+              <span class="avail-badge <?php echo $avStatus; ?>">
+                <?php echo ucfirst($avStatus); ?>
+              </span>
+            </div>
+          </div>
 
-        // Track provider clicks
-        function trackProviderClick(providerId) {
-            // Implementation for tracking
-            console.log('Track click for provider:', providerId);
-        }
+          <!-- Body -->
+          <div class="prov-body">
+            <div class="prov-name-row">
+              <span class="prov-name"><?php echo htmlspecialchars($p['full_name']); ?></span>
+              <?php if ($isVerif): ?><i class="fas fa-circle-check prov-verified" title="Verified"></i><?php endif; ?>
+            </div>
+            <div class="prov-profession"><?php echo htmlspecialchars($p['profession']); ?></div>
 
-        // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
-            updateMLStatus();
-            setInterval(updateMLStatus, 30000); // Update every 30 seconds
-        });
-    </script>
+            <div class="prov-stats">
+              <div class="prov-stat">
+                <i class="fas fa-star" style="color:var(--amber);"></i>
+                <strong><?php echo number_format($rating, 1); ?></strong>
+                <span style="color:var(--text-3);">(<?php echo $reviews; ?>)</span>
+              </div>
+              <?php if ($jobs > 0): ?>
+              <div class="prov-stat">
+                <i class="fas fa-briefcase" style="color:var(--green);"></i>
+                <strong><?php echo $jobs; ?></strong> done
+              </div>
+              <?php endif; ?>
+            </div>
+
+            <?php if ($avgPrice > 0): ?>
+            <div class="prov-price">~RWF <?php echo number_format($avgPrice, 0); ?> <span>/ service</span></div>
+            <?php endif; ?>
+
+            <!-- ML probability bar (only when ML sort active) -->
+            <?php if ($sort === 'ml' && $mlScore > 0): ?>
+            <div class="ml-bar-wrap">
+              <div class="ml-bar-label">
+                <span><i class="fas fa-robot" style="font-size:.6rem;margin-right:2px;"></i>Hire probability</span>
+                <span><?php echo round($mlScore * 100); ?>%</span>
+              </div>
+              <div class="ml-bar-track">
+                <div class="ml-bar-fill <?php echo $fillClass; ?>"
+                     style="width:<?php echo round($mlScore * 100); ?>%"></div>
+              </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Personalization tags (client-specific — not shown the same to all) -->
+            <?php if ($isFav || $isBooked || $isNearby || $isViewed): ?>
+            <div class="pers-tags">
+              <?php if ($isFav):   ?><span class="pers-tag fav"><i class="fas fa-heart"></i> Favorite</span><?php endif; ?>
+              <?php if ($isBooked):?><span class="pers-tag booked"><i class="fas fa-check-circle"></i> You've booked</span><?php endif; ?>
+              <?php if ($isNearby):?><span class="pers-tag nearby"><i class="fas fa-map-pin"></i> Near you</span><?php endif; ?>
+              <?php if ($isViewed):?><span class="pers-tag viewed"><i class="fas fa-eye"></i> Viewed</span><?php endif; ?>
+            </div>
+            <?php endif; ?>
+
+            <?php if (!empty($p['provider_location'])): ?>
+            <div class="prov-location">
+              <i class="fas fa-map-marker-alt" style="color:var(--accent);font-size:.65rem;"></i>
+              <?php echo htmlspecialchars($p['provider_location']); ?>
+            </div>
+            <?php endif; ?>
+          </div>
+
+          <!-- Footer -->
+          <div class="prov-footer">
+            <a href="provider-profile.php?id=<?php echo $pid; ?>" class="btn-view-prof"
+               onclick="trackClick('provider_card_view','provider',<?php echo $pid; ?>)">
+              <i class="fas fa-arrow-right"></i> View Profile
+            </a>
+            <button class="btn-fav <?php echo $isFav ? 'favorited' : ''; ?>"
+                    data-provider-id="<?php echo $pid; ?>"
+                    title="<?php echo $isFav ? 'Remove from favorites' : 'Add to favorites'; ?>">
+              <i class="<?php echo $isFav ? 'fas' : 'far'; ?> fa-heart"></i>
+            </button>
+          </div>
+        </div>
+        <?php endforeach; ?>
+      <?php endif; ?>
+    </div>
+
+    <!-- ── PAGINATION ─────────────────────────────── -->
+    <?php if ($totalPages > 1): ?>
+    <div class="pagination-wrap">
+      <?php if ($page > 1): ?>
+        <a class="page-btn" href="?<?php echo http_build_query(array_merge($_GET, ['page'=>$page-1])); ?>">
+          <i class="fas fa-chevron-left"></i> Prev
+        </a>
+      <?php endif; ?>
+      <?php for ($i = max(1,$page-2); $i <= min($totalPages,$page+2); $i++): ?>
+        <a class="page-btn <?php echo $i===$page?'active':''; ?>"
+           href="?<?php echo http_build_query(array_merge($_GET, ['page'=>$i])); ?>"><?php echo $i; ?></a>
+      <?php endfor; ?>
+      <?php if ($page < $totalPages): ?>
+        <a class="page-btn" href="?<?php echo http_build_query(array_merge($_GET, ['page'=>$page+1])); ?>">
+          Next <i class="fas fa-chevron-right"></i>
+        </a>
+      <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
+  </div><!-- /page-body -->
+</div><!-- /main-content -->
+
+<script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── Sidebar ──────────────────────────────────────────
+const sidebar = document.querySelector('.sidebar');
+const overlay = document.getElementById('overlay');
+document.getElementById('mobileToggle')?.addEventListener('click', () => {
+  sidebar.classList.toggle('open');
+  overlay.classList.toggle('active');
+});
+overlay?.addEventListener('click', () => {
+  sidebar.classList.remove('open');
+  overlay.classList.remove('active');
+});
+
+// Sidebar collapse (desktop)
+const sidebarToggle = document.getElementById('sidebarToggle');
+if (sidebarToggle && sidebar) {
+  const stored = localStorage.getItem('sidebarCollapsed');
+  if (stored === 'true') sidebar.classList.add('collapsed');
+  sidebarToggle.addEventListener('click', () => {
+    sidebar.classList.toggle('collapsed');
+    localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
+  });
+}
+
+// ── Advanced filters drawer ──────────────────────────
+function toggleDrawer() {
+  document.getElementById('filterDrawer').classList.toggle('open');
+}
+// Open drawer if filters are active
+<?php if ($activeFiltersCount > 0): ?>
+document.getElementById('filterDrawer')?.classList.add('open');
+<?php endif; ?>
+
+// ── Favourite toggle (AJAX) ──────────────────────────
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+function showToast(msg, type='success') {
+  let wrap = document.getElementById('toastWrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'toastWrap';
+    wrap.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem;';
+    document.body.appendChild(wrap);
+  }
+  const t = document.createElement('div');
+  const bg = type==='success' ? '#22c55e' : type==='error' ? '#ef4444' : '#4f8cff';
+  t.style.cssText = `background:${bg};color:#fff;padding:.75rem 1.125rem;border-radius:10px;font-size:.85rem;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.4);font-family:inherit;min-width:240px;animation:toastIn .22s ease;`;
+  t.textContent = msg;
+  wrap.appendChild(t);
+  setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(()=>t.remove(),300); }, 3200);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Animate ML bars
+  document.querySelectorAll('.ml-bar-fill').forEach(bar => {
+    const w = bar.style.width; bar.style.width = '0';
+    requestAnimationFrame(() => { setTimeout(() => bar.style.width = w, 80); });
+  });
+
+  // Favourite buttons
+  document.querySelectorAll('.btn-fav').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      const pid = btn.dataset.providerId;
+      const isFav = btn.classList.contains('favorited');
+      const fd = new FormData();
+      fd.append('provider_id', pid);
+      fd.append(isFav ? 'remove_from_favorites' : 'add_to_favorites', '1');
+      fetch('../api/toggle_favorite.php', { method:'POST', body:fd })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            btn.classList.toggle('favorited');
+            const ico = btn.querySelector('i');
+            if (btn.classList.contains('favorited')) {
+              ico.className = 'fas fa-heart';
+              btn.title = 'Remove from favorites';
+              showToast('Added to favorites ❤️');
+            } else {
+              ico.className = 'far fa-heart';
+              btn.title = 'Add to favorites';
+              showToast('Removed from favorites', 'info');
+            }
+          } else {
+            showToast(data.error || 'Something went wrong', 'error');
+          }
+        })
+        .catch(() => showToast('Network error', 'error'));
+    });
+  });
+
+  // Live search with debounce
+  let searchDebounce;
+  document.querySelector('.search-input')?.addEventListener('input', e => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+      if (e.target.value.length === 0 || e.target.value.length >= 2) {
+        document.getElementById('searchForm')?.submit();
+      }
+    }, 600);
+  });
+});
+</script>
 </body>
 </html>
