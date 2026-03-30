@@ -8,6 +8,10 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/NotificationEngine.php';
 require_once __DIR__ . '/sms.php';
 
+if (!defined('WS_AUTH_SECRET')) {
+    define('WS_AUTH_SECRET', getenv('WS_AUTH_SECRET') ?: 'BiiLocalFinderLiveLocationSecret_v1');
+}
+
 /**
  * Sanitize user input
  *

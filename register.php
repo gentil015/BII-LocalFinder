@@ -191,9 +191,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // If provider, set session and redirect to setup wizard (step 1)
+            // Redirect to OTP verification page when email verification is enabled
+            if ($email_verification_enabled) {
+                $nextUrl = $user_type === 'provider' ? 'provider/setup/step1-profile.php' : 'client/dashboard.php';
+                $verificationUrl = 'verify-otp.php?email=' . urlencode($email) . '&flow=registration&next=' . urlencode($nextUrl);
+                header('Location: ' . $verificationUrl);
+                exit;
+            }
+
+            // If provider registration is not using email verification, keep the existing setup wizard flow
             if ($user_type === 'provider') {
                 $_SESSION['user_id'] = $user_id;
+                $_SESSION['user_role'] = 'provider';
+                $_SESSION['user_name'] = $full_name;
+                $_SESSION['user_email'] = $email;
                 header('Location: provider/setup/step1-profile.php');
                 exit;
             }
@@ -911,7 +922,7 @@ try {
                             <i class="fas fa-check-circle me-2"></i><?php echo $success; ?>
                             <?php if ($email_verification_enabled): ?>
                                 <div class="mt-3">
-                                    <a href="verify_otp.php" class="btn btn-primary" style="border-radius:var(--radius-md);font-weight:700;font-size:0.9rem;">
+                                    <a href="verify-otp.php" class="btn btn-primary" style="border-radius:var(--radius-md);font-weight:700;font-size:0.9rem;">
                                         <i class="fas fa-shield-alt me-2"></i>Verify Account
                                     </a>
                                 </div>

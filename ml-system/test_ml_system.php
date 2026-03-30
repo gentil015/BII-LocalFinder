@@ -66,8 +66,8 @@ try {
     }
     echo "\n";
 
-    // Rank providers
-    $rankedProviders = $recommender->rankProviders($providers);
+    // Rank providers for a specific user. Set user_id to a real user in your database for personalized results.
+    $rankedProviders = $recommender->rankProviders($providers, 1);
 
     echo "   Ranked providers:\n";
     foreach ($rankedProviders as $i => $p) {

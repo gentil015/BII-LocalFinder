@@ -46,9 +46,10 @@ class MLRecommender
      * Falls back to rating + response time scoring if the ML API is unavailable.
      *
      * @param  array $providers  Raw provider rows from DB query
+     * @param  int|null $userId  Current user id for personalized features
      * @return array             Providers sorted best-first
      */
-    public function rankProviders(array $providers): array
+    public function rankProviders(array $providers, int $userId = null): array
     {
         if (!$this->enabled || empty($providers)) {
             return $providers;
@@ -58,7 +59,7 @@ class MLRecommender
         $items = [];
         foreach ($providers as $p) {
             $pid      = (int) ($p['id'] ?? $p['provider_id'] ?? 0);
-            $features = $this->buildFeatures($p);
+            $features = $this->buildFeatures($p, $userId);
             $items[]  = ['provider_id' => $pid, 'features' => $features];
         }
 
@@ -92,13 +93,13 @@ class MLRecommender
      * Predict hire probability for a single provider.
      * Returns a float between 0 and 1, or null on failure.
      */
-    public function predictOne(array $providerRow): ?float
+    public function predictOne(array $providerRow, int $userId = null): ?float
     {
         if (!$this->enabled) {
             return null;
         }
 
-        $features = $this->buildFeatures($providerRow);
+        $features = $this->buildFeatures($providerRow, $userId);
         $response = $this->callSinglePredict($features);
 
         return $response ? (float) ($response['probability'] ?? 0.0) : null;
@@ -168,57 +169,72 @@ class MLRecommender
      * Builds a feature array for one provider.
      * Uses pre-computed columns if present in $row, otherwise queries the DB.
      */
-    private function buildFeatures(array $row): array
+    private function buildFeatures(array $row, int $userId = null): array
     {
         $pid = (int) ($row['id'] ?? $row['provider_id'] ?? 0);
 
-        // ── Views ────────────────────────────────────────────────────────────
+        // ── Provider features ─────────────────────────────────────────────────
         $views = $row['views'] ?? $this->queryScalar(
             "SELECT COUNT(*) FROM provider_views WHERE provider_id = ?",
             [$pid]
         );
 
-        // ── Clicks ───────────────────────────────────────────────────────────
         $clicks = $row['clicks'] ?? $this->queryScalar(
             "SELECT COUNT(*) FROM click_logs WHERE target_type = 'provider' AND target_id = ?",
             [$pid]
         );
 
-        // ── Messages ─────────────────────────────────────────────────────────
-        $userId = $row['user_id'] ?? $this->queryScalar(
+        $providerUserId = $row['user_id'] ?? $this->queryScalar(
             "SELECT user_id FROM service_providers WHERE id = ?",
             [$pid]
         );
-        $messages = $row['messages'] ?? ($userId
-            ? $this->queryScalar("SELECT COUNT(*) FROM messages WHERE receiver_id = ?", [$userId])
+        $messages = $row['messages'] ?? ($providerUserId
+            ? $this->queryScalar("SELECT COUNT(*) FROM messages WHERE receiver_id = ?", [$providerUserId])
             : 0
         );
 
-        // ── Rating ───────────────────────────────────────────────────────────
         $rating = $row['average_rating'] ?? 0.0;
 
-        // ── Price ────────────────────────────────────────────────────────────
         $price = $row['avg_service_price'] ?? $this->queryScalar(
             "SELECT AVG(price) FROM provider_services WHERE provider_id = ? AND is_available = 1",
             [$pid]
         );
 
-        // ── Avg response time (hours) ────────────────────────────────────────
         $avgResponse = $this->queryScalar(
-            "SELECT AVG(TIMESTAMPDIFF(HOUR,created_at,responded_at))
+            "SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, responded_at))
              FROM bookings
              WHERE provider_id = ? AND responded_at IS NOT NULL",
             [$pid]
         );
         if ($avgResponse === null) $avgResponse = 24.0;
 
+        // ── User behavior features (personalized by requesting user) ─────────
+        $userFeatures = ['user_avg_price' => 0.0, 'user_avg_response_time' => 24.0, 'user_total_bookings' => 0];
+        if ($userId) {
+            $userProfile = $this->queryRow(
+                "SELECT user_avg_price, user_avg_response_time, user_total_bookings
+                 FROM user_profiles WHERE user_id = ?",
+                [$userId]
+            );
+            if ($userProfile) {
+                $userFeatures = [
+                    'user_avg_price' => (float) ($userProfile['user_avg_price'] ?? 0.0),
+                    'user_avg_response_time' => (float) ($userProfile['user_avg_response_time'] ?? 24.0),
+                    'user_total_bookings' => (int) ($userProfile['user_total_bookings'] ?? 0),
+                ];
+            }
+        }
+
         return [
-            'views'             => max(0, (float) $views),
-            'clicks'            => max(0, (float) $clicks),
-            'messages'          => max(0, (float) $messages),
-            'rating'            => min(5.0, max(0.0, (float) $rating)),
-            'price'             => max(0, (float) $price),
-            'avg_response_time' => max(0, (float) $avgResponse),
+            'views'                 => max(0, (float) $views),
+            'clicks'                => max(0, (float) $clicks),
+            'messages'              => max(0, (float) $messages),
+            'rating'                => min(5.0, max(0.0, (float) $rating)),
+            'price'                 => max(0, (float) $price),
+            'avg_response_time'     => max(0, (float) $avgResponse),
+            'user_avg_price'        => $userFeatures['user_avg_price'],
+            'user_avg_response_time'=> $userFeatures['user_avg_response_time'],
+            'user_total_bookings'   => $userFeatures['user_total_bookings'],
         ];
     }
 
@@ -292,6 +308,19 @@ class MLRecommender
             $stmt->execute($params);
             $val = $stmt->fetchColumn();
             return $val !== false ? $val : null;
+        } catch (Throwable $e) {
+            error_log("[MLRecommender] DB query failed: " . $e->getMessage());
+            return null;
+        }
+    }
+
+    private function queryRow(string $sql, array $params = []): ?array
+    {
+        try {
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $row ?: null;
         } catch (Throwable $e) {
             error_log("[MLRecommender] DB query failed: " . $e->getMessage());
             return null;

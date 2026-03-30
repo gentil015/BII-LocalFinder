@@ -332,551 +332,320 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- FullCalendar CSS -->
     <link href='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css' rel='stylesheet' />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        *, *::before, *::after { box-sizing: border-box; }
+
         :root {
-            --primary: #0d6efd;
-            --secondary: #6c757d;
-            --success: #198754;
-            --danger: #dc3545;
-            --warning: #ffc107;
-            --info: #0dcaf0;
-            --light: #f8f9fa;
-            --dark: #212529;
-            --sidebar-width: 250px;
+            --accent:        #0d6efd;
+            --accent-dark:   #0a58ca;
+            --accent-light:  #eff4ff;
+            --success:       #16a34a;
+            --success-light: #f0fdf4;
+            --danger:        #dc2626;
+            --danger-light:  #fef2f2;
+            --warning:       #d97706;
+            --warning-light: #fffbeb;
+            --info:          #0891b2;
+            --info-light:    #ecfeff;
+            --surface:       #ffffff;
+            --surface-2:     #f7f8fc;
+            --border:        #e8eaf0;
+            --border-subtle: #f0f2f7;
+            --text-primary:  #0f1117;
+            --text-secondary:#6b7280;
+            --text-muted:    #9ca3af;
+            --sidebar-width: 260px;
+            --radius-sm:     8px;
+            --radius-md:     12px;
+            --radius-lg:     16px;
+            --radius-xl:     20px;
+            --shadow-xs:     0 1px 3px rgba(0,0,0,0.06);
+            --shadow-sm:     0 2px 8px rgba(0,0,0,0.07);
+            --shadow-md:     0 4px 16px rgba(0,0,0,0.09);
+            --transition:    all 0.18s cubic-bezier(0.4,0,0.2,1);
         }
-        
+
         body {
-            background-color: #f5f7fb;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 0;
+            background: var(--surface-2);
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
         }
-        
-        /* Maintenance Warning */
-        .maintenance-warning {
-            background: linear-gradient(135deg, var(--warning), #e0a800);
-            color: #856404;
-            border: none;
-            margin-bottom: 1rem;
-        }
-        
-        /* Sidebar Styles */
+
+        /* ── SIDEBAR ── */
         .sidebar {
             width: var(--sidebar-width);
-            background: linear-gradient(180deg, var(--primary), #0a58ca);
-            color: white;
-            position: fixed;
-            height: 100vh;
-            left: 0;
-            top: 0;
-            transition: all 0.3s;
-            z-index: 1000;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            position: fixed; height: 100vh; left: 0; top: 0;
+            transition: var(--transition); z-index: 1000;
         }
-        
-        .sidebar-header {
-            padding: 1.5rem 1rem;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            text-align: center;
-        }
-        
-        .sidebar-header h2 {
-            margin: 0;
-            font-weight: 700;
-            font-size: 1.3rem;
-        }
-        
-        .sidebar-header p {
-            margin: 0.5rem 0 0 0;
-            opacity: 0.8;
-            font-size: 0.9rem;
-        }
-        
-        .sidebar-menu {
-            list-style: none;
-            padding: 1rem 0;
-            margin: 0;
-        }
-        
-        .sidebar-menu li {
-            margin: 0.2rem 0;
-        }
-        
+        .sidebar-header { padding: 1.5rem 1.25rem 1.25rem; border-bottom: 1px solid var(--border-subtle); }
+        .sidebar-header h2 { margin: 0; font-weight: 800; font-size: 1.1rem; color: var(--accent); }
+        .sidebar-header p  { margin: 0.3rem 0 0; color: var(--text-muted); font-size: 0.78rem; }
+        .sidebar-menu { list-style: none; padding: 0.75rem; margin: 0; }
+        .sidebar-menu li { margin: 2px 0; }
         .sidebar-menu a {
-            color: rgba(255,255,255,0.8);
-            text-decoration: none;
-            padding: 0.8rem 1.5rem;
-            display: flex;
-            align-items: center;
-            transition: all 0.3s;
-            border-left: 3px solid transparent;
+            color: var(--text-secondary); text-decoration: none;
+            padding: 0.6rem 0.85rem; display: flex; align-items: center; gap: 0.65rem;
+            transition: var(--transition); border-radius: var(--radius-sm);
+            font-size: 0.875rem; font-weight: 500;
         }
-        
-        .sidebar-menu a:hover,
-        .sidebar-menu a.active {
-            background: rgba(255,255,255,0.1);
-            color: white;
-            border-left-color: white;
+        .sidebar-menu a:hover { background: var(--accent-light); color: var(--accent); }
+        .sidebar-menu a.active { background: var(--accent); color: white; font-weight: 600; }
+        .sidebar-menu i { width: 18px; font-size: 0.9rem; flex-shrink: 0; }
+
+        /* ── MAIN ── */
+        .main-content { margin-left: var(--sidebar-width); padding: 1.75rem 2rem; min-height: 100vh; }
+
+        /* ── ALERTS ── */
+        .alert {
+            border-radius: var(--radius-md); border: 1px solid transparent;
+            padding: 0.875rem 1.125rem; margin-bottom: 1.25rem; font-size: 0.875rem;
         }
-        
-        .sidebar-menu i {
-            width: 25px;
-            margin-right: 10px;
-            font-size: 1.1rem;
-        }
-        
-        /* Main Content */
-        .main-content {
-            margin-left: var(--sidebar-width);
-            padding: 1rem 2rem;
-            min-height: 100vh;
-        }
-        
-        /* Header */
+        .alert-success { background: var(--success-light); color: var(--success); border-color: #bbf7d0; }
+        .alert-danger  { background: var(--danger-light);  color: var(--danger);  border-color: #fecaca; }
+        .alert-warning, .maintenance-warning { background: var(--warning-light); color: var(--warning); border-color: #fde68a; }
+
+        /* ── PAGE HEADER ── */
         .page-header {
-            background: white;
-            border-radius: 10px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            background: var(--surface); border-radius: var(--radius-lg);
+            padding: 1.25rem 1.75rem; margin-bottom: 1.5rem;
+            border: 1px solid var(--border); box-shadow: var(--shadow-xs);
         }
-        
         .page-header h1 {
-            color: var(--dark);
-            margin-bottom: 0.5rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
+            color: var(--text-primary); margin: 0 0 0.2rem; font-weight: 800;
+            font-size: 1.4rem; letter-spacing: -0.4px;
+            display: flex; align-items: center; gap: 0.5rem;
         }
-        
-        .page-header p {
-            color: var(--secondary);
-            margin: 0;
-        }
-        
-        /* Stats Grid */
+        .page-header h1 i { color: var(--accent); font-size: 1.1rem; }
+        .page-header p { color: var(--text-muted); margin: 0; font-size: 0.82rem; }
+
+        /* ── STAT CARDS ── */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1.125rem; margin-bottom: 1.5rem;
         }
-        
         .stat-card {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            transition: all 0.3s ease;
-            text-decoration: none !important;
-            color: inherit;
+            background: var(--surface); border-radius: var(--radius-lg);
+            padding: 1.375rem 1.5rem; box-shadow: var(--shadow-xs);
+            border: 1px solid var(--border); position: relative; overflow: hidden;
+            text-decoration: none !important; color: inherit; transition: var(--transition);
         }
-        
-        .stat-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        .stat-card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+            background: var(--accent); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
         }
-        
+        .stat-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); text-decoration: none; color: inherit; }
         .stat-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 1rem;
-            font-size: 1.5rem;
+            width: 44px; height: 44px; border-radius: var(--radius-sm);
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 0.875rem; font-size: 1.1rem;
         }
-        
-        .stat-card h3 {
-            font-size: 1.8rem;
-            font-weight: 700;
-            margin: 0;
-            color: var(--dark);
-        }
-        
-        .stat-card p {
-            color: var(--secondary);
-            margin: 0;
-            font-weight: 500;
-        }
-        
-        /* Tabs Navigation */
+        .stat-card h3 { font-size: 1.85rem; font-weight: 800; margin: 0 0 0.2rem; color: var(--text-primary); letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+        .stat-card p  { color: var(--text-secondary); margin: 0; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+
+        /* ── TABS ── */
         .tabs-navigation {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1.5rem;
-            flex-wrap: wrap;
-            background: white;
-            padding: 1rem;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            display: flex; gap: 0.25rem; margin-bottom: 1.5rem; flex-wrap: wrap;
+            background: var(--surface); padding: 0.3rem;
+            border-radius: var(--radius-md); border: 1px solid var(--border);
+            box-shadow: var(--shadow-xs);
         }
-        
         .tab-button {
-            padding: 0.75rem 1.5rem;
-            background: white;
-            border: 2px solid #e2e8f0;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s;
-            color: var(--secondary);
+            padding: 0.55rem 1.1rem; background: transparent;
+            border: none; border-radius: var(--radius-sm);
+            cursor: pointer; font-weight: 600; transition: var(--transition);
+            color: var(--text-secondary); font-size: 0.82rem; font-family: inherit;
+            display: flex; align-items: center; gap: 0.4rem;
+            text-decoration: none;
         }
-        
-        .tab-button:hover {
-            background: #f8f9fa;
-            border-color: var(--primary);
-            color: var(--primary);
-        }
-        
-        .tab-button.active {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-        }
-        
-        .tab-content {
-            display: none;
-        }
-        
-        .tab-content.active {
-            display: block;
-        }
-        
-        /* Settings Section */
+        .tab-button:hover { color: var(--accent); background: var(--accent-light); text-decoration: none; }
+        .tab-button.active { background: var(--accent); color: white; }
+        .tab-button i { font-size: 0.78rem; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: secIn 0.2s ease; }
+        @keyframes secIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+
+        /* ── SECTION CARDS ── */
         .settings-section {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            margin-bottom: 1.5rem;
+            background: var(--surface); padding: 1.625rem 1.75rem;
+            border-radius: var(--radius-lg); box-shadow: var(--shadow-xs);
+            border: 1px solid var(--border); margin-bottom: 1.375rem;
         }
-        
         .section-title {
-            font-size: 1.3rem;
-            font-weight: 600;
-            color: var(--dark);
-            margin-bottom: 1.5rem;
-            padding-bottom: 0.75rem;
-            border-bottom: 2px solid #f1f5f9;
+            font-size: 0.975rem; font-weight: 800; color: var(--text-primary);
+            margin-bottom: 1.25rem; padding-bottom: 0.875rem;
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex; align-items: center; gap: 0.5rem; letter-spacing: -0.2px;
         }
-        
-        /* Calendar Container */
+        .section-title i { color: var(--accent); font-size: 0.875rem; }
+
+        /* ── CALENDAR ── */
         .calendar-container {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            margin-bottom: 1.5rem;
+            background: var(--surface); padding: 1.625rem 1.75rem;
+            border-radius: var(--radius-lg); box-shadow: var(--shadow-xs);
+            border: 1px solid var(--border); margin-bottom: 1.375rem;
         }
-        
-        #calendar {
-            max-width: 100%;
-            margin: 0 auto;
-        }
-        
-        .fc-event {
-            cursor: pointer;
-        }
-        
-        /* Booking List */
-        .booking-list {
-            max-height: 500px;
-            overflow-y: auto;
-        }
-        
-        .booking-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem;
-            border-bottom: 1px solid #f1f5f9;
-            transition: all 0.3s;
-        }
-        
-        .booking-item:hover {
-            background: #f8fafc;
-        }
-        
-        .booking-item:last-child {
-            border-bottom: none;
-        }
-        
-        .booking-info {
-            flex: 1;
-        }
-        
-        .booking-client {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin-bottom: 0.5rem;
-        }
-        
-        .client-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: var(--primary);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 1rem;
-            flex-shrink: 0;
-        }
-        
-        .client-avatar img {
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
-            object-fit: cover;
-        }
-        
-        .booking-datetime {
-            font-weight: 600;
-            color: var(--dark);
-            margin-bottom: 0.25rem;
-        }
-        
-        .booking-service {
-            color: var(--secondary);
-            font-size: 0.9rem;
-        }
-        
-        .badge {
-            padding: 0.4rem 0.8rem;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-        
-        .badge.confirmed {
-            background: #d1ecf1;
-            color: #0c5460;
-        }
-        
-        .badge.pending {
-            background: #fff3cd;
-            color: #856404;
-        }
-        
-        /* Time Off List */
-        .time-off-list {
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        
-        .time-off-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem;
-            border-bottom: 1px solid #f1f5f9;
-        }
-        
-        .time-off-item:last-child {
-            border-bottom: none;
-        }
-        
-        .time-off-dates {
-            font-weight: 600;
-            color: var(--dark);
-        }
-        
-        .time-off-reason {
-            color: var(--secondary);
-            font-size: 0.9rem;
-            margin-top: 0.25rem;
-        }
-        
-        /* Days of week selector */
-        .days-selector {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-        
-        .day-checkbox {
-            position: relative;
-        }
-        
-        .day-checkbox input {
-            display: none;
-        }
-        
-        .day-checkbox label {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 45px;
-            height: 45px;
-            border: 2px solid #e2e8f0;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        
-        .day-checkbox input:checked + label {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-        }
-        
-        /* Integration Card */
-        .integration-card {
-            border: 2px dashed #e2e8f0;
-            border-radius: 10px;
-            padding: 2rem;
-            text-align: center;
-            transition: all 0.3s;
-        }
-        
-        .integration-card:hover {
-            border-color: var(--primary);
-            background: #f8fafc;
-        }
-        
-        .integration-icon {
-            width: 70px;
-            height: 70px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, var(--primary), #0a58ca);
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 1.5rem;
-            font-size: 2rem;
-        }
-        
-        /* Bulk Update Form */
-        .bulk-update-form {
-            background: #f8f9fa;
-            padding: 1.5rem;
-            border-radius: 10px;
-            margin-top: 1.5rem;
-        }
-        
-        /* Mobile Responsive */
-        @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-100%);
-            }
-            
-            .sidebar.mobile-open {
-                transform: translateX(0);
-            }
-            
-            .main-content {
-                margin-left: 0;
-                padding: 1rem;
-            }
-            
-            .mobile-menu-toggle {
-                display: block !important;
-            }
-            
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .tabs-navigation {
-                flex-direction: column;
-            }
-            
-            .tab-button {
-                text-align: center;
-            }
-            
-            .booking-item {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 1rem;
-            }
-        }
-        
-        .mobile-menu-toggle {
-            display: none;
-            position: fixed;
-            top: 1rem;
-            left: 1rem;
-            z-index: 1100;
-            background: var(--primary);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            width: 45px;
-            height: 45px;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.2rem;
-        }
-        
-        .overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 999;
-        }
-        
-        .overlay.active {
-            display: block;
-        }
-        
-        /* Alert Styles */
-        .alert {
-            border-radius: 8px;
-            border: none;
-            margin-bottom: 1.5rem;
-        }
-        
-        .form-check-input:checked {
-            background-color: var(--primary);
-            border-color: var(--primary);
-        }
-        
-        .form-label {
-            font-weight: 600;
-            color: var(--dark);
-            margin-bottom: 0.5rem;
-        }
-        
+        #calendarEl { max-width: 100%; }
+        .fc-event { cursor: pointer; border-radius: var(--radius-sm) !important; font-size: 0.72rem !important; }
+        .fc .fc-toolbar-title { font-size: 1rem !important; font-weight: 800 !important; }
+        .fc .fc-button { font-size: 0.78rem !important; font-weight: 600 !important; }
+
         .time-slot-legend {
-            display: flex;
-            gap: 1rem;
-            flex-wrap: wrap;
-            margin-top: 1rem;
-            padding: 1rem;
-            background: #f8f9fa;
-            border-radius: 8px;
+            display: flex; gap: 1.125rem; flex-wrap: wrap; margin-top: 1.25rem;
+            padding: 0.875rem 1.125rem; background: var(--surface-2);
+            border-radius: var(--radius-md); border: 1px solid var(--border);
         }
-        
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.9rem;
-        }
-        
-        .legend-color {
-            width: 20px;
-            height: 20px;
-            border-radius: 4px;
-        }
-        
-        .legend-booked { background: var(--danger); }
+        .legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: var(--text-secondary); font-weight: 600; }
+        .legend-color { width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0; }
+        .legend-booked    { background: var(--danger); }
         .legend-available { background: var(--success); }
-        .legend-time-off { background: var(--secondary); }
-        .legend-break { background: var(--warning); }
+        .legend-time-off  { background: var(--text-muted); }
+        .legend-break     { background: var(--warning); }
+
+        /* ── BOOKING LIST ── */
+        .booking-list { max-height: 520px; overflow-y: auto; }
+        .booking-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 1rem 0; border-bottom: 1px solid var(--border-subtle);
+            transition: var(--transition); gap: 1rem;
+        }
+        .booking-item:last-child { border-bottom: none; }
+        .booking-item:hover { background: transparent; }
+        .booking-info { flex: 1; min-width: 0; }
+        .booking-client { display: flex; align-items: center; gap: 0.875rem; margin-bottom: 0.375rem; }
+        .client-avatar {
+            width: 38px; height: 38px; border-radius: var(--radius-sm);
+            background: var(--accent); display: flex; align-items: center; justify-content: center;
+            color: white; font-weight: 700; font-size: 0.9rem; flex-shrink: 0; overflow: hidden;
+        }
+        .client-avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+        .booking-datetime { font-size: 0.82rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.2rem; }
+        .booking-service  { font-size: 0.78rem; color: var(--text-muted); }
+
+        /* Status badges */
+        .badge {
+            padding: 0.25rem 0.6rem; border-radius: 100px;
+            font-size: 0.68rem; font-weight: 700;
+        }
+        .badge.confirmed, .badge-confirmed { background: var(--info-light); color: var(--info); border: 1px solid #a5f3fc; }
+        .badge.pending,   .badge-pending   { background: var(--warning-light); color: var(--warning); border: 1px solid #fde68a; }
+        .bg-success { background: var(--success-light) !important; color: var(--success) !important; border: 1px solid #bbf7d0; }
+        .bg-danger  { background: var(--danger-light)  !important; color: var(--danger)  !important; border: 1px solid #fecaca; }
+
+        /* ── TIME OFF LIST ── */
+        .time-off-list { max-height: 320px; overflow-y: auto; }
+        .time-off-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0.875rem 0; border-bottom: 1px solid var(--border-subtle);
+        }
+        .time-off-item:last-child { border-bottom: none; }
+        .time-off-dates { font-weight: 700; font-size: 0.875rem; color: var(--text-primary); }
+        .time-off-reason { color: var(--text-muted); font-size: 0.78rem; margin-top: 0.2rem; }
+
+        /* ── DAYS SELECTOR ── */
+        .days-selector { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .day-checkbox { position: relative; }
+        .day-checkbox input { position: absolute; opacity: 0; }
+        .day-checkbox label {
+            display: flex; align-items: center; justify-content: center;
+            width: 42px; height: 42px;
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            cursor: pointer; font-weight: 700; font-size: 0.78rem;
+            transition: var(--transition); color: var(--text-secondary);
+            background: var(--surface-2);
+        }
+        .day-checkbox label:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+        .day-checkbox input:checked + label { background: var(--accent); color: white; border-color: var(--accent); }
+
+        /* ── FORMS ── */
+        .form-label { font-weight: 600; margin-bottom: 0.35rem; color: var(--text-primary); font-size: 0.8rem; display: block; }
+        .form-control, .form-select {
+            padding: 0.575rem 0.875rem; border-radius: var(--radius-sm);
+            border: 1px solid var(--border); font-family: inherit; font-size: 0.875rem;
+            color: var(--text-primary); background: var(--surface-2); transition: var(--transition);
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: var(--accent); background: var(--surface);
+            box-shadow: 0 0 0 3px rgba(13,110,253,0.08); outline: none;
+        }
+        .form-check-input:checked { background-color: var(--accent); border-color: var(--accent); }
+
+        /* Save button */
+        .btn-save {
+            background: var(--accent); color: white; border: none;
+            padding: 0.6rem 1.375rem; border-radius: var(--radius-sm);
+            font-family: inherit; font-size: 0.875rem; font-weight: 700;
+            cursor: pointer; transition: var(--transition);
+            display: inline-flex; align-items: center; gap: 0.5rem;
+        }
+        .btn-save:hover { background: var(--accent-dark); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+        .btn-save.secondary { background: var(--surface); color: var(--text-secondary); border: 1px solid var(--border); }
+        .btn-save.secondary:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+
+        /* Bootstrap btn shims */
+        .btn { font-family: inherit; font-weight: 600; border-radius: var(--radius-sm); transition: var(--transition); font-size: 0.82rem; }
+        .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+        .btn-primary:hover { background: var(--accent-dark); color: white; transform: translateY(-1px); }
+        .btn-secondary { background: var(--surface); color: var(--text-secondary); border: 1px solid var(--border); }
+        .btn-secondary:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+        .btn-sm { font-size: 0.72rem; padding: 0.32rem 0.7rem; }
+        .btn-outline-danger { color: var(--danger); border: 1px solid #fecaca; background: transparent; }
+        .btn-outline-danger:hover { background: var(--danger-light); color: var(--danger); }
+
+        /* ── BULK UPDATE PANEL ── */
+        .bulk-update-form {
+            background: var(--surface-2); padding: 1.375rem;
+            border-radius: var(--radius-md); margin-top: 1.5rem;
+            border: 1px solid var(--border);
+        }
+        .bulk-update-form h5 { font-size: 0.875rem; font-weight: 800; color: var(--text-primary); margin-bottom: 1rem; }
+
+        /* ── INTEGRATION CARDS ── */
+        .integration-card {
+            border: 1px dashed var(--border); border-radius: var(--radius-lg);
+            padding: 2rem; text-align: center; transition: var(--transition);
+        }
+        .integration-card:hover { border-color: var(--accent); background: var(--accent-light); }
+        .integration-icon {
+            width: 64px; height: 64px; border-radius: var(--radius-lg);
+            background: var(--accent); color: white;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 1.25rem; font-size: 1.75rem;
+            box-shadow: 0 4px 14px rgba(13,110,253,0.25);
+        }
+
+        /* ── TABLE ── */
+        .table { font-size: 0.82rem; }
+        .table th { font-weight: 700; color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); }
+        .table td { padding: 0.6rem 0.75rem; color: var(--text-primary); vertical-align: middle; border-bottom: 1px solid var(--border-subtle); }
+        .table-hover tbody tr:hover td { background: var(--surface-2); }
+
+        /* ── MOBILE ── */
+        .mobile-menu-toggle {
+            display: none; position: fixed; top: 1rem; left: 1rem; z-index: 1100;
+            background: var(--accent); color: white; border: none;
+            border-radius: var(--radius-sm); width: 42px; height: 42px;
+            align-items: center; justify-content: center;
+            font-size: 1.1rem; cursor: pointer; box-shadow: var(--shadow-md);
+        }
+        .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999; backdrop-filter: blur(2px); }
+        .overlay.active { display: block; }
+
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.mobile-open { transform: translateX(0); box-shadow: 4px 0 20px rgba(0,0,0,0.12); }
+            .main-content { margin-left: 0; padding: 1rem; }
+            .mobile-menu-toggle { display: flex !important; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .tabs-navigation { width: 100%; overflow-x: auto; }
+            .booking-item { flex-direction: column; align-items: flex-start; }
+        }
+        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
     </style>
 </head>
 <body>
@@ -927,7 +696,7 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
         <!-- Statistics -->
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-icon" style="background: #e0e7ff; color: #4f46e5;">
+                <div class="stat-icon" style="background:#e0e7ff;color:#4f46e5;">
                     <i class="fas fa-calendar-check"></i>
                 </div>
                 <h3><?php echo $stats['total_upcoming'] ?? 0; ?></h3>
@@ -935,7 +704,7 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
             </div>
 
             <div class="stat-card">
-                <div class="stat-icon" style="background: #fef3c7; color: #92400e;">
+                <div class="stat-icon" style="background:#fef3c7;color:#d97706;">
                     <i class="fas fa-clock"></i>
                 </div>
                 <h3><?php echo $stats['pending'] ?? 0; ?></h3>
@@ -943,7 +712,7 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
             </div>
 
             <div class="stat-card">
-                <div class="stat-icon" style="background: #dbeafe; color: #1e40af;">
+                <div class="stat-icon" style="background:#dbeafe;color:#1e40af;">
                     <i class="fas fa-check"></i>
                 </div>
                 <h3><?php echo $stats['confirmed'] ?? 0; ?></h3>
@@ -951,7 +720,7 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
             </div>
 
             <div class="stat-card">
-                <div class="stat-icon" style="background: #d1fae5; color: #065f46;">
+                <div class="stat-icon" style="background:#d1fae5;color:#16a34a;">
                     <i class="fas fa-calendar-day"></i>
                 </div>
                 <h3>
@@ -963,18 +732,18 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
 
         <!-- Tabs Navigation -->
         <div class="tabs-navigation">
-            <a href="?tab=calendar" class="tab-button<?php echo $active_tab === 'calendar' ? ' active' : ''; ?>" data-tab="calendar"><?php echo __('schedule.tab_calendar', [], 'dashboard'); ?></a>
-            <a href="?tab=settings" class="tab-button<?php echo $active_tab === 'settings' ? ' active' : ''; ?>" data-tab="settings"><?php echo __('schedule.tab_settings', [], 'dashboard'); ?></a>
-            <a href="?tab=availability" class="tab-button<?php echo $active_tab === 'availability' ? ' active' : ''; ?>" data-tab="availability"><?php echo __('schedule.tab_availability', [], 'dashboard'); ?></a>
-            <a href="?tab=timeoff" class="tab-button<?php echo $active_tab === 'timeoff' ? ' active' : ''; ?>" data-tab="timeoff"><?php echo __('schedule.tab_timeoff', [], 'dashboard'); ?></a>
-            <a href="?tab=upcoming" class="tab-button<?php echo $active_tab === 'upcoming' ? ' active' : ''; ?>" data-tab="upcoming"><?php echo __('schedule.tab_bookings', [], 'dashboard'); ?></a>
-            <a href="?tab=integrations" class="tab-button<?php echo $active_tab === 'integrations' ? ' active' : ''; ?>" data-tab="integrations"><?php echo __('schedule.tab_integrations', [], 'dashboard'); ?></a>
+            <a href="?tab=calendar" class="tab-button<?php echo $active_tab === 'calendar' ? ' active' : ''; ?>" data-tab="calendar"><i class="fas fa-calendar-alt"></i> <?php echo __('schedule.tab_calendar', [], 'dashboard'); ?></a>
+            <a href="?tab=settings" class="tab-button<?php echo $active_tab === 'settings' ? ' active' : ''; ?>" data-tab="settings"><i class="fas fa-cog"></i> <?php echo __('schedule.tab_settings', [], 'dashboard'); ?></a>
+            <a href="?tab=availability" class="tab-button<?php echo $active_tab === 'availability' ? ' active' : ''; ?>" data-tab="availability"><i class="fas fa-toggle-on"></i> <?php echo __('schedule.tab_availability', [], 'dashboard'); ?></a>
+            <a href="?tab=timeoff" class="tab-button<?php echo $active_tab === 'timeoff' ? ' active' : ''; ?>" data-tab="timeoff"><i class="fas fa-umbrella-beach"></i> <?php echo __('schedule.tab_timeoff', [], 'dashboard'); ?></a>
+            <a href="?tab=upcoming" class="tab-button<?php echo $active_tab === 'upcoming' ? ' active' : ''; ?>" data-tab="upcoming"><i class="fas fa-list"></i> <?php echo __('schedule.tab_bookings', [], 'dashboard'); ?></a>
+            <a href="?tab=integrations" class="tab-button<?php echo $active_tab === 'integrations' ? ' active' : ''; ?>" data-tab="integrations"><i class="fas fa-plug"></i> <?php echo __('schedule.tab_integrations', [], 'dashboard'); ?></a>
         </div>
 
         <!-- Calendar View Tab -->
         <div id="calendar" class="tab-content<?php echo $active_tab === 'calendar' ? ' active' : ''; ?>">
             <div class="calendar-container">
-                <h3 class="section-title"><?php echo __('schedule.calendar_overview', [], 'dashboard'); ?></h3>
+                <h3 class="section-title"><i class="fas fa-calendar-alt"></i> <?php echo __('schedule.calendar_overview', [], 'dashboard'); ?></h3>
                 <div id="calendarEl"></div>
                 
                 <div class="time-slot-legend">
@@ -1001,7 +770,7 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
         <!-- Working Hours Settings Tab -->
         <div id="settings" class="tab-content<?php echo $active_tab === 'settings' ? ' active' : ''; ?>">
             <div class="settings-section">
-                <h3 class="section-title"><?php echo __('schedule.settings_title', [], 'dashboard'); ?></h3>
+                <h3 class="section-title"><i class="fas fa-cog"></i> <?php echo __('schedule.settings_title', [], 'dashboard'); ?></h3>
                 
                 <form method="POST">
                     <div class="row mb-4">
@@ -1070,9 +839,7 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
                         </div>
                     </div>
                     
-                    <button type="submit" name="update_hours" class="btn btn-primary">
-                        <i class="fas fa-save me-2"></i> <?php echo __('schedule.save_working_hours', [], 'dashboard'); ?>
-                    </button>
+                    <button type="submit" name="update_hours" class="btn-save"><i class="fas fa-save"></i> <?php echo __('schedule.save_working_hours', [], 'dashboard'); ?></button>
                 </form>
             </div>
         </div>
@@ -1080,7 +847,7 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
         <!-- Availability Exceptions Tab -->
         <div id="availability" class="tab-content<?php echo $active_tab === 'availability' ? ' active' : ''; ?>">
             <div class="settings-section">
-                <h3 class="section-title"><?php echo __('schedule.availability_title', [], 'dashboard'); ?></h3>
+                <h3 class="section-title"><i class="fas fa-toggle-on"></i> <?php echo __('schedule.availability_title', [], 'dashboard'); ?></h3>
                 
                 <form method="POST">
                     <div class="row mb-4">
@@ -1117,9 +884,7 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
                         </div>
                     </div>
                     
-                    <button type="submit" name="update_day_availability" class="btn btn-primary">
-                        <i class="fas fa-calendar-plus me-2"></i> <?php echo __('schedule.update_day_availability', [], 'dashboard'); ?>
-                    </button>
+                    <button type="submit" name="update_day_availability" class="btn-save"><i class="fas fa-calendar-plus"></i> <?php echo __('schedule.update_day_availability', [], 'dashboard'); ?></button>
                 </form>
                 
                 <!-- Bulk Update -->
@@ -1170,9 +935,7 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
                             </div>
                         </div>
                         
-                        <button type="submit" name="bulk_update_availability" class="btn btn-secondary">
-                            <i class="fas fa-calendar-week me-2"></i> <?php echo __('schedule.apply_bulk_update', [], 'dashboard'); ?>
-                        </button>
+                        <button type="submit" name="bulk_update_availability" class="btn-save secondary"><i class="fas fa-calendar-week"></i> <?php echo __('schedule.apply_bulk_update', [], 'dashboard'); ?></button>
                     </form>
                 </div>
                 
@@ -1230,7 +993,7 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
         <!-- Time Off Tab -->
         <div id="timeoff" class="tab-content<?php echo $active_tab === 'timeoff' ? ' active' : ''; ?>">
             <div class="settings-section">
-                <h3 class="section-title"><?php echo __('schedule.timeoff_title', [], 'dashboard'); ?></h3>
+                <h3 class="section-title"><i class="fas fa-umbrella-beach"></i> <?php echo __('schedule.timeoff_title', [], 'dashboard'); ?></h3>
                 
                 <form method="POST" class="mb-4">
                     <div class="row">
@@ -1253,7 +1016,7 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
                         </div>
                         
                         <div class="col-md-2 d-flex align-items-end">
-                            <button type="submit" name="add_time_off" class="btn btn-primary w-100">
+                            <button type="submit" name="add_time_off" class="btn-save" style="width:100%;">
                                 <i class="fas fa-plus me-2"></i> <?php echo __('schedule.add_time_off', [], 'dashboard'); ?>
                             </button>
                         </div>
@@ -1277,7 +1040,7 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
                                         <?php echo htmlspecialchars($time_off['reason']); ?>
                                     </div>
                                 </div>
-                                <form method="POST" style="display: inline;" 
+                                <form method="POST" class="d-inline" 
                                       onsubmit="return confirm('<?php echo __('schedule.delete_time_off_confirm', [], 'dashboard'); ?>')">
                                     <input type="hidden" name="time_off_id" value="<?php echo $time_off['id']; ?>">
                                     <button type="submit" name="delete_time_off" class="btn btn-sm btn-outline-danger">
@@ -1294,7 +1057,7 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
         <!-- Upcoming Bookings Tab -->
         <div id="upcoming" class="tab-content<?php echo $active_tab === 'upcoming' ? ' active' : ''; ?>">
             <div class="settings-section">
-                <h3 class="section-title"><?php echo __('schedule.bookings_title', [], 'dashboard'); ?></h3>
+                <h3 class="section-title"><i class="fas fa-list"></i> <?php echo __('schedule.bookings_title', [], 'dashboard'); ?></h3>
                 
                 <?php if (empty($upcoming_bookings)): ?>
                     <p class="text-center text-muted py-4"><?php echo __('schedule.no_bookings', [], 'dashboard'); ?></p>
@@ -1341,7 +1104,7 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
         <!-- Integrations Tab -->
         <div id="integrations" class="tab-content<?php echo $active_tab === 'integrations' ? ' active' : ''; ?>">
             <div class="settings-section">
-                <h3 class="section-title"><?php echo __('schedule.integrations_title', [], 'dashboard'); ?></h3>
+                <h3 class="section-title"><i class="fas fa-plug"></i> <?php echo __('schedule.integrations_title', [], 'dashboard'); ?></h3>
                 
                 <div class="row">
                     <div class="col-md-6 mb-4">
@@ -1362,7 +1125,7 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
                                     </small>
                                 </div>
                                 
-                                <form method="POST" style="display: inline;">
+                                <form method="POST" class="d-inline">
                                     <button type="submit" name="disconnect_google" class="btn btn-outline-danger"
                                             onclick="return confirm('<?php echo __('schedule.disconnect_google_confirm', [], 'dashboard'); ?>')">
                                         <i class="fas fa-unlink me-2"></i> <?php echo __('schedule.disconnect_google', [], 'dashboard'); ?>
@@ -1378,7 +1141,7 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
                                     </button>
                                 </form>
                                 
-                                <div class="alert alert-info mt-3" style="font-size: 0.85rem;">
+                                <div class="alert alert-info mt-3" >
                                     <i class="fas fa-info-circle me-2"></i>
                                     <strong><?php echo __('profile.first_time', [], 'profile'); ?></strong> <?php echo __('schedule.google_auth_info', [], 'dashboard'); ?>
                                 </div>
@@ -1474,15 +1237,20 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
         const sidebar = document.getElementById('sidebar');
         const overlay = document.getElementById('overlay');
         
-        mobileToggle.addEventListener('click', () => {
-            sidebar.classList.toggle('mobile-open');
-            overlay.classList.toggle('active');
-        });
-        
-        overlay.addEventListener('click', () => {
-            sidebar.classList.remove('mobile-open');
-            overlay.classList.remove('active');
-        });
+        if (mobileToggle && sidebar) {
+            mobileToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('mobile-open');
+                overlay.classList.toggle('active');
+                document.body.style.overflow = sidebar.classList.contains('mobile-open') ? 'hidden' : '';
+            });
+        }
+        if (overlay) {
+            overlay.addEventListener('click', () => {
+                if (sidebar) sidebar.classList.remove('mobile-open');
+                overlay.classList.remove('active');
+                document.body.style.overflow = '';
+            });
+        }
         
         // Tab navigation
         function switchTab(tabName) {
@@ -1630,12 +1398,9 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
             }
         }
         
-        // Auto-dismiss alerts after 5 seconds
         setTimeout(() => {
-            const alerts = document.querySelectorAll('.alert');
-            alerts.forEach(alert => {
-                const bsAlert = new bootstrap.Alert(alert);
-                bsAlert.close();
+            document.querySelectorAll('.alert.alert-dismissible').forEach(el => {
+                try { new bootstrap.Alert(el).close(); } catch(e) {}
             });
         }, 5000);
         

@@ -117,6 +117,9 @@
 
             safeFetch(payload).then((json) => {
                 if (json.success) {
+                    if (options.onSuccess) {
+                        options.onSuccess(json);
+                    }
                     if (options.postSuccess === 'redirect' && json.redirect) {
                         window.location.href = json.redirect;
                         return;
@@ -156,8 +159,8 @@
 
     setupOption('#chatOptViewOffers', { action: 'view_offers', postSuccess: 'redirect' });
     setupOption('#chatOptMute', { action: 'mute_notifications', postSuccess: 'toggle-muted' });
-    setupOption('#chatOptClear', { action: 'clear_chat', confirm: true, title: 'Clear chat', text: 'This will delete all messages with this contact for everyone. Continue?', confirmLabel: 'Clear', postSuccess: 'reload' });
-    setupOption('#chatOptDelete', { action: 'delete_conversation', confirm: true, title: 'Delete conversation', text: 'Delete entire conversation permanently? This action cannot be undone.', confirmLabel: 'Delete', postSuccess: 'redirect' });
+    setupOption('#chatOptClear', { action: 'clear_chat', confirm: true, title: 'Clear chat', text: 'This will delete all messages with this contact for everyone. Continue?', confirmLabel: 'Clear', onSuccess: () => { if (typeof window.handleChatCleared === 'function') window.handleChatCleared(); } });
+    setupOption('#chatOptDelete', { action: 'delete_conversation', confirm: true, title: 'Delete conversation', text: 'Delete entire conversation permanently? This action cannot be undone.', confirmLabel: 'Delete', onSuccess: () => { if (typeof window.handleConversationDeleted === 'function') window.handleConversationDeleted(); } });
     setupOption('#chatOptReport', { action: 'report_user', confirm: true, showReason: true, title: 'Report user', text: 'Tell us why you are reporting this user.', confirmLabel: 'Report' });
     setupOption('#chatOptBlock', { action: 'block_user', confirm: true, title: 'Block user', text: 'Block user and prevent future messages?', confirmLabel: 'Block', postSuccess: 'reload' });
 

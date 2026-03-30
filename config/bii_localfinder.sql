@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Mar 22, 2026 at 09:46 PM
+-- Generation Time: Mar 27, 2026 at 09:42 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -943,7 +943,24 @@ INSERT INTO `page_sessions` (`id`, `user_id`, `session_id`, `page_url`, `time_sp
 (26, 32, 'ftb7r35i9ll2em0i8hj6h943ho', 'http://localhost/bii_localfinder/client/providers.php?section=top-rated', 1, '2026-03-23 02:56:06', '2026-03-23 02:56:07', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
 (27, 32, 'njhbol875q9jr1jfugj0jmqkuq', 'http://localhost/bii_localfinder/client/dashboard.php', 3, '2026-03-23 03:21:12', '2026-03-23 03:21:15', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
 (28, 32, 'njhbol875q9jr1jfugj0jmqkuq', 'http://localhost/bii_localfinder/client/dashboard.php', 1, '2026-03-23 03:21:22', '2026-03-23 03:21:24', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
-(29, 31, 'bai41pkbe9q21qug3el2u0upmd', 'http://localhost/bii_localfinder/client/dashboard.php', 3, '2026-03-23 03:29:38', '2026-03-23 03:29:41', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36');
+(29, 31, 'bai41pkbe9q21qug3el2u0upmd', 'http://localhost/bii_localfinder/client/dashboard.php', 3, '2026-03-23 03:29:38', '2026-03-23 03:29:41', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(30, 32, '2r0bi1mqb2nc7rlimn4m398t29', 'http://localhost/bii_localfinder/client/dashboard.php', 5, '2026-03-26 21:15:29', '2026-03-26 21:15:35', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(31, 32, '2r0bi1mqb2nc7rlimn4m398t29', 'http://localhost/bii_localfinder/client/dashboard.php', 0, '2026-03-26 21:15:40', NULL, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(32, 31, 'k97tjgp3ln17469fr7kl7h2jfm', 'http://localhost/bii_localfinder/client/dashboard.php', 2, '2026-03-26 21:21:43', '2026-03-26 21:21:46', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(33, 32, 'gfk1hlbjtps0d7n6mho2qn679l', 'http://localhost/bii_localfinder/client/dashboard.php', 6, '2026-03-27 14:19:47', '2026-03-27 14:19:54', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(34, 32, 'gfk1hlbjtps0d7n6mho2qn679l', 'http://localhost/bii_localfinder/client/dashboard.php', 4, '2026-03-27 14:56:24', '2026-03-27 14:56:28', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(35, 32, 'gfk1hlbjtps0d7n6mho2qn679l', 'http://localhost/bii_localfinder/client/dashboard.php', 0, '2026-03-27 14:56:24', NULL, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(36, NULL, '9d9fg0ohe3mttjq2a9kqpuiksh', 'http://localhost/bii_localfinder/client/dashboard.php', 0, '2026-03-27 15:26:09', NULL, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(37, NULL, 'puh57rk2g1r9ko38jf8dqfjtq3', 'http://localhost/bii_localfinder/client/dashboard.php', 13, '2026-03-27 15:28:58', '2026-03-27 15:29:11', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(38, NULL, 'puh57rk2g1r9ko38jf8dqfjtq3', 'http://localhost/bii_localfinder/client/dashboard.php', 2, '2026-03-27 15:29:13', '2026-03-27 15:29:16', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(39, NULL, 'puh57rk2g1r9ko38jf8dqfjtq3', 'http://localhost/bii_localfinder/client/dashboard.php', 3, '2026-03-27 15:29:19', '2026-03-27 15:29:22', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(40, 32, 'puh57rk2g1r9ko38jf8dqfjtq3', 'http://localhost/bii_localfinder/client/dashboard.php', 1, '2026-03-27 15:37:23', '2026-03-27 15:37:24', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(41, 32, 'puh57rk2g1r9ko38jf8dqfjtq3', 'http://localhost/bii_localfinder/client/dashboard.php', 1, '2026-03-27 15:37:27', '2026-03-27 15:37:28', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(42, 32, 'puh57rk2g1r9ko38jf8dqfjtq3', 'http://localhost/bii_localfinder/client/dashboard.php', 1, '2026-03-27 15:37:36', '2026-03-27 15:37:37', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(43, 32, 'puh57rk2g1r9ko38jf8dqfjtq3', 'http://localhost/bii_localfinder/client/dashboard.php', 2, '2026-03-27 15:37:39', '2026-03-27 15:37:41', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(44, 32, 'puh57rk2g1r9ko38jf8dqfjtq3', 'http://localhost/bii_localfinder/client/dashboard.php', 1, '2026-03-27 15:37:47', '2026-03-27 15:37:48', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(45, 32, 'puh57rk2g1r9ko38jf8dqfjtq3', 'http://localhost/bii_localfinder/client/dashboard.php', 4, '2026-03-27 15:37:49', '2026-03-27 15:37:54', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'),
+(46, 32, 'puh57rk2g1r9ko38jf8dqfjtq3', 'http://localhost/bii_localfinder/client/dashboard.php', 17, '2026-03-27 15:38:05', '2026-03-27 15:38:23', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36');
 
 -- --------------------------------------------------------
 
@@ -997,7 +1014,12 @@ INSERT INTO `page_views` (`id`, `user_id`, `page_url`, `page_title`, `referrer`,
 (27, 32, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/client/providers.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'ftb7r35i9ll2em0i8hj6h943ho', '2026-03-22 19:35:31'),
 (28, 32, 'http://localhost/bii_localfinder/client/providers.php?section=top-rated', 'Find Service Providers - BII LocalFinder', 'http://localhost/bii_localfinder/client/providers.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'ftb7r35i9ll2em0i8hj6h943ho', '2026-03-22 19:55:14'),
 (29, 32, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/login.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'njhbol875q9jr1jfugj0jmqkuq', '2026-03-22 20:21:12'),
-(30, 31, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/login.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'bai41pkbe9q21qug3el2u0upmd', '2026-03-22 20:29:38');
+(30, 31, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/login.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'bai41pkbe9q21qug3el2u0upmd', '2026-03-22 20:29:38'),
+(31, 32, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/login.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', '2r0bi1mqb2nc7rlimn4m398t29', '2026-03-26 14:15:16'),
+(32, 31, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/login.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'k97tjgp3ln17469fr7kl7h2jfm', '2026-03-26 14:21:43'),
+(33, 32, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/login.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'gfk1hlbjtps0d7n6mho2qn679l', '2026-03-27 07:19:47'),
+(34, 32, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/client/provider-profile.php?id=6', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'gfk1hlbjtps0d7n6mho2qn679l', '2026-03-27 07:56:29'),
+(35, 32, 'http://localhost/bii_localfinder/client/dashboard.php', 'Client Dashboard - BII LocalFinder', 'http://localhost/bii_localfinder/login.php', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '::1', 'puh57rk2g1r9ko38jf8dqfjtq3', '2026-03-27 08:33:10');
 
 -- --------------------------------------------------------
 
@@ -1807,8 +1829,8 @@ INSERT INTO `users` (`id`, `full_name`, `email`, `phone`, `password`, `user_type
 (28, 'Kevin Mugisha', 'mugishakevin@gmail.com', '+2507948927349', '$2y$10$bAKfPqcZvcM7Emu1bsRWk.blYvvysRjEr9F9l91XSjogXnqAAdED2', 'provider', 1, 0, 0, 1, 'active', '2025-11-27 13:47:24', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-11-27 20:53:01', '2025-11-27 21:47:24', '984236', '2025-11-27 22:03:01', 0, 1, NULL),
 (29, 'Adrien migabo', 'adrienmigabo@gmail.com', '0783937989', '$2y$10$pUikfrD3cFMUw9EnKirTjuh/BwqOIAkb1H60OgGtLi7Zq8dJZGmh6', 'provider', 1, 0, 0, 1, 'active', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-11-27 20:54:38', '2025-11-27 20:55:49', '933410', '2025-11-27 22:04:38', 0, 1, NULL),
 (30, 'Kevin mugisha', 'kevinmugisha354@gmail.com', '+250795946213', '$2y$10$bES98RTdKieFyNNMRrcqwegwg3/B31YRg/swjsuVBx57MLEui7/ou', 'provider', 1, 0, 0, 1, 'active', '2025-12-17 23:59:58', NULL, NULL, NULL, NULL, NULL, NULL, 'profile_30_1764621887.jpg', '2025-11-29 12:26:23', '2025-12-18 07:59:58', NULL, NULL, 0, 1, NULL),
-(31, 'David Gakuba', 'technogystore@gmail.com', '+250795946213', '$2y$10$2/9aBz95VgDXg4LUsk98lO08Zco7BAMPZEDReOOqch4zucF8x7cre', 'client', 1, 0, 0, 1, 'active', '2026-03-22 13:29:37', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-12-01 17:57:23', '2026-03-22 20:29:37', NULL, NULL, 0, 1, NULL),
-(32, 'Mukundwa Aime', 'tuyizereaimely@gmail.com', '+250795946213', '$2y$10$8bK7Xp71icAO5YjNxSR/XeKb5tlHjnbIRT2uWC2Dv3VuMwj/RGoQO', 'client', 1, 0, 0, 1, 'active', '2026-03-22 13:21:12', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-12-17 17:22:25', '2026-03-22 20:21:12', NULL, NULL, 0, 1, NULL),
+(31, 'David Gakuba', 'technogystore@gmail.com', '+250795946213', '$2y$10$2/9aBz95VgDXg4LUsk98lO08Zco7BAMPZEDReOOqch4zucF8x7cre', 'client', 1, 0, 0, 1, 'active', '2026-03-26 07:21:43', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-12-01 17:57:23', '2026-03-26 14:21:43', NULL, NULL, 0, 1, NULL),
+(32, 'Mukundwa Aime', 'tuyizereaimely@gmail.com', '+250795946213', '$2y$10$8bK7Xp71icAO5YjNxSR/XeKb5tlHjnbIRT2uWC2Dv3VuMwj/RGoQO', 'client', 1, 0, 0, 1, 'active', '2026-03-27 01:33:05', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-12-17 17:22:25', '2026-03-27 08:33:05', NULL, NULL, 0, 1, NULL),
 (33, 'ELie', 'biitechnology0@gmail.com', '+250795946213', '$2y$10$2JXLkcGSiQBTYvu8hU7CMepoP3wDzFMDqsM1tanSsfgojK54eAPVm', 'client', 0, 0, 0, 1, 'active', '2025-12-18 00:36:01', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2025-12-18 08:23:26', '2025-12-18 08:46:53', NULL, NULL, 0, 1, NULL),
 (34, 'Test User', 'test@example.com', '', '\\/IGYLd.LQ5J4PGS', 'client', 1, 0, 0, 1, 'active', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-03-21 17:39:39', '2026-03-21 17:51:25', NULL, NULL, 0, 1, NULL);
 
@@ -2082,7 +2104,33 @@ INSERT INTO `user_logout_logs` (`id`, `user_id`, `user_type`, `logout_time`, `se
 (211, 26, 'unknown', '2026-03-21 01:43:26', 2917, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-21 08:43:26'),
 (212, 31, 'unknown', '2026-03-21 05:09:14', 176, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-21 12:09:14'),
 (213, 26, 'unknown', '2026-03-21 05:27:44', 1097, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-21 12:27:44'),
-(214, 32, 'unknown', '2026-03-22 13:29:19', 487, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-22 20:29:19');
+(214, 32, 'unknown', '2026-03-22 13:29:19', 487, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-22 20:29:19'),
+(215, 32, 'unknown', '2026-03-26 07:21:24', 379, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-26 14:21:24');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `user_profiles`
+--
+
+CREATE TABLE `user_profiles` (
+  `user_id` int(11) NOT NULL,
+  `user_avg_price` decimal(10,2) DEFAULT 0.00,
+  `user_avg_response_time` float DEFAULT 24,
+  `user_total_bookings` int(11) DEFAULT 0,
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `user_profiles`
+--
+
+INSERT INTO `user_profiles` (`user_id`, `user_avg_price`, `user_avg_response_time`, `user_total_bookings`, `updated_at`) VALUES
+(11, 0.00, 24, 3, '2026-03-27 08:27:00'),
+(31, 10000.00, 24, 2, '2026-03-27 08:27:00'),
+(32, 40000.00, 16, 3, '2026-03-27 08:27:00'),
+(33, 0.00, 24, 1, '2026-03-27 08:27:00'),
+(34, 0.00, 24, 0, '2026-03-27 08:27:00');
 
 -- --------------------------------------------------------
 
@@ -2109,7 +2157,11 @@ CREATE TABLE `user_sessions` (
 INSERT INTO `user_sessions` (`id`, `user_id`, `session_id`, `device`, `ip_address`, `user_agent`, `login_time`, `logout_time`, `is_active`) VALUES
 (1, 32, 'ftb7r35i9ll2em0i8hj6h943ho', 'Desktop', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-22 19:20:21', NULL, 1),
 (2, 32, 'njhbol875q9jr1jfugj0jmqkuq', 'Desktop', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-22 20:21:12', '2026-03-22 20:29:19', 0),
-(3, 31, 'bai41pkbe9q21qug3el2u0upmd', 'Desktop', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-22 20:29:37', NULL, 1);
+(3, 31, 'bai41pkbe9q21qug3el2u0upmd', 'Desktop', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-22 20:29:37', NULL, 1),
+(4, 32, '2r0bi1mqb2nc7rlimn4m398t29', 'Desktop', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-26 14:15:05', '2026-03-26 14:21:24', 0),
+(5, 31, 'k97tjgp3ln17469fr7kl7h2jfm', 'Desktop', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-26 14:21:43', NULL, 1),
+(6, 32, 'gfk1hlbjtps0d7n6mho2qn679l', 'Desktop', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-27 07:19:34', NULL, 1),
+(7, 32, 'puh57rk2g1r9ko38jf8dqfjtq3', 'Desktop', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36', '2026-03-27 08:33:05', NULL, 1);
 
 -- --------------------------------------------------------
 
@@ -2718,6 +2770,13 @@ ALTER TABLE `user_logout_logs`
   ADD KEY `idx_user_type` (`user_type`);
 
 --
+-- Indexes for table `user_profiles`
+--
+ALTER TABLE `user_profiles`
+  ADD PRIMARY KEY (`user_id`),
+  ADD KEY `idx_user_total_bookings` (`user_total_bookings`);
+
+--
 -- Indexes for table `user_sessions`
 --
 ALTER TABLE `user_sessions`
@@ -2922,13 +2981,13 @@ ALTER TABLE `notification_templates`
 -- AUTO_INCREMENT for table `page_sessions`
 --
 ALTER TABLE `page_sessions`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=30;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=47;
 
 --
 -- AUTO_INCREMENT for table `page_views`
 --
 ALTER TABLE `page_views`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=31;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=36;
 
 --
 -- AUTO_INCREMENT for table `payment_methods`
@@ -3102,13 +3161,13 @@ ALTER TABLE `user_activities`
 -- AUTO_INCREMENT for table `user_logout_logs`
 --
 ALTER TABLE `user_logout_logs`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=215;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=216;
 
 --
 -- AUTO_INCREMENT for table `user_sessions`
 --
 ALTER TABLE `user_sessions`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `user_settings`
@@ -3453,6 +3512,12 @@ ALTER TABLE `user_activities`
 --
 ALTER TABLE `user_logout_logs`
   ADD CONSTRAINT `user_logout_logs_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `user_profiles`
+--
+ALTER TABLE `user_profiles`
+  ADD CONSTRAINT `user_profiles_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `user_sessions`

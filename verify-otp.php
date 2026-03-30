@@ -1,7 +1,8 @@
 <?php
-session_start();
 require_once 'config/database.php';
 require_once 'includes/functions.php';
+
+initSession();
 
 // Load platform settings
 function getPlatformSetting($key, $default = '') {
@@ -27,9 +28,19 @@ $platform_description = getPlatformSetting('platform_description', 'Connecting s
 $message = '';
 $error = '';
 $success = '';
+$nextUrl = '';
+$flow = '';
 
 // Check if user came from password reset
 $is_password_reset = isset($_SESSION['reset_email']);
+
+// Preserve redirect destination and flow when coming from registration
+if (isset($_REQUEST['next'])) {
+    $nextUrl = trim($_REQUEST['next']);
+}
+if (isset($_REQUEST['flow'])) {
+    $flow = trim($_REQUEST['flow']);
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = sanitize($_POST['email']);
@@ -39,13 +50,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!preg_match('/^\d{6}$/', $otp)) {
         $error = 'Invalid OTP format. Please enter a 6-digit code.';
     } else {
-        $stmt = $db->prepare("SELECT id, otp_code, otp_expires_at, is_active FROM users WHERE email = ?");
+        $stmt = $db->prepare("SELECT id, otp_code, otp_expires_at, is_active, user_type, full_name, email FROM users WHERE email = ?");
         $stmt->execute([$email]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($user) {
             // Check if account is active
-            if (!$user['is_active']) {
+            if (!$user['is_active'] && $flow !== 'registration') {
                 $error = 'This account has been deactivated. Please contact support.';
             } elseif ($user['otp_code'] === $otp) {
                 if (strtotime($user['otp_expires_at']) > time()) {
@@ -62,14 +73,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         header('Location: reset-password.php');
                         exit;
                     } else {
-                        // For account verification - mark as verified
+                        // For account verification - mark as verified and auto-login the user
                         $update = $db->prepare("UPDATE users SET is_verified = 1, otp_code = NULL, otp_expires_at = NULL WHERE id = ?");
                         if ($update->execute([$user['id']])) {
-                            $success = 'Account verified successfully! You can now login to your account.';
-                            
-                            // Log verification
-                            $logStmt = $db->prepare('INSERT INTO security_logs (user_id, action, ip_address, user_agent) VALUES (?, ?, ?, ?)');
-                            $logStmt->execute([$user['id'], 'account_verified', $_SERVER['REMOTE_ADDR'], $_SERVER['HTTP_USER_AGENT'] ?? '']);
+                            $_SESSION['user_id'] = $user['id'];
+                            $_SESSION['user_role'] = $user['user_type'];
+                            $_SESSION['user_name'] = $user['full_name'];
+                            $_SESSION['user_email'] = $user['email'];
+                            $_SESSION['login_time'] = time();
+                            session_regenerate_id(true);
+
+                            try {
+                                $logStmt = $db->prepare('INSERT INTO security_logs (user_id, action, ip_address, user_agent) VALUES (?, ?, ?, ?)');
+                                $logStmt->execute([$user['id'], 'account_verified', $_SERVER['REMOTE_ADDR'] ?? '', $_SERVER['HTTP_USER_AGENT'] ?? '']);
+                            } catch (Exception $e) {
+                                error_log('Failed to log account verification: ' . $e->getMessage());
+                            }
+
+                            try {
+                                $device = 'Desktop';
+                                $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                                if (preg_match('/Mobile|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i', $userAgent)) {
+                                    $device = 'Mobile';
+                                } elseif (preg_match('/Tablet|iPad/i', $userAgent)) {
+                                    $device = 'Tablet';
+                                }
+
+                                $sessionStmt = $db->prepare('INSERT INTO user_sessions (user_id, session_id, device, ip_address, user_agent, login_time, is_active) VALUES (?, ?, ?, ?, ?, NOW(), 1)');
+                                $sessionStmt->execute([$user['id'], session_id(), $device, $_SERVER['REMOTE_ADDR'] ?? '', $userAgent]);
+                            } catch (Exception $e) {
+                                error_log('Failed to create user session after OTP verification: ' . $e->getMessage());
+                            }
+
+                            try {
+                                $updateLogin = $db->prepare('UPDATE users SET last_login = NOW() WHERE id = ?');
+                                $updateLogin->execute([$user['id']]);
+                            } catch (Exception $e) {
+                                error_log('Failed to update last_login after OTP verification: ' . $e->getMessage());
+                            }
+
+                            $redirectDest = 'client/dashboard.php';
+                            if ($user['user_type'] === 'provider') {
+                                $redirectDest = 'provider/dashboard.php';
+                            } elseif ($user['user_type'] === 'admin') {
+                                $redirectDest = 'admin/dashboard.php';
+                            }
+
+                            if (!empty($nextUrl)) {
+                                $decoded = rawurldecode($nextUrl);
+                                $parsed = parse_url($decoded);
+                                if (!isset($parsed['scheme']) && !isset($parsed['host']) && strpos($decoded, '..') === false) {
+                                    $redirectDest = $decoded;
+                                }
+                            }
+
+                            redirect($redirectDest);
                         } else {
                             $error = 'Failed to verify account. Please try again.';
                         }
@@ -98,12 +156,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Pre-fill email from session if available
+// Pre-fill email from session or query string if available
 $prefilled_email = '';
 if ($is_password_reset && isset($_SESSION['reset_email'])) {
     $prefilled_email = $_SESSION['reset_email'];
 } elseif (isset($_POST['email'])) {
     $prefilled_email = $_POST['email'];
+} elseif (isset($_GET['email'])) {
+    $prefilled_email = sanitize($_GET['email']);
 }
 ?>
 <!DOCTYPE html>
@@ -447,6 +507,8 @@ if ($is_password_reset && isset($_SESSION['reset_email'])) {
                                 Enter the 6-digit code sent to your email address.
                             </div>
                         </div>
+                        <input type="hidden" name="next" value="<?php echo htmlspecialchars($nextUrl); ?>">
+                        <input type="hidden" name="flow" value="<?php echo htmlspecialchars($flow); ?>">
 
                         <button type="submit" class="btn btn-primary w-100 mb-3">
                             <i class="fas fa-check-circle me-2"></i>

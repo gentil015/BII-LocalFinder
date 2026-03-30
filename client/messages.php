@@ -4,6 +4,7 @@ ini_set('display_errors', '0'); // Don't display errors, log them instead
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+require_once '../includes/live_location.php';
 require_once '../includes/chat.php';
 require_once '../includes/mailer.php';
 
@@ -48,6 +49,18 @@ if (isProvider()) {
 $me = $_SESSION['user_id'];
 $db = Database::getInstance()->getConnection();
 
+function decodeMessageJson(string $message): string {
+    $decoded = html_entity_decode($message, ENT_QUOTES, 'UTF-8');
+    while (strpos($decoded, '&quot;') !== false || strpos($decoded, '&amp;') !== false) {
+        $previous = $decoded;
+        $decoded = html_entity_decode($decoded, ENT_QUOTES, 'UTF-8');
+        if ($decoded === $previous) {
+            break;
+        }
+    }
+    return $decoded;
+}
+
 // Function to render message content (handles service offers, services, and regular messages)
 function renderMessageContent($m) {
     $messageType = $m['message_type'] ?? $m['attachment_type'] ?? '';
@@ -55,7 +68,7 @@ function renderMessageContent($m) {
     
     // Handle service offer messages
     if ($messageType === 'service_offer') {
-        $jsonData = html_entity_decode($m['message'], ENT_QUOTES, 'UTF-8');
+        $jsonData = decodeMessageJson($m['message']);
         $serviceData = json_decode($jsonData, true);
         if ($serviceData) {
             $negotiableBadge = $serviceData['negotiable'] ? '<span class="badge negotiable">Negotiable</span>' : '';
@@ -81,7 +94,7 @@ function renderMessageContent($m) {
     }
     // Handle service messages
     elseif ($messageType === 'service') {
-        $jsonData = html_entity_decode($m['message'], ENT_QUOTES, 'UTF-8');
+        $jsonData = decodeMessageJson($m['message']);
         $serviceData = json_decode($jsonData, true);
         if ($serviceData) {
             $priceRange = $serviceData['min_price'] && $serviceData['max_price'] && $serviceData['min_price'] != $serviceData['max_price'] 
@@ -99,6 +112,55 @@ function renderMessageContent($m) {
                     <div class="service-actions">
                         <button class="btn btn-sm btn-primary" onclick="bookService(this, ' . intval($serviceData['service_id']) . ', \'' . addslashes($serviceData['service_name']) . '\')">Book Now</button>
                     </div>
+                </div>';
+        }
+    }
+    // Handle location messages
+    elseif ($messageType === 'location') {
+        $jsonData = decodeMessageJson($m['message']);
+        $locationData = json_decode($jsonData, true);
+        if ($locationData && isset($locationData['latitude'], $locationData['longitude'])) {
+            $latitude = htmlspecialchars($locationData['latitude']);
+            $longitude = htmlspecialchars($locationData['longitude']);
+            $label = htmlspecialchars($locationData['label'] ?? 'Shared live location');
+            $mapUrl = 'https://www.openstreetmap.org/?mlat=' . $latitude . '&mlon=' . $longitude . '#map=18/' . $latitude . '/' . $longitude;
+            $latitudeFloat = floatval($locationData['latitude']);
+            $longitudeFloat = floatval($locationData['longitude']);
+            $bbox = ($longitudeFloat - 0.007) . ',' . ($latitudeFloat - 0.005) . ',' . ($longitudeFloat + 0.007) . ',' . ($latitudeFloat + 0.005);
+            $mapIframeUrl = 'https://www.openstreetmap.org/export/embed.html?bbox=' . $bbox . '&layer=mapnik&marker=' . $latitudeFloat . ',' . $longitudeFloat;
+
+            return '
+                <div class="location-card">
+                    <div class="location-card-header"><i class="fas fa-map-marker-alt"></i> ' . $label . '</div>
+                    <div class="location-card-body">
+                        <iframe src="' . $mapIframeUrl . '" class="location-map" loading="lazy" style="border:none; width:100%; height:180px; border-radius:10px;"></iframe>
+                    </div>
+                    <div class="location-card-actions"><a href="' . $mapUrl . '" target="_blank" rel="noopener noreferrer">Open in map</a></div>
+                </div>';
+        }
+    }
+
+    // Handle location JSON inside plain text when message_type is text or missing
+    if ($messageType === 'text' || $messageType === '') {
+        $jsonData = decodeMessageJson($m['message']);
+        $locationData = json_decode($jsonData, true);
+        if ($locationData && isset($locationData['latitude'], $locationData['longitude'])) {
+            $latitude = htmlspecialchars($locationData['latitude']);
+            $longitude = htmlspecialchars($locationData['longitude']);
+            $label = htmlspecialchars($locationData['label'] ?? 'Shared live location');
+            $mapUrl = 'https://www.openstreetmap.org/?mlat=' . $latitude . '&mlon=' . $longitude . '#map=18/' . $latitude . '/' . $longitude;
+            $latitudeFloat = floatval($locationData['latitude']);
+            $longitudeFloat = floatval($locationData['longitude']);
+            $bbox = ($longitudeFloat - 0.007) . ',' . ($latitudeFloat - 0.005) . ',' . ($longitudeFloat + 0.007) . ',' . ($latitudeFloat + 0.005);
+            $mapIframeUrl = 'https://www.openstreetmap.org/export/embed.html?bbox=' . $bbox . '&layer=mapnik&marker=' . $latitudeFloat . ',' . $longitudeFloat;
+
+            return '
+                <div class="location-card">
+                    <div class="location-card-header"><i class="fas fa-map-marker-alt"></i> ' . $label . '</div>
+                    <div class="location-card-body">
+                        <iframe src="' . $mapIframeUrl . '" class="location-map" loading="lazy" style="border:none; width:100%; height:180px; border-radius:10px;"></iframe>
+                    </div>
+                    <div class="location-card-actions"><a href="' . $mapUrl . '" target="_blank" rel="noopener noreferrer">Open in map</a></div>
                 </div>';
         }
     }
@@ -328,6 +390,7 @@ if ($with) {
     <title>Messages</title>
     <link rel="stylesheet" href="../bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -804,6 +867,66 @@ if ($with) {
 
         .booking-info a:hover { text-decoration: underline; }
 
+        .live-location-panel {
+            margin: 0.75rem 1rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .live-location-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.9rem 1rem;
+            background: var(--surface-2);
+            border-bottom: 1px solid var(--border);
+            gap: 0.75rem;
+        }
+
+        .live-location-title {
+            font-weight: 700;
+            font-size: 0.95rem;
+        }
+
+        .live-location-status {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+        }
+
+        .live-location-map {
+            width: 100%;
+            height: 240px;
+            min-height: 240px;
+        }
+
+        .live-location-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            align-items: center;
+            padding: 0.9rem 1rem;
+            background: var(--surface-2);
+        }
+
+        .live-location-controls button,
+        .live-location-controls select {
+            min-height: 40px;
+        }
+
+        .live-location-message .message-bubble {
+            max-width: 70%;
+            background: rgba(13, 110, 253, 0.12);
+            border: 1px solid rgba(13, 110, 253, 0.18);
+            color: var(--text-primary);
+        }
+
+        .live-location-message .message {
+            justify-content: flex-start;
+        }
+
         /* ── BOOKING TIMELINE ── */
         .booking-timeline {
             padding: 0.875rem 1.25rem;
@@ -928,12 +1051,22 @@ if ($with) {
             border: 1px solid rgba(255,255,255,0.2);
         }
 
-        .message.received .service-card {
+        .location-card {
+            background: rgba(255,255,255,0.12);
+            border-radius: var(--radius-md);
+            padding: 0.875rem;
+            margin: 0.25rem 0;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .message.received .service-card,
+        .message.received .location-card {
             background: var(--surface);
             border: 1px solid var(--border);
         }
 
-        .service-card-header {
+        .service-card-header,
+        .location-card-header {
             display: flex;
             align-items: center;
             gap: 0.5rem;
@@ -983,6 +1116,39 @@ if ($with) {
 
         .message.received .service-description {
             color: var(--text-secondary);
+        }
+
+        .location-card-body {
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.9);
+            line-height: 1.5;
+            margin-bottom: 0.5rem;
+        }
+
+        .location-map {
+            width: 100%;
+            border-radius: 12px;
+            display: block;
+            max-height: 180px;
+            object-fit: cover;
+        }
+
+        .message.received .location-card-body {
+            color: var(--text-secondary);
+        }
+
+        .location-card-actions a {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.8rem;
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 700;
+        }
+
+        .location-card-actions a:hover {
+            text-decoration: underline;
         }
 
         .service-price {
@@ -1352,6 +1518,23 @@ if ($with) {
                 </div>
             <?php endif; ?>
 
+            <div class="live-location-panel" id="liveLocationPanel" style="display:none;">
+                <div class="live-location-header">
+                    <div class="live-location-title">Live Location</div>
+                    <div class="live-location-status" id="liveLocationStatus">Ready to share</div>
+                </div>
+                <div id="liveLocationMap" class="live-location-map"></div>
+                <div class="live-location-controls">
+                    <button type="button" id="shareLocationBtn" class="btn btn-outline-primary">Share Live Location</button>
+                    <button type="button" id="stopLocationBtn" class="btn btn-danger" style="display:none;">Stop Sharing</button>
+                    <select id="shareDurationSelect" class="form-select" style="max-width: 140px;">
+                        <option value="15">15 min</option>
+                        <option value="60">1 hour</option>
+                        <option value="120">2 hours</option>
+                    </select>
+                </div>
+            </div>
+
             <!-- Messages Area -->
             <div class="messages-area" id="messagesArea">
                 <?php if (empty($messages)): ?>
@@ -1385,6 +1568,7 @@ if ($with) {
 
                     <div class="input-row">
                         <button type="button" id="attachButton" class="header-btn" title="Attach file"><i class="fas fa-paperclip"></i></button>
+                        <button type="button" id="shareLocationTrigger" class="header-btn" title="Share live location"><i class="fas fa-map-marker-alt"></i></button>
                         <input type="file" name="attachment" id="attachmentInput" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.webm" style="display:none;" title="Attach file">
                         <input type="text" name="message" placeholder="Type a message…" autocomplete="off" id="messageTextField">
                         <button type="button" id="recordButton" class="header-btn" title="Record voice message"><i class="fas fa-microphone"></i></button>
@@ -1808,6 +1992,12 @@ if (messagesArea && pollUser) {
 }
 
 // Helper function to create and append a new message element
+function decodeHtmlEntities(input) {
+    const txt = document.createElement('textarea');
+    txt.innerHTML = input;
+    return txt.value;
+}
+
 function renderNewMessage(m, messagesArea) {
     const group = document.createElement('div');
     group.className = 'message-group';
@@ -1822,7 +2012,7 @@ function renderNewMessage(m, messagesArea) {
     // Handle service offer messages
     if (messageType === 'service_offer') {
         try {
-            const serviceData = JSON.parse(m.message);
+            const serviceData = JSON.parse(decodeHtmlEntities(m.message || '{}'));
             const negotiableTag = serviceData.negotiable ? '<span style="background: rgba(255,255,255,0.2); padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.7rem; display: inline-block; margin-top: 0.5rem;">NEGOTIABLE</span>' : '';
             const minPrice = serviceData.min_price ? parseFloat(serviceData.min_price).toFixed(0) : parseFloat(serviceData.price).toFixed(0);
             const maxPrice = serviceData.max_price ? parseFloat(serviceData.max_price).toFixed(0) : parseFloat(serviceData.price).toFixed(0);
@@ -1837,12 +2027,63 @@ function renderNewMessage(m, messagesArea) {
     // Handle service messages
     else if (messageType === 'service') {
         try {
-            const serviceData = JSON.parse(m.message);
+            const serviceData = JSON.parse(decodeHtmlEntities(m.message || '{}'));
             const bookBtn = isSent ? '' : `<button onclick="bookService(this, '${serviceData.service_id}');" style="width: 100%; padding: 0.65rem; background: rgba(255,255,255,0.25); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem;">Book Service</button>`;
             group.innerHTML = `<div class="message ${isSent ? 'sent' : 'received'}"><div class="message-bubble" style="padding: 0.875rem;"><div style="font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem;"><i class="fas fa-briefcase"></i> ${serviceData.service_name}</div>${serviceData.description ? `<div style="font-size: 0.85rem; margin-bottom: 0.5rem; opacity: 0.95;">${serviceData.description}</div>` : ''}<div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 0.75rem; color: ${isSent ? 'rgba(255,255,255,0.95)' : 'var(--text-primary)'};">Starting: RWF ${parseFloat(serviceData.price).toFixed(0)}</div>${bookBtn}</div></div><div class="message-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>`;
         } catch (e) {
             console.error('Service message parse error:', e);
             return;
+        }
+    }
+    // Handle location messages
+    else if (messageType === 'location') {
+        try {
+            const locationData = JSON.parse(decodeHtmlEntities(m.message || '{}'));
+            const mapUrl = `https://www.openstreetmap.org/?mlat=${locationData.latitude}&mlon=${locationData.longitude}#map=18/${locationData.latitude}/${locationData.longitude}`;
+            const mapIframeUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${locationData.longitude - 0.007},${locationData.latitude - 0.005},${locationData.longitude + 0.007},${locationData.latitude + 0.005}&layer=mapnik&marker=${locationData.latitude},${locationData.longitude}`;
+            group.innerHTML = `
+                <div class="message ${isSent ? 'sent' : 'received'}">
+                    <div class="message-bubble">
+                        <div class="location-card">
+                            <div class="location-card-header"><i class="fas fa-map-marker-alt"></i> ${locationData.label || 'Shared live location'}</div>
+                            <div class="location-card-body"><iframe src="${mapIframeUrl}" class="location-map" loading="lazy" style="border:none; width:100%; height:180px; border-radius:10px;"></iframe></div>
+                            <div class="location-card-actions"><a href="${mapUrl}" target="_blank" rel="noopener noreferrer">Open in map</a></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="message-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+            `;
+        } catch (e) {
+            console.error('Failed to parse location message', e);
+            return;
+        }
+    } else if (!messageType || messageType === 'text') {
+        try {
+            const locationData = JSON.parse(decodeHtmlEntities(m.message || '{}'));
+            if (locationData && typeof locationData.latitude !== 'undefined' && typeof locationData.longitude !== 'undefined') {
+                const mapUrl = `https://www.openstreetmap.org/?mlat=${locationData.latitude}&mlon=${locationData.longitude}#map=18/${locationData.latitude}/${locationData.longitude}`;
+                const mapIframeUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${locationData.longitude - 0.007},${locationData.latitude - 0.005},${locationData.longitude + 0.007},${locationData.latitude + 0.005}&layer=mapnik&marker=${locationData.latitude},${locationData.longitude}`;
+                group.innerHTML = `
+                    <div class="message ${isSent ? 'sent' : 'received'}">
+                        <div class="message-bubble">
+                            <div class="location-card">
+                                <div class="location-card-header"><i class="fas fa-map-marker-alt"></i> ${locationData.label || 'Shared live location'}</div>
+                                <div class="location-card-body"><iframe src="${mapIframeUrl}" class="location-map" loading="lazy" style="border:none; width:100%; height:180px; border-radius:10px;"></iframe></div>
+                                <div class="location-card-actions"><a href="${mapUrl}" target="_blank" rel="noopener noreferrer">Open in map</a></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="message-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+                `;
+                messagesArea.appendChild(group);
+                const isScrolledToBottom = (messagesArea.scrollHeight - messagesArea.scrollTop - messagesArea.clientHeight) < 100;
+                if (isScrolledToBottom) {
+                    messagesArea.scrollTop = messagesArea.scrollHeight;
+                }
+                return;
+            }
+        } catch (e) {
+            // ignore invalid JSON fallback
         }
     }
     // Handle regular messages with attachments
@@ -1867,7 +2108,7 @@ function renderNewMessage(m, messagesArea) {
             <div class="message ${isSent ? 'sent' : 'received'}" style="animation: fadeInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
                 <div class="message-bubble">
                     ${voiceBadgeHtml}
-                    <div>${m.message.replace(/\n/g,'<br>')}</div>
+                    <div>${decodeHtmlEntities(m.message || '').replace(/\n/g,'<br>')}</div>
                     ${attachmentHtml}
                 </div>
             </div>
@@ -1892,7 +2133,56 @@ function updateConversationPreview(userId, newPreview) {
         if (preview) {
             preview.textContent = newPreview;
         }
+        const unreadBadge = convItem.querySelector('.unread-badge');
+        if (unreadBadge && newPreview === 'No messages yet') {
+            unreadBadge.remove();
+        }
     }
+}
+
+function clearConversationMessages() {
+    const messagesArea = document.getElementById('messagesArea');
+    if (!messagesArea) return;
+
+    messagesArea.querySelectorAll('.message-group').forEach(el => el.remove());
+    const emptyState = messagesArea.querySelector('.msg-empty');
+    if (emptyState) {
+        emptyState.style.display = 'block';
+    } else {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'msg-empty';
+        placeholder.innerHTML = '<i class="fas fa-comments"></i><p>No messages in this conversation.</p>';
+        messagesArea.appendChild(placeholder);
+    }
+    messagesArea.scrollTop = messagesArea.scrollHeight;
+    lastMessageId = 0;
+}
+
+function renderConversationHistory(messages) {
+    const messagesArea = document.getElementById('messagesArea');
+    if (!messagesArea) return;
+
+    const emptyState = messagesArea.querySelector('.msg-empty');
+    if (emptyState) emptyState.style.display = 'none';
+    messagesArea.querySelectorAll('.message-group').forEach(el => el.remove());
+
+    let maxId = 0;
+    messages.forEach(m => {
+        renderNewMessage(m, messagesArea);
+        maxId = Math.max(maxId, Number(m.id) || 0);
+    });
+    lastMessageId = maxId;
+}
+
+function formatLastMessagePreview(message) {
+    if (!message) return 'No messages yet';
+    if (message.message_type === 'audio' || message.attachment_type === 'audio') {
+        return '🎤 Voice note';
+    }
+    if (typeof message.message === 'string') {
+        return message.message.substring(0, 50);
+    }
+    return 'No messages yet';
 }
 
 // Professional polling function  
@@ -1908,33 +2198,34 @@ function pollForNewMessages() {
         return r.json();
     })
     .then(data => {
-        if (!data.success || !data.messages) return;
-        
-        // Only process messages newer than the last one we've seen
-        const newMessages = data.messages.filter(m => m.id > lastMessageId);
-        
-        if (newMessages.length > 0) {
-            const messagesArea = document.getElementById('messagesArea');
-            if (messagesArea) {
-                // Hide empty state if it exists
-                const emptyState = messagesArea.querySelector('.msg-empty');
-                if (emptyState) emptyState.style.display = 'none';
-                
-                newMessages.forEach(m => {
-                    renderNewMessage(m, messagesArea);
-                    lastMessageId = Math.max(lastMessageId, m.id);
-                });
-                
-                // Update conversation preview with last message
-                const lastNewMsg = newMessages[newMessages.length - 1];
-                let preview = '';
-                if (lastNewMsg.message_type === 'audio' || lastNewMsg.attachment_type === 'audio') {
-                    preview = '🎤 Voice note';
-                } else {
-                    preview = lastNewMsg.message.substring(0, 50);
-                }
-                updateConversationPreview(pollUser, preview);
+        if (!data.success || !Array.isArray(data.messages)) return;
+
+        const messagesArea = document.getElementById('messagesArea');
+        const existingGroups = messagesArea ? messagesArea.querySelectorAll('.message-group') : [];
+        const incomingIds = data.messages.map(m => Number(m.id) || 0);
+        const hasCurrentLastId = existingGroups.length === 0 || incomingIds.includes(lastMessageId);
+
+        if (data.messages.length === 0) {
+            if (existingGroups.length > 0) {
+                clearConversationMessages();
+                updateConversationPreview(pollUser, 'No messages yet');
             }
+        } else {
+            if (!hasCurrentLastId) {
+                renderConversationHistory(data.messages);
+            } else {
+                const newMessages = data.messages.filter(m => Number(m.id) > lastMessageId);
+                if (newMessages.length > 0 && messagesArea) {
+                    const emptyState = messagesArea.querySelector('.msg-empty');
+                    if (emptyState) emptyState.style.display = 'none';
+
+                    newMessages.forEach(m => {
+                        renderNewMessage(m, messagesArea);
+                    });
+                    lastMessageId = Math.max(lastMessageId, ...newMessages.map(m => Number(m.id) || 0));
+                }
+            }
+            updateConversationPreview(pollUser, formatLastMessagePreview(data.messages[data.messages.length - 1]));
         }
         
         // Update booking timeline if present
@@ -1964,6 +2255,15 @@ function pollForNewMessages() {
             console.debug('Poll: Network check failed', err.message);
         }
     });
+}
+
+function handleChatCleared() {
+    clearConversationMessages();
+    updateConversationPreview(pollUser, 'No messages yet');
+}
+
+function handleConversationDeleted() {
+    window.location.href = window.location.pathname;
 }
 
 // Start polling when a conversation is open
@@ -2007,7 +2307,13 @@ if (!document.querySelector('style[data-animation]')) {
         bookingId: <?php echo (int) $booking_id; ?>,
         isProvider: <?php echo isProvider() ? 'true' : 'false'; ?>
     };
+    window.chatLocationRoom = '<?php echo htmlspecialchars(normalizeConversationKey($me, $with)); ?>';
+    window.chatUserId = <?php echo (int) $me; ?>;
+    window.chatPartnerId = <?php echo (int) $with; ?>;
+    window.chatBookingId = <?php echo (int) $booking_id; ?>;
 </script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="../assets/js/live-location-chat.js"></script>
 <script src="../assets/js/chat-dropdown.js"></script>
     </div> <!-- .main-content -->
 </body>

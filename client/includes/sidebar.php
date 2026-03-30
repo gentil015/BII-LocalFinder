@@ -81,6 +81,13 @@ $sidebar_width = $current === 'messages.php' ? '60px' : '260px';
             </li>
 
             <li>
+                <a href="favorites.php" class="<?php echo $current === 'favorites.php' ? 'active' : ''; ?>">
+                    <span class="nav-icon"><i class="fas fa-heart"></i></span>
+                    <span class="nav-label">Favorites</span>
+                </a>
+            </li>
+
+            <li>
                 <a href="messages.php" class="<?php echo $current === 'messages.php' ? 'active' : ''; ?>">
                     <span class="nav-icon"><i class="fas fa-comments"></i></span>
                     <span class="nav-label">Messages</span>
