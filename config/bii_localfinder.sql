@@ -1257,11 +1257,16 @@ CREATE TABLE `provider_services` (
   `duration` int(11) NOT NULL DEFAULT 60,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `payment_type` enum('per_hour','per_service','per_day') NOT NULL DEFAULT 'per_service',
+  `payment_type` enum('fixed_price','hourly_rate','per_job_estimate','per_day','per_service','base_price') NOT NULL DEFAULT 'fixed_price',
   `min_price` decimal(10,2) DEFAULT NULL COMMENT 'Minimum negotiable price',
   `max_price` decimal(10,2) DEFAULT NULL COMMENT 'Maximum negotiable price',
   `negotiable` tinyint(1) DEFAULT 0 COMMENT 'Is this service price negotiable?',
-  `base_price` decimal(10,2) DEFAULT NULL COMMENT 'Base price for negotiation reference'
+  `base_price` decimal(10,2) DEFAULT NULL COMMENT 'Base price for negotiation reference',
+  `optional_extras` text DEFAULT NULL COMMENT 'Json encoded optional extras for the service',
+  `availability_days` text DEFAULT NULL COMMENT 'Comma-separated weekdays available for this service',
+  `time_slots` text DEFAULT NULL COMMENT 'JSON encoded time slots for the service',
+  `booking_mode` enum('request_approval','instant') NOT NULL DEFAULT 'request_approval',
+  `service_status` enum('draft','published','paused') NOT NULL DEFAULT 'draft'
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
 
 --

@@ -930,6 +930,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
             border-radius: 10px;
             padding: 1.5rem;
             transition: all 0.3s ease;
+            cursor: pointer;
         }
         
         .service-card:hover {
@@ -2429,7 +2430,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
                     <?php if (!empty($services)): ?>
                         <div class="services-grid">
                             <?php foreach ($services as $service): ?>
-                                <div class="service-card" data-negotiable="<?php echo $service['negotiable'] ? '1' : '0'; ?>">
+                                <div class="service-card" role="button" data-service-id="<?php echo $service['id']; ?>" data-negotiable="<?php echo $service['negotiable'] ? '1' : '0'; ?>" onclick="navigateToService(event, this)">
                                     <div>
                                         <h4 class="service-title">
                                             <?php echo htmlspecialchars($service['name']); ?>
@@ -3307,6 +3308,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
             }
             
             modalInfo.innerHTML = infoHTML;
+        }
+
+        function navigateToService(event, card) {
+            if (event.target.closest('.offer-button-negotiable')) {
+                return;
+            }
+            const serviceId = card.dataset.serviceId;
+            if (!serviceId) {
+                return;
+            }
+            window.location.href = 'service.php?service_id=' + encodeURIComponent(serviceId);
         }
 
 

@@ -192,19 +192,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['final_submit'])) {
     }
 
     // service belongs check
-    if (empty($booking_errors)) {
-        $valid = false;
-        foreach ($services as $svc) {
-            if ((int)$svc['id'] === $service_id && $svc['is_available']) { $valid = true; break; }
-        }
-        if (!$valid) {
-            $booking_errors[] = "Invalid service selected";
+    $selectedService = null;
+    foreach ($services as $svc) {
+        if ((int)$svc['id'] === $service_id) {
+            $selectedService = $svc;
+            break;
         }
     }
 
     if (empty($booking_errors)) {
-        $stmt = $db->prepare("INSERT INTO bookings (client_id, provider_id, service_id, service_description, preferred_date, preferred_time, location, amount, status, provider_share_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)");
-        if ($stmt->execute([$_SESSION['user_id'], $provider_id, $service_id, $service_desc, $preferred_date, $preferred_time, $client_location, $client_proposed_price, $share_id ? $share_id : null])) {
+        if (!$selectedService || !$selectedService['is_available']) {
+            $booking_errors[] = "Invalid service selected";
+        }
+    }
+
+    if (empty($booking_errors) && $selectedService) {
+        $serviceAvailabilityDays = [];
+        if (!empty($selectedService['availability_days'])) {
+            $serviceAvailabilityDays = array_map('intval', array_filter(array_map('trim', explode(',', $selectedService['availability_days']))));
+        }
+        if (empty($serviceAvailabilityDays)) {
+            $serviceAvailabilityDays = $working_days;
+        }
+
+        if ($preferred_date) {
+            if (!in_array($day_of_week, $serviceAvailabilityDays, true)) {
+                $day_names = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+                $booking_errors[] = "Selected service is not available on " . $day_names[$day_of_week-1] . "s";
+            }
+        }
+
+        if ($preferred_time && !empty($selectedService['time_slots'])) {
+            $availableServiceSlots = [];
+            $rawSlots = $selectedService['time_slots'];
+            $decoded = json_decode($rawSlots, true);
+            if (is_array($decoded) && $decoded !== null) {
+                foreach ($decoded as $slot) {
+                    if (is_string($slot)) {
+                        $availableServiceSlots[] = trim($slot);
+                    } elseif (is_array($slot) && isset($slot['start'], $slot['end'])) {
+                        $availableServiceSlots[] = trim($slot['start']) . '-' . trim($slot['end']);
+                    }
+                }
+            } else {
+                foreach (preg_split('/[\r\n]+/', $rawSlots) as $line) {
+                    $line = trim($line);
+                    if ($line !== '') {
+                        $availableServiceSlots[] = $line;
+                    }
+                }
+            }
+
+            if (!empty($availableServiceSlots)) {
+                $validTime = false;
+                $serviceDuration = intval($selectedService['duration']) ?: 60;
+                foreach ($availableServiceSlots as $slotRange) {
+                    $parts = array_map('trim', explode('-', $slotRange));
+                    if (count($parts) !== 2) {
+                        continue;
+                    }
+                    $slotStart = strtotime($parts[0]);
+                    $slotEnd = strtotime($parts[1]);
+                    $selectedTime = strtotime($preferred_time);
+                    if ($slotStart !== false && $slotEnd !== false && $selectedTime !== false) {
+                        if ($selectedTime >= $slotStart && ($selectedTime + ($serviceDuration * 60)) <= $slotEnd) {
+                            $validTime = true;
+                            break;
+                        }
+                    }
+                }
+                if (!$validTime) {
+                    $booking_errors[] = "Selected time is outside the service's available time slots.";
+                }
+            }
+        }
+    }
+
+    if (empty($booking_errors)) {
+        $bookingStatus = 'pending';
+        if ($selectedService && $selectedService['booking_mode'] === 'instant' && empty($selectedService['negotiable'])) {
+            $bookingStatus = 'confirmed';
+        }
+
+        $stmt = $db->prepare("INSERT INTO bookings (client_id, provider_id, service_id, service_description, preferred_date, preferred_time, location, amount, status, provider_share_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        if ($stmt->execute([$_SESSION['user_id'], $provider_id, $service_id, $service_desc, $preferred_date, $preferred_time, $client_location, $client_proposed_price, $bookingStatus, $share_id ? $share_id : null])) {
             $booking_id = $db->lastInsertId();
             $booking_ref = '#BK-' . date('Y') . '-' . str_pad($booking_id,5,'0',STR_PAD_LEFT);
 
@@ -1050,7 +1121,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['final_submit'])) {
                                             $priceStr = 'RWF ' . number_format($svc['price']);
                                         }
                                     ?>
-                                    <label class="service-option" onclick="selectService(this, '<?php echo (int)$svc['id']; ?>', '<?php echo addslashes($svc['name']); ?>', '<?php echo addslashes($priceStr); ?>', <?php echo $isNegotiable ? 'true' : 'false'; ?>, '<?php echo addslashes((string)($svc['duration'] ?? '60')); ?>')">
+                                    <label class="service-option"
+                                           data-service-name="<?php echo htmlspecialchars($svc['name']); ?>"
+                                           data-service-price="<?php echo htmlspecialchars($priceStr); ?>"
+                                           data-service-duration="<?php echo htmlspecialchars($svc['duration'] ?? '60'); ?>"
+                                           data-service-negotiable="<?php echo $isNegotiable ? '1' : '0'; ?>"
+                                           data-booking-mode="<?php echo htmlspecialchars($svc['booking_mode'] ?? 'request_approval'); ?>"
+                                           data-availability-days="<?php echo htmlspecialchars($svc['availability_days'] ?? '1,2,3,4,5'); ?>"
+                                           data-time-slots="<?php echo htmlspecialchars(json_encode($svc['time_slots']), ENT_QUOTES, 'UTF-8'); ?>"
+                                           onclick="selectService(this, '<?php echo (int)$svc['id']; ?>', '<?php echo addslashes($svc['name']); ?>', '<?php echo addslashes($priceStr); ?>', <?php echo $isNegotiable ? 'true' : 'false'; ?>, '<?php echo addslashes((string)($svc['duration'] ?? '60')); ?>')">
                                         <input type="radio" name="service_id" value="<?php echo (int)$svc['id']; ?>" <?php echo (isset($_POST['service_id']) && $_POST['service_id']==$svc['id'])?'checked':''; ?>>
                                         <div class="service-option-check"></div>
                                         <div class="service-cat"><i class="fas <?php echo htmlspecialchars($svc['category_icon'] ?? 'fa-concierge-bell'); ?>"></i> <?php echo htmlspecialchars($svc['category_name'] ?? 'Service'); ?></div>
@@ -1064,6 +1143,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['final_submit'])) {
                                                 <?php if ($isNegotiable): ?>
                                                     <span class="negotiable-chip"><i class="fas fa-handshake"></i> Negotiable</span>
                                                 <?php endif; ?>
+                                                <div class="mt-1">
+                                                    <span class="badge bg-<?php echo (($svc['booking_mode'] ?? 'request_approval') === 'instant') ? 'success' : 'secondary'; ?>">
+                                                        <?php echo (($svc['booking_mode'] ?? 'request_approval') === 'instant') ? 'Instant Booking' : 'Request Approval'; ?>
+                                                    </span>
+                                                </div>
                                             </div>
                                             <div class="service-dur"><i class="far fa-clock"></i> <?php echo htmlspecialchars($svc['duration'] ?? '60'); ?> min</div>
                                         </div>
@@ -1525,6 +1609,9 @@ const bufferMinutes = <?php echo intval($buffer_minutes); ?>;
 const maxDailyBookings = <?php echo intval($max_daily_bookings); ?>;
 const serviceDurations = <?php echo json_encode(array_column($services, 'duration', 'id')); ?>;
 let selectedServiceDuration = providerDefaultSlotDuration;
+let effectiveWorkingDays = Array.isArray(workingDays) ? [...workingDays] : [];
+let selectedServiceTimeSlots = null;
+let selectedServiceBookingMode = 'request_approval';
 let currentStep = 1;
 
 // Debug output
@@ -1571,6 +1658,25 @@ function selectService(el, id, name, price, negotiable, duration) {
     state.duration = duration + ' min';
     state.isNegotiable = negotiable;
 
+    const serviceBookingMode = el.dataset.bookingMode || 'request_approval';
+    const availabilityDaysStr = el.dataset.availabilityDays || '';
+    const serviceTimeSlotsRaw = el.dataset.timeSlots || '';
+
+    selectedServiceBookingMode = serviceBookingMode;
+    state.bookingMode = serviceBookingMode;
+
+    effectiveWorkingDays = availabilityDaysStr
+        ? availabilityDaysStr.split(',').map(d => parseInt(d, 10)).filter(n => !Number.isNaN(n))
+        : [...workingDays];
+
+    try {
+        selectedServiceTimeSlots = serviceTimeSlotsRaw ? JSON.parse(serviceTimeSlotsRaw) : null;
+    } catch (error) {
+        selectedServiceTimeSlots = serviceTimeSlotsRaw ? serviceTimeSlotsRaw.split('\n').map(item => item.trim()).filter(Boolean) : null;
+    }
+    state.availabilityDays = effectiveWorkingDays;
+    state.timeSlots = selectedServiceTimeSlots;
+
     // Update slot duration from service setting (fallback to provider default)
     const serviceDurationValue = parseInt(duration, 10);
     if (!isNaN(serviceDurationValue) && serviceDurationValue > 0) {
@@ -1592,9 +1698,11 @@ function selectService(el, id, name, price, negotiable, duration) {
     if (sumDurationNode) sumDurationNode.textContent = duration + ' minutes';
     if (step1ErrorNode) step1ErrorNode.style.display = 'none';
 
-    // Recompute times when a date is already selected
+    // Recompute availability and times when a date is already selected
     const selectedDate = document.getElementById('preferredDate').value;
+    renderDateOptions();
     if (selectedDate) {
+        setSelectedDate(selectedDate, true);
         renderTimeSlots(selectedDate);
     }
 
@@ -1658,6 +1766,32 @@ function parseMinutes(raw) {
     return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
 }
 
+function parseServiceTimeSlots() {
+    if (!selectedServiceTimeSlots) return null;
+    if (Array.isArray(selectedServiceTimeSlots)) {
+        return selectedServiceTimeSlots.map(slot => {
+            if (typeof slot === 'string') return slot.trim();
+            if (slot && slot.start && slot.end) return `${slot.start}-${slot.end}`;
+            return null;
+        }).filter(Boolean);
+    }
+    if (typeof selectedServiceTimeSlots === 'string') {
+        try {
+            const parsed = JSON.parse(selectedServiceTimeSlots);
+            if (Array.isArray(parsed)) {
+                return parsed.map(slot => {
+                    if (typeof slot === 'string') return slot.trim();
+                    if (slot && slot.start && slot.end) return `${slot.start}-${slot.end}`;
+                    return null;
+                }).filter(Boolean);
+            }
+        } catch (error) {
+            return selectedServiceTimeSlots.split('\n').map(item => item.trim()).filter(Boolean);
+        }
+    }
+    return null;
+}
+
 function toISODate(year, month, day) {
     const m = (month + 1).toString().padStart(2, '0');
     const d = day.toString().padStart(2, '0');
@@ -1672,7 +1806,7 @@ function isDateDisabled(dateObj) {
     const iso = toISODate(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
 
     const dow = dateObj.getDay() === 0 ? 7 : dateObj.getDay();
-    if (!workingDays.includes(dow)) return true;
+    if (!effectiveWorkingDays.includes(dow)) return true;
     const availabilityEntry = providerAvailability.find(item => item.date === iso);
     if (availabilityEntry && parseInt(availabilityEntry.is_available, 10) === 0) return true;
     if (fullyBookedDates.includes(iso)) return true;
@@ -1724,8 +1858,8 @@ function renderDateOptions() {
     const month = calendarBaseDate.getMonth();
     label.textContent = calendarBaseDate.toLocaleDateString('en-RW', { month: 'long', year: 'numeric' });
 
-    if (!workingDays || workingDays.length === 0) {
-        container.innerHTML = '<div style="grid-column:1/-1;padding:.7rem; text-align:center; color:#bf0000;">No working days are configured for this provider.</div>';
+    if (!effectiveWorkingDays || effectiveWorkingDays.length === 0) {
+        container.innerHTML = '<div style="grid-column:1/-1;padding:.7rem; text-align:center; color:#bf0000;">No working days are configured for this service or provider.</div>';
         return;
     }
 
@@ -1833,7 +1967,7 @@ function buildTimeSlots(dateString) {
     let weekday = d.getUTCDay();
     weekday = weekday === 0 ? 7 : weekday;
 
-    if (!workingDays.includes(weekday)) {
+    if (!effectiveWorkingDays.includes(weekday)) {
         return slots;
     }
 
@@ -1860,6 +1994,33 @@ function buildTimeSlots(dateString) {
     if (availabilityEntry && availabilityEntry.start_time && availabilityEntry.end_time) {
         dateStart = availabilityEntry.start_time;
         dateEnd = availabilityEntry.end_time;
+    }
+
+    const serviceSlotRanges = parseServiceTimeSlots();
+    if (Array.isArray(serviceSlotRanges) && serviceSlotRanges.length > 0) {
+        for (const range of serviceSlotRanges) {
+            const parts = range.split('-').map(part => part.trim());
+            if (parts.length !== 2) continue;
+            const rangeStart = parts[0];
+            const rangeEnd = parts[1];
+            const startRange = parseMinutes(rangeStart);
+            const endRange = parseMinutes(rangeEnd);
+            if (endRange <= startRange) continue;
+
+            const effectiveDuration = (selectedServiceDuration && selectedServiceDuration > 0) ? selectedServiceDuration : providerDefaultSlotDuration;
+            const step = Math.max(15, effectiveDuration);
+            const buffer = Math.max(0, bufferMinutes);
+            let t = startRange;
+
+            while (t + step <= endRange) {
+                const slotEnd = t + step;
+                const hours = Math.floor(t / 60);
+                const minutes = t % 60;
+                slots.push(`${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}`);
+                t = slotEnd + buffer;
+            }
+        }
+        return slots;
     }
 
     const start = parseMinutes(dateStart);
@@ -1965,8 +2126,8 @@ function validateStep(n) {
             const dayNum = dow === 0 ? 7 : dow; // convert to 1-7 (1=Mon)
             const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
             console.log(`Date: ${d}, Day of week (numeric): ${dayNum} (${dayNames[dow]}), Working days: ${workingDays}`);
-            if (!workingDays.includes(dayNum)) {
-                document.getElementById('dateError').textContent = 'Provider is not available on the selected day.';
+            if (!effectiveWorkingDays.includes(dayNum)) {
+                document.getElementById('dateError').textContent = 'Service is not available on the selected day.';
                 document.getElementById('dateError').style.display = 'block'; ok = false;
             } else if (fullyBookedDates.includes(d)) {
                 document.getElementById('dateError').textContent = 'Selected date is fully booked. Please pick another date.';
@@ -2156,7 +2317,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (radio) {
             radio.checked = true;
             const label = radio.closest('.service-option');
-            if (label) label.classList.add('selected');
+            if (label) {
+                label.classList.add('selected');
+                selectService(
+                    label,
+                    prevServiceId,
+                    label.dataset.serviceName || '',
+                    label.dataset.servicePrice || '',
+                    label.dataset.serviceNegotiable === '1',
+                    label.dataset.serviceDuration || '60'
+                );
+            }
         }
     }
 

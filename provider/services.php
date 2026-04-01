@@ -16,6 +16,82 @@ $db = Database::getInstance()->getConnection();
 $success = '';
 $errors = [];
 
+if (!function_exists('parseOptionalExtrasInput')) {
+    function parseOptionalExtrasInput($input) {
+        $items = [];
+        $lines = preg_split('/\r\n|\r|\n/', trim($input));
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+
+            if (preg_match('/^(.+?)\s*\(\+\$?([\d,]+(?:\.\d{1,2})?)\)$/', $line, $matches)
+                || preg_match('/^(.+?)\s*\+\$?([\d,]+(?:\.\d{1,2})?)$/', $line, $matches)) {
+                $label = trim($matches[1]);
+                $price = floatval(str_replace(',', '', $matches[2]));
+                if ($label !== '' && $price >= 0) {
+                    $items[] = ['label' => $label, 'price' => $price];
+                    continue;
+                }
+            }
+
+            return null;
+        }
+
+        return $items;
+    }
+}
+
+if (!function_exists('parseServiceTimeSlots')) {
+    function parseServiceTimeSlots($input) {
+        $slots = [];
+        $lines = preg_split('/\r\n|\r|\n/', trim($input));
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+            if (preg_match('/^(?:([01]\d|2[0-3]):([0-5]\d))\s*-\s*((?:[01]\d|2[0-3])):([0-5]\d)$/', $line, $matches)) {
+                $start = $matches[1] . ':' . $matches[2];
+                $end = $matches[3] . ':' . $matches[4];
+                if (strtotime($start) >= strtotime($end)) {
+                    return null;
+                }
+                $slots[] = ['start' => $start, 'end' => $end];
+                continue;
+            }
+            return null;
+        }
+        return $slots;
+    }
+}
+
+if (!function_exists('normalizeAvailabilityDays')) {
+    function normalizeAvailabilityDays($input) {
+        $days = [];
+        if (is_array($input)) {
+            $source = $input;
+        } else {
+            $source = preg_split('/[\s,]+/', trim($input));
+        }
+        foreach ($source as $value) {
+            $value = trim($value);
+            if ($value === '') {
+                continue;
+            }
+            $day = intval($value);
+            if ($day >= 1 && $day <= 7) {
+                $days[] = $day;
+            }
+        }
+        if (empty($days)) {
+            return [1,2,3,4,5];
+        }
+        return array_values(array_unique($days));
+    }
+}
+
 // Get provider profile
 $stmt = $db->prepare("
     SELECT sp.*, u.email, u.phone, u.profile_image, u.full_name
@@ -73,12 +149,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         // When handling POST -> Add new service (validate payment_type)
-        $payment_type = in_array($_POST['payment_type'] ?? '', ['per_hour','per_service','per_day']) ? $_POST['payment_type'] : 'per_service';
+        $allowedPaymentTypes = ['fixed_price','hourly_rate','per_job_estimate','per_day','per_service','base_price'];
+        $payment_type = in_array($_POST['payment_type'] ?? '', $allowedPaymentTypes, true) ? $_POST['payment_type'] : 'fixed_price';
         
         // Get negotiation settings
         $negotiable = isset($_POST['negotiable']) ? 1 : 0;
         $min_price = $negotiable ? floatval($_POST['min_price'] ?? $price) : null;
         $max_price = $negotiable ? floatval($_POST['max_price'] ?? $price) : null;
+
+        $availability_days = normalizeAvailabilityDays($_POST['availability_days'] ?? '1,2,3,4,5');
+        $availability_days_str = implode(',', $availability_days);
+
+        $time_slots_raw = trim($_POST['time_slots'] ?? '');
+        $time_slots_json = null;
+        if ($time_slots_raw !== '') {
+            $parsedSlots = parseServiceTimeSlots($time_slots_raw);
+            if ($parsedSlots === null) {
+                $errors[] = "Time slots must be entered one per line in HH:MM-HH:MM format.";
+            } else {
+                $time_slots_json = json_encode($parsedSlots);
+            }
+        }
+
+        $booking_mode = in_array($_POST['booking_mode'] ?? 'request_approval', ['instant', 'request_approval'], true) ? $_POST['booking_mode'] : 'request_approval';
+        $service_status = in_array($_POST['service_status'] ?? 'draft', ['draft', 'published', 'paused'], true) ? $_POST['service_status'] : 'draft';
+        $is_available = ($service_status === 'published') ? 1 : 0;
+
+        $optional_extras_raw = trim($_POST['optional_extras'] ?? '');
+        $optional_extras_json = null;
+        if ($optional_extras_raw !== '') {
+            $parsedExtras = parseOptionalExtrasInput($optional_extras_raw);
+            if ($parsedExtras === null) {
+                $errors[] = "Optional extras must be listed one per line in the format: Emergency service (+10000)";
+            } else {
+                $optional_extras_json = json_encode($parsedExtras);
+            }
+        }
         
         // Validate min/max prices
         if ($negotiable) {
@@ -92,10 +198,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($errors)) {
             try {
                 $stmt = $db->prepare("INSERT INTO provider_services 
-                    (provider_id, category_id, name, description, price, duration, is_available, payment_type, negotiable, min_price, max_price, base_price, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+                    (provider_id, category_id, name, description, price, duration, is_available, payment_type, negotiable, min_price, max_price, base_price, optional_extras, availability_days, time_slots, booking_mode, service_status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
                 $stmt->execute([
-                    $provider['id'], $category_id, $name, $description, $price, $duration, $is_available, $payment_type, $negotiable, $min_price, $max_price, $price
+                    $provider['id'], $category_id, $name, $description, $price, $duration, $is_available, $payment_type, $negotiable, $min_price, $max_price, $price, $optional_extras_json, $availability_days_str, $time_slots_json, $booking_mode, $service_status
                 ]);
                 $success = "Service added successfully";
             } catch (Exception $e) {
@@ -135,12 +241,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         // Update service (include payment_type)
-        $payment_type = in_array($_POST['payment_type'] ?? '', ['per_hour','per_service','per_day']) ? $_POST['payment_type'] : 'per_service';
+        $allowedPaymentTypes = ['fixed_price','hourly_rate','per_job_estimate','per_day','per_service','base_price'];
+        $payment_type = in_array($_POST['payment_type'] ?? '', $allowedPaymentTypes, true) ? $_POST['payment_type'] : 'fixed_price';
         
         // Get negotiation settings
         $negotiable = isset($_POST['negotiable']) ? 1 : 0;
         $min_price = $negotiable ? floatval($_POST['min_price'] ?? $price) : null;
         $max_price = $negotiable ? floatval($_POST['max_price'] ?? $price) : null;
+
+        $availability_days = normalizeAvailabilityDays($_POST['availability_days'] ?? '1,2,3,4,5');
+        $availability_days_str = implode(',', $availability_days);
+
+        $time_slots_raw = trim($_POST['time_slots'] ?? '');
+        $time_slots_json = null;
+        if ($time_slots_raw !== '') {
+            $parsedSlots = parseServiceTimeSlots($time_slots_raw);
+            if ($parsedSlots === null) {
+                $errors[] = "Time slots must be entered one per line in HH:MM-HH:MM format.";
+            } else {
+                $time_slots_json = json_encode($parsedSlots);
+            }
+        }
+
+        $booking_mode = in_array($_POST['booking_mode'] ?? 'request_approval', ['instant', 'request_approval'], true) ? $_POST['booking_mode'] : 'request_approval';
+        $service_status = in_array($_POST['service_status'] ?? 'draft', ['draft', 'published', 'paused'], true) ? $_POST['service_status'] : 'draft';
+        $is_available = ($service_status === 'published') ? 1 : 0;
+
+        $optional_extras_raw = trim($_POST['optional_extras'] ?? '');
+        $optional_extras_json = null;
+        if ($optional_extras_raw !== '') {
+            $parsedExtras = parseOptionalExtrasInput($optional_extras_raw);
+            if ($parsedExtras === null) {
+                $errors[] = "Optional extras must be listed one per line in the format: Emergency service (+10000)";
+            } else {
+                $optional_extras_json = json_encode($parsedExtras);
+            }
+        }
         
         // Validate min/max prices
         if ($negotiable) {
@@ -154,10 +290,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($errors)) {
             try {
                 $stmt = $db->prepare("UPDATE provider_services
-                    SET name = ?, description = ?, price = ?, duration = ?, is_available = ?, payment_type = ?, negotiable = ?, min_price = ?, max_price = ?, updated_at = NOW()
+                    SET name = ?, description = ?, price = ?, duration = ?, is_available = ?, payment_type = ?, negotiable = ?, min_price = ?, max_price = ?, base_price = ?, optional_extras = ?, availability_days = ?, time_slots = ?, booking_mode = ?, service_status = ?, updated_at = NOW()
                     WHERE id = ? AND provider_id = ?");
                 $stmt->execute([
-                    $name, $description, $price, $duration, $is_available, $payment_type, $negotiable, $min_price, $max_price, $service_id, $provider['id']
+                    $name, $description, $price, $duration, $is_available, $payment_type, $negotiable, $min_price, $max_price, $price, $optional_extras_json, $availability_days_str, $time_slots_json, $booking_mode, $service_status, $service_id, $provider['id']
                 ]);
                 $success = "Service updated successfully";
             } catch (Exception $e) {
@@ -196,20 +332,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $service_id = intval($_POST['service_id']);
         
         // Verify service belongs to provider and get current status
-        $stmt = $db->prepare("SELECT id, is_available FROM provider_services WHERE id = ? AND provider_id = ?");
+        $stmt = $db->prepare("SELECT id, service_status FROM provider_services WHERE id = ? AND provider_id = ?");
         $stmt->execute([$service_id, $provider['id']]);
         $service = $stmt->fetch();
-        
+
         if (!$service) {
             $errors[] = "Service not found or access denied";
         } else {
             try {
-                $new_status = $service['is_available'] ? 0 : 1;
-                $stmt = $db->prepare("UPDATE provider_services SET is_available = ? WHERE id = ? AND provider_id = ?");
-                $stmt->execute([$new_status, $service_id, $provider['id']]);
+                $new_status = ($service['service_status'] === 'published') ? 'paused' : 'published';
+                $new_availability = ($new_status === 'published') ? 1 : 0;
+                $stmt = $db->prepare("UPDATE provider_services SET service_status = ?, is_available = ? WHERE id = ? AND provider_id = ?");
+                $stmt->execute([$new_status, $new_availability, $service_id, $provider['id']]);
                 
-                $success = "Service availability updated!";
-                
+                $success = "Service status updated!";
             } catch (Exception $e) {
                 $errors[] = "Failed to update service availability: " . $e->getMessage();
                 error_log("Toggle availability error: " . $e->getMessage());
@@ -1104,9 +1240,18 @@ if (!empty($services)) {
                                     <div class="service-header">
                                         <h3 class="service-title"><?php echo htmlspecialchars($service['name']); ?></h3>
                                         <div style="display: flex; gap: 0.5rem;">
-                                            <span class="status-badge status-<?php echo $service['is_available'] ? 'available' : 'unavailable'; ?>">
-                                                <i class="fas fa-<?php echo $service['is_available'] ? 'check-circle' : 'ban'; ?> me-1"></i>
-                                                <?php echo $service['is_available'] ? __('services_list.status_available', [], 'services_page') : __('services_list.status_unavailable', [], 'services_page'); ?>
+                                            <?php
+                                                $serviceStatusKey = $service['service_status'] ?? 'draft';
+                                                $serviceStatusLabels = [
+                                                    'published' => ['class' => 'success', 'icon' => 'check-circle', 'label' => 'Published'],
+                                                    'paused' => ['class' => 'warning', 'icon' => 'pause', 'label' => 'Paused'],
+                                                    'draft' => ['class' => 'secondary', 'icon' => 'pencil-alt', 'label' => 'Draft'],
+                                                ];
+                                                $statusInfo = $serviceStatusLabels[$serviceStatusKey] ?? $serviceStatusLabels['draft'];
+                                            ?>
+                                            <span class="status-badge status-<?php echo $statusInfo['class']; ?>">
+                                                <i class="fas fa-<?php echo $statusInfo['icon']; ?> me-1"></i>
+                                                <?php echo htmlspecialchars($statusInfo['label']); ?>
                                             </span>
                                             <?php if ($service['negotiable']): ?>
                                                 <span class="badge bg-info">
@@ -1156,15 +1301,30 @@ if (!empty($services)) {
                                         <div>
                                             <?php
                                                 $labels = [
-                                                    'per_hour' => __('add_service_form.payment_per_hour', [], 'services_page'),
+                                                    'fixed_price' => __('add_service_form.payment_fixed_price', [], 'services_page'),
+                                                    'hourly_rate' => __('add_service_form.payment_per_hour', [], 'services_page'),
+                                                    'per_job_estimate' => __('add_service_form.payment_per_job_estimate', [], 'services_page'),
+                                                    'per_day' => __('add_service_form.payment_per_day', [], 'services_page'),
+                                                    'base_price' => __('add_service_form.payment_base_price', [], 'services_page'),
                                                     'per_service' => __('add_service_form.payment_per_service', [], 'services_page'),
-                                                    'per_day' => __('add_service_form.payment_per_day', [], 'services_page')
                                                 ];
                                             ?>
                                             <span class="badge bg-secondary"><?php echo $labels[$service['payment_type']] ?? __('add_service_form.payment_per_service', [], 'services_page'); ?></span>
                                         </div>
                                     </div>
-                                    
+
+                                    <?php
+                                        $extraItems = !empty($service['optional_extras']) ? json_decode($service['optional_extras'], true) : [];
+                                    ?>
+                                    <?php if (!empty($extraItems)): ?>
+                                        <div class="mb-3">
+                                            <span class="badge bg-warning text-dark">Optional extras: <?php echo count($extraItems); ?></span>
+                                            <small class="text-muted ms-2">
+                                                <?php echo htmlspecialchars($extraItems[0]['label'] . ' (+RWF ' . number_format($extraItems[0]['price']) . ')'); ?><?php if (count($extraItems) > 1) echo ' + ' . (count($extraItems) - 1) . ' more'; ?>
+                                            </small>
+                                        </div>
+                                    <?php endif; ?>
+
                                     <div class="service-actions">
                                         <button type="button" class="btn btn-info btn-sm" 
                                                 data-bs-toggle="modal" data-bs-target="#serviceDetailsModal"
@@ -1173,7 +1333,8 @@ if (!empty($services)) {
                                                 data-service-description="<?php echo htmlspecialchars($service['description']); ?>"
                                                 data-service-price="<?php echo $service['price']; ?>"
                                                 data-service-duration="<?php echo $service['duration']; ?>"
-                                                data-service-category="<?php echo htmlspecialchars($service['category_name']); ?>">
+                                                data-service-category="<?php echo htmlspecialchars($service['category_name']); ?>"
+                                                data-service-optional-extras="<?php echo htmlspecialchars($service['optional_extras'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
                                             <i class="fas fa-eye"></i> Details
                                         </button>
                                         
@@ -1185,15 +1346,21 @@ if (!empty($services)) {
                                                 data-service-price="<?php echo $service['price']; ?>"
                                                 data-service-duration="<?php echo $service['duration']; ?>"
                                                 data-service-available="<?php echo $service['is_available']; ?>"
-                                                data-service-payment-type="<?php echo htmlspecialchars($service['payment_type']); ?>">
+                                                data-service-status="<?php echo htmlspecialchars($service['service_status'] ?? 'draft'); ?>"
+                                                data-service-payment-type="<?php echo htmlspecialchars($service['payment_type']); ?>"
+                                                data-service-booking-mode="<?php echo htmlspecialchars($service['booking_mode'] ?? 'request_approval'); ?>"
+                                                data-service-availability-days="<?php echo htmlspecialchars($service['availability_days'] ?? ''); ?>"
+                                                data-service-time-slots="<?php echo htmlspecialchars($service['time_slots'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                                                data-service-optional-extras="<?php echo htmlspecialchars($service['optional_extras'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
                                             <i class="fas fa-edit"></i> <?php echo __('services_list.action_edit', [], 'services_page'); ?>
                                         </button>
                                         
                                         <form method="POST" style="display: inline;">
                                             <input type="hidden" name="service_id" value="<?php echo $service['id']; ?>">
-                                            <button type="submit" name="toggle_availability" class="btn btn-<?php echo $service['is_available'] ? 'warning' : 'success'; ?> btn-sm">
-                                                <i class="fas fa-<?php echo $service['is_available'] ? 'pause' : 'play'; ?>"></i> 
-                                                <?php echo $service['is_available'] ? 'Deactivate' : 'Activate'; ?>
+                                            <?php $statusToggleLabel = ($service['service_status'] ?? 'draft') === 'published' ? 'Pause' : 'Publish'; ?>
+                                            <button type="submit" name="toggle_availability" class="btn btn-<?php echo ($service['service_status'] ?? 'draft') === 'published' ? 'warning' : 'success'; ?> btn-sm">
+                                                <i class="fas fa-<?php echo ($service['service_status'] ?? 'draft') === 'published' ? 'pause' : 'play'; ?>"></i> 
+                                                <?php echo $statusToggleLabel; ?>
                                             </button>
                                         </form>
                                         
@@ -1337,11 +1504,61 @@ if (!empty($services)) {
                         <div class="mb-3">
                             <label class="form-label">Payment Type</label>
                             <select name="payment_type" class="form-select" id="editServicePaymentType">
-                                <option value="per_service">Per Service</option>
-                                <option value="per_hour">Per Hour</option>
-                                <option value="per_day">Per Day</option>
+                                <option value="fixed_price"><?php echo __('add_service_form.payment_fixed_price', [], 'services_page'); ?></option>
+                                <option value="hourly_rate"><?php echo __('add_service_form.payment_per_hour', [], 'services_page'); ?></option>
+                                <option value="per_job_estimate"><?php echo __('add_service_form.payment_per_job_estimate', [], 'services_page'); ?></option>
+                                <option value="per_day"><?php echo __('add_service_form.payment_per_day', [], 'services_page'); ?></option>
+                                <option value="base_price"><?php echo __('add_service_form.payment_base_price', [], 'services_page'); ?></option>
+                                <option value="per_service"><?php echo __('add_service_form.payment_per_service', [], 'services_page'); ?></option>
                             </select>
                             <div class="form-text">How you charge for this service</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Booking Mode</label>
+                            <select name="booking_mode" class="form-select" id="editServiceBookingMode">
+                                <option value="request_approval">Request Approval</option>
+                                <option value="instant">Instant Booking</option>
+                            </select>
+                            <div class="form-text">Choose whether this service is confirmed instantly or requires provider approval.</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Service Status</label>
+                            <select name="service_status" class="form-select" id="editServiceStatus">
+                                <option value="draft">Draft</option>
+                                <option value="published">Published</option>
+                                <option value="paused">Paused</option>
+                            </select>
+                            <div class="form-text">Set whether the service is draft, published for booking, or paused.</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Available Days</label>
+                            <div class="row g-2">
+                                <?php $weekdays = [1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat', 7 => 'Sun']; ?>
+                                <?php foreach ($weekdays as $dayNumber => $dayLabel): ?>
+                                    <div class="col-auto">
+                                        <div class="form-check">
+                                            <input class="form-check-input edit-availability-day" type="checkbox" name="availability_days[]" value="<?php echo $dayNumber; ?>" id="editAvailabilityDay<?php echo $dayNumber; ?>">
+                                            <label class="form-check-label" for="editAvailabilityDay<?php echo $dayNumber; ?>"><?php echo $dayLabel; ?></label>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                            <div class="form-text">Select which days this service can be booked.</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Available Time Slots</label>
+                            <textarea name="time_slots" class="form-control" id="editTimeSlots" rows="3" placeholder="08:00-12:00\n14:00-18:00"></textarea>
+                            <div class="form-text">Enter one time slot per line in HH:MM-HH:MM format. Leave blank to use the provider's default schedule.</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label"><?php echo __('add_service_form.optional_extras', [], 'services_page'); ?></label>
+                            <textarea name="optional_extras" id="editOptionalExtras" class="form-control" rows="3" placeholder="<?php echo __('add_service_form.optional_extras_placeholder', [], 'services_page'); ?>"></textarea>
+                            <div class="form-text"><?php echo __('add_service_form.optional_extras_help', [], 'services_page'); ?></div>
                         </div>
 
                         <div class="mb-3">
@@ -1373,7 +1590,7 @@ if (!empty($services)) {
                             </div>
                         </div>
                         
-                        <div class="form-check">
+                        <div class="form-check d-none">
                             <input class="form-check-input" type="checkbox" name="is_available" id="editServiceAvailable" value="1">
                             <label class="form-check-label" for="editServiceAvailable">
                                 <?php echo __('edit_service.is_available', [], 'services_page'); ?>
@@ -1469,14 +1686,65 @@ if (!empty($services)) {
                             <div class="mb-3">
                                 <label class="form-label"><?php echo __('add_service_form.payment_type', [], 'services_page'); ?></label>
                                 <select name="payment_type" class="form-select">
-                                    <option value="per_service"><?php echo __('add_service_form.payment_per_service', [], 'services_page'); ?></option>
-                                    <option value="per_hour"><?php echo __('add_service_form.payment_per_hour', [], 'services_page'); ?></option>
+                                    <option value="fixed_price"><?php echo __('add_service_form.payment_fixed_price', [], 'services_page'); ?></option>
+                                    <option value="hourly_rate"><?php echo __('add_service_form.payment_per_hour', [], 'services_page'); ?></option>
+                                    <option value="per_job_estimate"><?php echo __('add_service_form.payment_per_job_estimate', [], 'services_page'); ?></option>
                                     <option value="per_day"><?php echo __('add_service_form.payment_per_day', [], 'services_page'); ?></option>
+                                    <option value="base_price"><?php echo __('add_service_form.payment_base_price', [], 'services_page'); ?></option>
+                                    <option value="per_service"><?php echo __('add_service_form.payment_per_service', [], 'services_page'); ?></option>
                                 </select>
                                 <div class="form-text"><?php echo 'How you charge for this service'; ?></div>
                             </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Booking Mode</label>
+                                <select name="booking_mode" class="form-select">
+                                    <option value="request_approval" <?php echo (($_POST['booking_mode'] ?? '') === 'request_approval') ? 'selected' : ''; ?>>Request Approval</option>
+                                    <option value="instant" <?php echo (($_POST['booking_mode'] ?? '') === 'instant') ? 'selected' : ''; ?>>Instant Booking</option>
+                                </select>
+                                <div class="form-text">Choose whether this service is confirmed instantly or requires provider approval.</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Service Status</label>
+                                <select name="service_status" class="form-select">
+                                    <option value="draft" <?php echo (($_POST['service_status'] ?? '') === 'draft') ? 'selected' : ''; ?>>Draft</option>
+                                    <option value="published" <?php echo (($_POST['service_status'] ?? '') === 'published') ? 'selected' : ''; ?>>Published</option>
+                                    <option value="paused" <?php echo (($_POST['service_status'] ?? '') === 'paused') ? 'selected' : ''; ?>>Paused</option>
+                                </select>
+                                <div class="form-text">Set whether the service is draft, published for booking, or paused.</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Available Days</label>
+                                <div class="row g-2">
+                                    <?php $weekdays = [1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat', 7 => 'Sun']; ?>
+                                    <?php foreach ($weekdays as $dayNumber => $dayLabel): ?>
+                                        <div class="col-auto">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" name="availability_days[]" value="<?php echo $dayNumber; ?>" id="availabilityDay<?php echo $dayNumber; ?>"
+                                                    <?php echo in_array($dayNumber, $_POST['availability_days'] ?? [1,2,3,4,5]) ? 'checked' : ''; ?> >
+                                                <label class="form-check-label" for="availabilityDay<?php echo $dayNumber; ?>"><?php echo $dayLabel; ?></label>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                                <div class="form-text">Select which days this service can be booked.</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Available Time Slots</label>
+                                <textarea name="time_slots" class="form-control" rows="3" placeholder="08:00-12:00\n14:00-18:00"><?php echo htmlspecialchars($_POST['time_slots'] ?? ''); ?></textarea>
+                                <div class="form-text">Enter one time slot per line in HH:MM-HH:MM format. Leave blank to use the provider's default schedule.</div>
+                            </div>
                         </div>
 
+                        <div class="mb-3">
+                            <label class="form-label"><?php echo __('add_service_form.optional_extras', [], 'services_page'); ?></label>
+                            <textarea name="optional_extras" id="optionalExtras" class="form-control" rows="3" placeholder="<?php echo __('add_service_form.optional_extras_placeholder', [], 'services_page'); ?>"><?php echo $_POST['optional_extras'] ?? ''; ?></textarea>
+                            <div class="form-text"><?php echo __('add_service_form.optional_extras_help', [], 'services_page'); ?></div>
+                        </div>
+                        
                         <div class="mb-3">
                             <label class="form-label"><?php echo __('add_service_form.description', [], 'services_page'); ?> <span class="required">*</span></label>
                             <textarea name="description" class="form-control" required rows="4" 
@@ -1516,7 +1784,7 @@ if (!empty($services)) {
                             </div>
                         </div>
 
-                        <div class="form-check mb-3">
+                        <div class="form-check mb-3 d-none">
                             <input class="form-check-input" type="checkbox" name="is_available" id="is_available" value="1" 
                                    <?php echo isset($_POST['is_available']) ? 'checked' : 'checked'; ?>>
                             <label class="form-check-label" for="is_available">
@@ -1566,6 +1834,12 @@ if (!empty($services)) {
                         <p id="detailServiceDescription" style="line-height: 1.6; color: #555;"></p>
                     </div>
 
+                    <div class="mb-4">
+                        <h6 class="text-muted mb-2">Optional Extras</h6>
+                        <ul id="detailServiceExtras" class="list-group mb-0"></ul>
+                        <p id="detailServiceExtrasNone" class="text-muted mb-0">No optional extras listed.</p>
+                    </div>
+
                     <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 10px;">
                         <h6 class="mb-3">Service Performance</h6>
                         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; text-align: center;">
@@ -1605,12 +1879,39 @@ if (!empty($services)) {
                 const servicePrice = button.getAttribute('data-service-price');
                 const serviceDuration = button.getAttribute('data-service-duration');
                 const serviceCategory = button.getAttribute('data-service-category');
+                const serviceExtras = button.getAttribute('data-service-optional-extras');
                 
                 document.getElementById('detailServiceName').textContent = serviceName;
                 document.getElementById('detailServiceCategory').textContent = serviceCategory;
                 document.getElementById('detailServicePrice').textContent = 'RWF ' + parseInt(servicePrice).toLocaleString();
                 document.getElementById('detailServiceDuration').textContent = serviceDuration + ' minutes';
                 document.getElementById('detailServiceDescription').textContent = serviceDescription;
+
+                const extrasList = document.getElementById('detailServiceExtras');
+                const extrasNone = document.getElementById('detailServiceExtrasNone');
+                extrasList.innerHTML = '';
+                if (serviceExtras) {
+                    try {
+                        const extras = JSON.parse(serviceExtras);
+                        if (Array.isArray(extras) && extras.length) {
+                            extras.forEach(extra => {
+                                const li = document.createElement('li');
+                                li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                                li.textContent = extra.label;
+
+                                const badge = document.createElement('span');
+                                badge.className = 'badge bg-secondary';
+                                badge.textContent = '+RWF ' + parseFloat(extra.price).toLocaleString();
+
+                                li.appendChild(badge);
+                                extrasList.appendChild(li);
+                            });
+                        }
+                    } catch (error) {
+                        console.warn('Unable to parse service extras', error);
+                    }
+                }
+                extrasNone.style.display = extrasList.children.length ? 'none' : 'block';
                 
                 // You can fetch stats via AJAX here if needed
             });
@@ -1662,6 +1963,9 @@ if (!empty($services)) {
                 const servicePrice = button.getAttribute('data-service-price');
                 const serviceDuration = button.getAttribute('data-service-duration');
                 const serviceAvailable = button.getAttribute('data-service-available');
+                const serviceBookingMode = button.getAttribute('data-service-booking-mode');
+                const serviceAvailabilityDays = button.getAttribute('data-service-availability-days');
+                const serviceTimeSlots = button.getAttribute('data-service-time-slots');
                 
                 document.getElementById('editServiceId').value = serviceId;
                 document.getElementById('editServiceName').value = serviceName;
@@ -1674,6 +1978,53 @@ if (!empty($services)) {
                 const paymentType = button.getAttribute('data-service-payment-type');
                 const paymentTypeSelect = document.getElementById('editServicePaymentType');
                 paymentTypeSelect.value = paymentType;
+
+                const bookingModeSelect = document.getElementById('editServiceBookingMode');
+                if (bookingModeSelect) {
+                    bookingModeSelect.value = serviceBookingMode || 'request_approval';
+                }
+
+                const serviceStatus = button.getAttribute('data-service-status');
+                const editServiceStatus = document.getElementById('editServiceStatus');
+                if (editServiceStatus) {
+                    editServiceStatus.value = serviceStatus || 'draft';
+                }
+
+                const availabilityDays = serviceAvailabilityDays ? serviceAvailabilityDays.split(',').map(day => parseInt(day, 10)) : [1,2,3,4,5];
+                document.querySelectorAll('.edit-availability-day').forEach(checkbox => {
+                    checkbox.checked = availabilityDays.includes(parseInt(checkbox.value, 10));
+                });
+
+                const editTimeSlots = document.getElementById('editTimeSlots');
+                if (editTimeSlots) {
+                    editTimeSlots.value = '';
+                    if (serviceTimeSlots) {
+                        try {
+                            const slots = JSON.parse(serviceTimeSlots);
+                            if (Array.isArray(slots)) {
+                                editTimeSlots.value = slots.map(slot => `${slot.start}-${slot.end}`).join('\n');
+                            }
+                        } catch (error) {
+                            editTimeSlots.value = serviceTimeSlots;
+                        }
+                    }
+                }
+
+                const serviceExtrasRaw = button.getAttribute('data-service-optional-extras');
+                const editOptionalExtras = document.getElementById('editOptionalExtras');
+                if (editOptionalExtras) {
+                    editOptionalExtras.value = '';
+                    if (serviceExtrasRaw) {
+                        try {
+                            const extras = JSON.parse(serviceExtrasRaw);
+                            if (Array.isArray(extras)) {
+                                editOptionalExtras.value = extras.map(extra => `${extra.label} (+${parseFloat(extra.price).toFixed(0)})`).join('\n');
+                            }
+                        } catch (error) {
+                            console.warn('Unable to parse optional extras for edit modal', error);
+                        }
+                    }
+                }
             });
         }
         

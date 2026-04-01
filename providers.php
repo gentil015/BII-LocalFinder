@@ -2071,9 +2071,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_favorites'])) 
                 foreach ($popular_services_data as $service): 
                     // Format payment type for display
                     $payment_types = [
-                        'per_hour' => 'Per Hour',
+                        'fixed_price' => 'Fixed Price',
+                        'hourly_rate' => 'Hourly Rate',
+                        'per_job_estimate' => 'Per Job Estimate',
+                        'per_day' => 'Per Day',
                         'per_service' => 'Per Service', 
-                        'per_day' => 'Per Day'
+                        'base_price' => 'Base Price'
                     ];
                     $payment_type_display = $payment_types[$service['payment_type']] ?? 'Per Service';
                     

@@ -857,7 +857,7 @@ $enabledPaymentMethods = !empty(getSetting('payment', 'payment_methods')) ?
     explode(',', getSetting('payment', 'payment_methods')) : ['cash', 'mobile_money'];
 
 // Get time off and availability exceptions for scheduling
-$stmt = $db->prepare("SELECT id, provider_id, start_date, end_date, reason, is_approved FROM provider_time_off WHERE provider_id = ? AND end_date >= CURDATE() ORDER BY start_date ASC");
+$stmt = $db->prepare("SELECT id, provider_id, start_date, end_date, reason, is_approved FROM provider_time_off WHERE provider_id = ? AND end_date >= CURDATE() AND is_approved = 1 ORDER BY start_date ASC");
 $stmt->execute([$provider['id']]);
 $timeOffRequests = $stmt->fetchAll();
 
@@ -5234,64 +5234,6 @@ $is_profile_complete = $requirements->isComplete();
         function removePaymentMethod(button) {
             const methodCard = button.closest('.payment-method-card');
             methodCard.remove();
-        }
-        
-        // Unavailable dates management
-        let unavailableDates = [];
-        
-        function addUnavailableDate() {
-            const dateInput = document.getElementById('unavailable_date');
-            const date = dateInput.value;
-            
-            if (!date) {
-                alert('Please select a date');
-                return;
-            }
-            
-            if (!unavailableDates.includes(date)) {
-                unavailableDates.push(date);
-                updateUnavailableDatesList();
-                dateInput.value = '';
-            } else {
-                alert('This date is already marked as unavailable');
-            }
-        }
-        
-        function updateUnavailableDatesList() {
-            const container = document.getElementById('unavailable_dates_list');
-            container.innerHTML = '';
-            
-            if (unavailableDates.length === 0) {
-                container.innerHTML = '<p class="text-muted">No unavailable dates added</p>';
-                return;
-            }
-            
-            unavailableDates.forEach((date, index) => {
-                const dateElement = document.createElement('div');
-                dateElement.className = 'd-flex justify-content-between align-items-center mb-2';
-                dateElement.innerHTML = `
-                    <span>${formatDate(date)}</span>
-                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeUnavailableDate(${index})">
-                        <i class="fas fa-times"></i>
-                    </button>
-                `;
-                container.appendChild(dateElement);
-            });
-        }
-        
-        function removeUnavailableDate(index) {
-            unavailableDates.splice(index, 1);
-            updateUnavailableDatesList();
-        }
-        
-        function formatDate(dateString) {
-            const date = new Date(dateString);
-            return date.toLocaleDateString('en-US', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            });
         }
         
         // File preview for identity verification

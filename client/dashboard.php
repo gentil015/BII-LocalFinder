@@ -2374,7 +2374,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
                                 <?php endif; ?>
                             </div>
                             <div class="service-card-footer">
-                                <a href="../client/booking.php?provider_id=<?php echo $service['provider_id']; ?>&service_id=<?php echo $service['id']; ?>">
+                                <a href="../client/service.php?service_id=<?php echo $service['id']; ?>" class="btn btn-outline-secondary btn-sm w-100 mb-2">
+                                    <i class="fas fa-eye me-1"></i> View
+                                </a>
+                                <a href="../client/booking.php?provider_id=<?php echo $service['provider_id']; ?>&service_id=<?php echo $service['id']; ?>" class="btn btn-primary btn-sm w-100">
                                     <i class="fas fa-arrow-right me-1"></i> Book
                                 </a>
                             </div>
