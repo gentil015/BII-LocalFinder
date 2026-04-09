@@ -219,6 +219,39 @@ if (!function_exists('getSetting')) {
 }
 
 /**
+ * Update the last ML prediction record for a user/provider pair.
+ * Marks the most recent unlabeled prediction as success or failure.
+ *
+ * @param PDO $db
+ * @param int $userId
+ * @param int $providerId
+ * @param int $outcome
+ * @return bool
+ */
+function updateMlPredictionOutcome(PDO $db, int $userId, int $providerId, int $outcome): bool {
+    if ($userId <= 0 || $providerId <= 0 || !in_array($outcome, [0, 1], true)) {
+        return false;
+    }
+
+    try {
+        $stmt = $db->prepare(
+            "UPDATE ml_predictions_log m
+             JOIN (
+                 SELECT id FROM ml_predictions_log
+                 WHERE user_id = ? AND provider_id = ? AND actual_outcome = 0
+                 ORDER BY created_at DESC
+                 LIMIT 1
+             ) latest ON m.id = latest.id
+             SET m.actual_outcome = ?"
+        );
+        return $stmt->execute([$userId, $providerId, $outcome]);
+    } catch (Throwable $e) {
+        error_log('updateMlPredictionOutcome error: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
  * Check if platform is in maintenance mode
  *
  * @return bool

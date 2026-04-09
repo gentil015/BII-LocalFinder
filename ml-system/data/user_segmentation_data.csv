@@ -1,0 +1,7 @@
+user_id,total_bookings,completed_bookings,cancelled_bookings,avg_booking_value,total_spent,service_diversity,reviews_written,avg_rating_given,favorites_count,account_age_days,last_activity_days,completion_rate,spending_rate,booking_frequency,engagement_score,profile_completeness,response_rate,price_sensitivity,location_diversity,peak_booking_hour,weekend_bookings_ratio,seasonal_pattern,login_frequency,search_queries_count,provider_views_count
+11,10,3.0,3.0,0.0,0.0,3,2,3.5,3,155,127,0.3,0.0,1.9355,1.0,0.5,0.5,0.5,1,12,0.3,0.5,0.1,5,10
+31,6,2.0,0.0,16490.5,98943.0,1,0,0.0,1,129,13,0.3333,767.0,1.3953,0.7,0.5,0.5,0.5,1,12,0.3,0.5,0.1,5,10
+32,15,1.0,3.0,6666.666667,100000.0,2,0,0.0,2,113,0,0.0667,884.955752,3.9823,0.7,0.5,0.5,0.5,1,12,0.3,0.5,0.1,5,10
+33,1,1.0,0.0,0.0,0.0,1,1,2.0,0,112,112,1.0,0.0,0.2679,0.8,0.5,0.5,0.5,1,12,0.3,0.5,0.1,5,10
+34,0,0.0,0.0,0.0,0.0,1,0,0.0,0,19,999,0.0,0.0,0.0,0.0,0.5,0.5,0.5,1,12,0.3,0.5,0.1,5,10
+36,0,0.0,0.0,0.0,0.0,1,0,0.0,1,11,10,0.0,0.0,0.0,0.2,0.5,0.5,0.5,1,12,0.3,0.5,0.1,5,10

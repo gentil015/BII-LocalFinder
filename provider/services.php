@@ -458,1705 +458,1525 @@ if (!empty($services)) {
     }
 }
 ?>
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo __('title', [], 'services_page'); ?> - <?php echo getPlatformName(); ?></title>
-    <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="../bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        *, *::before, *::after { box-sizing: border-box; }
+
         :root {
             --primary: #0d6efd;
+            --primary-dark: #0a58ca;
+            --primary-light: #eff6ff;
             --secondary: #6c757d;
             --success: #198754;
+            --success-light: #f0fdf4;
             --danger: #dc3545;
-            --warning: #ffc107;
-            --info: #0dcaf0;
-            --light: #f8f9fa;
-            --dark: #212529;
-            --sidebar-width: 250px;
+            --danger-light: #fef2f2;
+            --warning: #d97706;
+            --warning-light: #fffbeb;
+            --info: #0891b2;
+            --info-light: #ecfeff;
+            --surface: #ffffff;
+            --surface-2: #f7f8fc;
+            --border: #e8eaf0;
+            --border-subtle: #f0f2f7;
+            --text-primary: #0f1117;
+            --text-secondary: #6b7280;
+            --text-muted: #9ca3af;
+            --sidebar-width: 260px;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 20px;
+            --shadow-xs: 0 1px 3px rgba(0,0,0,0.06);
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.07);
+            --shadow-md: 0 4px 16px rgba(0,0,0,0.09);
+            --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+            --transition: all 0.18s cubic-bezier(0.4,0,0.2,1);
         }
-        
+
         body {
-            background-color: #f5f7fb;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--surface-2);
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
         }
-        
-        /* Maintenance Warning */
-        .maintenance-warning {
-            background: linear-gradient(135deg, #ffc107, #e0a800);
-            color: #856404;
-            border: none;
-            margin-bottom: 1rem;
-        }
-        
-        /* Sidebar Styles */
+
+        /* ── SIDEBAR (unchanged from existing style) ── */
         .sidebar {
             width: var(--sidebar-width);
             background: linear-gradient(180deg, var(--primary), #0a58ca);
             color: white;
             position: fixed;
             height: 100vh;
-            left: 0;
-            top: 0;
+            left: 0; top: 0;
             transition: all 0.3s;
             z-index: 1000;
             box-shadow: 2px 0 10px rgba(0,0,0,0.1);
         }
-        
-        .sidebar-header {
-            padding: 1.5rem 1rem;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            text-align: center;
-        }
-        
-        .sidebar-header h2 {
-            margin: 0;
-            font-weight: 700;
-            font-size: 1.3rem;
-        }
-        
-        .sidebar-header p {
-            margin: 0.5rem 0 0 0;
-            opacity: 0.8;
-            font-size: 0.9rem;
-        }
-        
-        .sidebar-menu {
-            list-style: none;
-            padding: 1rem 0;
-            margin: 0;
-        }
-        
-        .sidebar-menu li {
-            margin: 0.2rem 0;
-        }
-        
-        .sidebar-menu a {
-            color: rgba(255,255,255,0.8);
-            text-decoration: none;
-            padding: 0.8rem 1.5rem;
-            display: flex;
-            align-items: center;
-            transition: all 0.3s;
-            border-left: 3px solid transparent;
-        }
-        
-        .sidebar-menu a:hover,
-        .sidebar-menu a.active {
-            background: rgba(255,255,255,0.1);
-            color: white;
-            border-left-color: white;
-        }
-        
-        .sidebar-menu i {
-            width: 25px;
-            margin-right: 10px;
-            font-size: 1.1rem;
-        }
-        
-        /* Main Content */
-        .main-content {
-            margin-left: var(--sidebar-width);
-            padding: 1rem 2rem;
-            min-height: 100vh;
-        }
-        
-        /* Header */
-        .page-header {
-            background: white;
-            border-radius: 10px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-        }
-        
-        .page-header h1 {
-            color: var(--dark);
-            margin-bottom: 0.5rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        .page-header p {
-            color: var(--secondary);
-            margin: 0;
-        }
-        
-        /* Stats Cards */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-        
-        .stat-card {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            border-left: 4px solid var(--primary);
-            text-align: center;
-        }
-        
-        .stat-card h3 {
-            font-size: 2rem;
-            font-weight: 700;
-            margin: 0;
-            color: var(--dark);
-        }
-        
-        .stat-card p {
-            color: var(--secondary);
-            margin: 0.5rem 0 0 0;
-            font-weight: 500;
-        }
-        
-        .stat-card.available {
-            border-left-color: var(--success);
-        }
-        
-        .stat-card.earnings {
-            border-left-color: var(--warning);
-        }
-        
-        /* Card Styles */
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            border: none;
-        }
-        
-        .card h2 {
-            color: var(--dark);
-            margin-bottom: 1.5rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 1.3rem;
-        }
-        
-        /* Service Form */
-        .form-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        .form-label {
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            color: var(--dark);
-        }
-        
-        .required {
-            color: var(--danger);
-        }
-        
-        .form-control, .form-select {
-            padding: 0.75rem 1rem;
-            border-radius: 8px;
-            border: 2px solid #e9ecef;
-            transition: all 0.3s;
-        }
-        
-        .form-control:focus, .form-select:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
-        }
-        
-        .form-text {
-            color: var(--secondary);
-            font-size: 0.875rem;
-            margin-top: 0.25rem;
-        }
-        
-        textarea.form-control {
-            resize: vertical;
-            min-height: 100px;
-        }
-        
-        /* Services Grid */
-        .services-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-            gap: 1.5rem;
-        }
-        
-        .service-card {
-            border: 2px solid #e9ecef;
-            border-radius: 12px;
-            padding: 1.5rem;
-            transition: all 0.3s ease;
-            background: white;
-            position: relative;
-        }
-        
-        .service-card:hover {
-            border-color: var(--primary);
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
-        }
-        
-        .service-card.unavailable {
-            opacity: 0.7;
-            background: #f8f9fa;
-        }
-        
-        .service-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 1rem;
-        }
-        
-        .service-title {
-            margin: 0 0 0.5rem 0;
-            color: var(--dark);
-            font-weight: 600;
-        }
-        
-        .service-category {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            color: var(--secondary);
-            font-size: 0.9rem;
-            margin-bottom: 1rem;
-        }
-        
-        .service-description {
-            color: var(--dark);
-            line-height: 1.5;
-            margin-bottom: 1rem;
-        }
-        
-        .service-meta {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-            padding-top: 1rem;
-            border-top: 1px solid #e9ecef;
-        }
-        
-        .service-price {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--success);
-        }
-        
-        .service-duration {
-            color: var(--secondary);
-            font-size: 0.9rem;
-        }
-        
-        .service-actions {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-        
-        .status-badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-        }
-        
-        .status-available {
-            background: #d4edda;
-            color: #155724;
-        }
-        
-        .status-unavailable {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        
-        /* Popular Services */
-        .popular-services {
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        
-        .popular-service-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem;
-            border-bottom: 1px solid #e9ecef;
-            transition: background 0.3s;
-        }
-        
-        .popular-service-item:hover {
-            background: var(--light);
-        }
-        
-        .popular-service-item:last-child {
-            border-bottom: none;
-        }
-        
-        .booking-count {
-            background: var(--primary);
-            color: white;
-            padding: 0.25rem 0.5rem;
-            border-radius: 12px;
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
-        
-        /* Related Services by Category */
-        .related-services-list {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
-        
-        .category-group {
-            background: #f9f9f9;
-            border-radius: 8px;
-            padding: 1rem;
-            border-left: 4px solid var(--primary);
-        }
-        
-        .category-header {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            margin-bottom: 0.75rem;
-            font-size: 0.95rem;
-        }
-        
-        .category-header i {
-            color: var(--primary);
-            font-size: 1.1rem;
-        }
-        
-        .category-header strong {
-            flex: 1;
-            color: var(--dark);
-        }
-        
-        .category-header .badge {
-            font-size: 0.7rem;
-            padding: 0.25rem 0.5rem;
-        }
-        
-        .category-services {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-        
-        .related-service-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.7rem 0.8rem;
-            background: white;
-            border-radius: 6px;
-            border: 1px solid #e9ecef;
-            transition: all 0.3s;
-        }
-        
-        .related-service-item:hover {
-            border-color: var(--primary);
-            background: #f0f8ff;
-            box-shadow: 0 2px 8px rgba(13, 110, 253, 0.1);
-        }
-        
-        .related-service-item .service-name {
-            color: var(--dark);
-            font-weight: 500;
-            line-height: 1.3;
-            max-width: 65%;
-            word-break: break-word;
-        }
-        
-        .related-service-item .service-price-tag {
-            color: var(--success);
-            font-weight: 600;
-            white-space: nowrap;
-            margin-left: 0.5rem;
-        }
-        
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 3rem 2rem;
-            color: var(--secondary);
-        }
-        
-        .empty-state i {
-            font-size: 4rem;
-            margin-bottom: 1rem;
-            color: #dee2e6;
-        }
-        
-        .empty-state h4 {
-            color: var(--secondary);
-            margin-bottom: 0.5rem;
-        }
-        
-        /* Modal Styles */
-        .modal-content {
-            border-radius: 12px;
-            border: none;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-        }
-        
-        .modal-header {
-            border-bottom: 1px solid #e9ecef;
-            padding: 1.5rem;
-        }
-        
-        .modal-body {
-            padding: 1.5rem;
-        }
-        
-        .modal-footer {
-            border-top: 1px solid #e9ecef;
-            padding: 1rem 1.5rem;
-        }
-        
-        /* Mobile Responsive */
-        @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-100%);
-            }
-            
-            .sidebar.mobile-open {
-                transform: translateX(0);
-            }
-            
-            .main-content {
-                margin-left: 0;
-                padding: 1rem;
-            }
-            
-            .mobile-menu-toggle {
-                display: block !important;
-            }
-            
-            .form-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .services-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-        
+        .sidebar-header { padding: 1.5rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); text-align: center; }
+        .sidebar-header h2 { margin: 0; font-weight: 700; font-size: 1.3rem; }
+        .sidebar-header p { margin: 0.5rem 0 0 0; opacity: 0.8; font-size: 0.9rem; }
+        .sidebar-menu { list-style: none; padding: 1rem 0; margin: 0; }
+        .sidebar-menu li { margin: 0.2rem 0; }
+        .sidebar-menu a { color: rgba(255,255,255,0.8); text-decoration: none; padding: 0.8rem 1.5rem; display: flex; align-items: center; transition: all 0.3s; border-left: 3px solid transparent; }
+        .sidebar-menu a:hover, .sidebar-menu a.active { background: rgba(255,255,255,0.1); color: white; border-left-color: white; }
+        .sidebar-menu i { width: 25px; margin-right: 10px; font-size: 1.1rem; }
+
+        /* ── MAIN CONTENT ── */
+        .main-content { margin-left: var(--sidebar-width); padding: 1.75rem 2rem; min-height: 100vh; }
+
+        /* ── MOBILE ── */
         .mobile-menu-toggle {
             display: none;
-            position: fixed;
-            top: 1rem;
-            left: 1rem;
+            position: fixed; top: 1rem; left: 1rem;
             z-index: 1100;
-            background: var(--primary);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            width: 45px;
-            height: 45px;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.2rem;
+            background: var(--primary); color: white; border: none;
+            border-radius: var(--radius-sm); width: 42px; height: 42px;
+            align-items: center; justify-content: center;
+            font-size: 1.1rem; cursor: pointer; box-shadow: var(--shadow-md);
         }
-        
-        .overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 999;
+        .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999; }
+        .overlay.active { display: block; }
+
+        /* ── PAGE HEADER ── */
+        .page-header {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem 2rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-xs);
+            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;
         }
-        
-        .overlay.active {
-            display: block;
+        .page-header h1 { margin: 0; font-weight: 800; font-size: 1.5rem; letter-spacing: -0.4px; display: flex; align-items: center; gap: 0.5rem; }
+        .page-header h1 i { color: var(--primary); }
+        .page-header p { color: var(--text-muted); margin: 0.2rem 0 0; font-size: 0.82rem; }
+
+        /* ── KPI STATS ROW ── */
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .kpi-card {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            padding: 1.25rem 1.5rem;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-xs);
+            position: relative; overflow: hidden;
+            transition: var(--transition);
         }
-        
-        /* Alert Styles */
-        .alert {
-            border-radius: 8px;
-            border: none;
+        .kpi-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+        .kpi-card::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; height: 3px;
+            background: var(--kpi-color, var(--primary));
+        }
+        .kpi-icon {
+            width: 40px; height: 40px;
+            border-radius: var(--radius-sm);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1rem; margin-bottom: 0.75rem;
+            background: var(--kpi-bg, var(--primary-light));
+            color: var(--kpi-color, var(--primary));
+        }
+        .kpi-value { font-size: 1.85rem; font-weight: 800; color: var(--text-primary); letter-spacing: -1px; line-height: 1; margin-bottom: 0.2rem; }
+        .kpi-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); }
+        .kpi-trend { font-size: 0.72rem; font-weight: 600; margin-top: 0.4rem; display: flex; align-items: center; gap: 0.25rem; }
+        .kpi-trend.up { color: var(--success); }
+        .kpi-trend.neutral { color: var(--text-muted); }
+
+        /* ── VIEW CONTROLS ── */
+        .controls-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            gap: 1rem; flex-wrap: wrap;
+            background: var(--surface); border-radius: var(--radius-lg);
+            padding: 1rem 1.25rem;
+            border: 1px solid var(--border); box-shadow: var(--shadow-xs);
             margin-bottom: 1.5rem;
         }
-        
-        /* Service Card Hover Animation */
+        .controls-left { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; flex: 1; }
+        .controls-right { display: flex; gap: 0.5rem; align-items: center; }
+
+        .search-wrap { position: relative; min-width: 220px; }
+        .search-wrap input {
+            padding: 0.55rem 0.875rem 0.55rem 2.2rem;
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 0.83rem; font-family: inherit;
+            background: var(--surface-2);
+            color: var(--text-primary);
+            transition: var(--transition); width: 100%;
+        }
+        .search-wrap input:focus { outline: none; border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(13,110,253,0.07); }
+        .search-wrap .search-icon { position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.8rem; pointer-events: none; }
+
+        .filter-select {
+            padding: 0.55rem 0.875rem;
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 0.83rem; font-family: inherit;
+            background: var(--surface-2); color: var(--text-primary);
+            transition: var(--transition); cursor: pointer;
+        }
+        .filter-select:focus { outline: none; border-color: var(--primary); }
+
+        .view-toggle { display: flex; gap: 2px; background: var(--surface-2); border-radius: var(--radius-sm); padding: 3px; border: 1px solid var(--border); }
+        .view-btn {
+            padding: 0.38rem 0.6rem; border: none; border-radius: 6px;
+            cursor: pointer; font-size: 0.8rem; color: var(--text-muted);
+            background: transparent; transition: var(--transition);
+        }
+        .view-btn.active { background: var(--primary); color: white; }
+        .view-btn:hover:not(.active) { background: var(--border); color: var(--text-primary); }
+
+        /* ── SERVICE CARDS (Grid View) ── */
+        .services-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px,1fr)); gap: 1.25rem; }
+        .services-list-view .service-card { display: grid; grid-template-columns: 60px 1fr auto; gap: 1.25rem; align-items: center; padding: 1rem 1.25rem; border-radius: var(--radius-md); }
+
         .service-card {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        
-        .service-card:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.15);
-        }
-        
-        /* Professional Action Buttons */
-        .service-actions {
-            flex-wrap: wrap;
-            gap: 0.5rem;
-        }
-        
-        .service-actions .btn {
-            font-size: 0.85rem;
-            padding: 0.4rem 0.8rem;
-            transition: all 0.2s;
-        }
-        
-        .service-actions .btn:hover {
-            transform: scale(1.05);
-        }
-        
-        /* Statistics Grid Animation */
-        .service-card {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            border: 1.5px solid var(--border);
+            box-shadow: var(--shadow-xs);
+            transition: var(--transition);
+            overflow: hidden;
+            display: flex; flex-direction: column;
             position: relative;
         }
-        
-        .service-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, var(--primary), var(--success));
-            border-radius: 12px 12px 0 0;
-            opacity: 0;
-            transition: opacity 0.3s;
+        .service-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); border-color: var(--primary); }
+        .service-card.status-paused { opacity: 0.72; }
+        .service-card.status-draft { border-style: dashed; }
+
+        .sc-accent-bar { height: 4px; width: 100%; flex-shrink: 0; }
+        .sc-body { padding: 1.25rem; flex: 1; display: flex; flex-direction: column; }
+
+        .sc-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem; gap: 0.5rem; }
+        .sc-title { font-size: 1rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.2px; margin: 0 0 0.25rem; line-height: 1.3; }
+        .sc-category { font-size: 0.75rem; color: var(--primary); font-weight: 600; display: flex; align-items: center; gap: 0.3rem; }
+        .sc-badges { display: flex; gap: 0.35rem; flex-wrap: wrap; flex-shrink: 0; }
+
+        .sc-description { font-size: 0.82rem; color: var(--text-secondary); line-height: 1.55; margin-bottom: 1rem; flex: 1;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+        /* Mini stats inside card */
+        .sc-mini-stats {
+            display: grid; grid-template-columns: repeat(3,1fr);
+            gap: 0.5rem; margin-bottom: 1rem;
+            background: var(--surface-2); border-radius: var(--radius-sm);
+            padding: 0.75rem; border: 1px solid var(--border-subtle);
         }
-        
-        .service-card:hover::before {
-            opacity: 1;
-        }
-        
-        /* Quick Stats */
-        .service-card [style*="background: #f8f9fa"] {
-            transition: all 0.3s;
-        }
-        
-        .service-card:hover [style*="background: #f8f9fa"] {
-            background: linear-gradient(135deg, #f8f9fa, #e9ecef) !important;
-        }
-        
-        /* Modal Enhancements */
-        .modal-dialog {
-            animation: slideIn 0.3s ease-out;
-        }
-        
-        @keyframes slideIn {
-            from {
-                transform: translateY(20px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-        
-        /* Add Service Button */
-        .btn-success {
-            background: linear-gradient(135deg, #198754, #157347);
-            border: none;
-            box-shadow: 0 4px 15px rgba(25, 135, 84, 0.3);
-            transition: all 0.3s;
-        }
-        
-        .btn-success:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(25, 135, 84, 0.4);
-        }
-        
-        /* Service Card Stats Grid */
-        .service-stats-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1rem;
-            margin: 1.5rem 0;
-        }
-        
-        .stat-item {
-            text-align: center;
-            padding: 1rem;
-            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-            border-radius: 10px;
-            transition: all 0.3s;
-        }
-        
-        .stat-item:hover {
-            background: linear-gradient(135deg, #e9ecef, #dee2e6);
-            transform: scale(1.05);
-        }
-        
-        .stat-number {
-            font-size: 1.5rem;
+        .sc-stat { text-align: center; }
+        .sc-stat-num { font-size: 1.1rem; font-weight: 800; color: var(--text-primary); letter-spacing: -0.5px; }
+        .sc-stat-lbl { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-muted); margin-top: 1px; }
+
+        /* Rating stars */
+        .mini-stars { color: #f59e0b; font-size: 0.7rem; letter-spacing: 1px; }
+
+        .sc-footer { border-top: 1px solid var(--border-subtle); padding-top: 0.875rem; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+        .sc-price { font-size: 1.15rem; font-weight: 800; color: var(--success); font-variant-numeric: tabular-nums; }
+        .sc-price-sub { font-size: 0.7rem; color: var(--text-muted); font-weight: 500; }
+        .sc-duration { font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.3rem; }
+
+        .sc-actions { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; margin-top: 0.875rem; }
+
+        /* ── BADGES ── */
+        .badge-pill {
+            padding: 0.22rem 0.6rem;
+            border-radius: 100px;
+            font-size: 0.67rem;
             font-weight: 700;
-            margin-bottom: 0.5rem;
+            letter-spacing: 0.2px;
+            display: inline-flex; align-items: center; gap: 0.25rem;
+            white-space: nowrap;
         }
-        
-        .stat-label {
-            font-size: 0.85rem;
-            color: var(--secondary);
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+        .badge-published { background: var(--success-light); color: var(--success); border: 1px solid #bbf7d0; }
+        .badge-paused    { background: var(--warning-light); color: var(--warning); border: 1px solid #fde68a; }
+        .badge-draft     { background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--border); }
+        .badge-neg       { background: var(--info-light); color: var(--info); border: 1px solid #a5f3fc; }
+        .badge-instant   { background: #fdf4ff; color: #9333ea; border: 1px solid #e9d5ff; }
+
+        /* ── ACTION BUTTONS ── */
+        .btn-act {
+            padding: 0.35rem 0.7rem;
+            border-radius: var(--radius-sm);
+            border: 1.5px solid transparent;
+            font-size: 0.74rem; font-weight: 700; font-family: inherit;
+            cursor: pointer; transition: var(--transition);
+            display: inline-flex; align-items: center; gap: 0.3rem;
+            text-decoration: none;
         }
+        .btn-act-view    { background: var(--info-light); color: var(--info); border-color: #a5f3fc; }
+        .btn-act-view:hover    { background: var(--info); color: white; }
+        .btn-act-edit    { background: var(--primary-light); color: var(--primary); border-color: #bfdbfe; }
+        .btn-act-edit:hover    { background: var(--primary); color: white; }
+        .btn-act-publish { background: var(--success-light); color: var(--success); border-color: #bbf7d0; }
+        .btn-act-publish:hover { background: var(--success); color: white; }
+        .btn-act-pause   { background: var(--warning-light); color: var(--warning); border-color: #fde68a; }
+        .btn-act-pause:hover   { background: var(--warning); color: white; }
+        .btn-act-del     { background: var(--danger-light); color: var(--danger); border-color: #fecaca; }
+        .btn-act-del:hover     { background: var(--danger); color: white; }
+
+        /* ── RIGHT SIDEBAR PANELS ── */
+        .side-panel {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-xs);
+            margin-bottom: 1.25rem;
+            overflow: hidden;
+        }
+        .side-panel-header {
+            padding: 1rem 1.25rem 0.875rem;
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .side-panel-header h3 { margin: 0; font-size: 0.875rem; font-weight: 700; display: flex; align-items: center; gap: 0.45rem; }
+        .side-panel-body { padding: 1rem 1.25rem; }
+
+        /* Popular services list */
+        .pop-item {
+            display: flex; align-items: center; gap: 0.75rem;
+            padding: 0.6rem 0; border-bottom: 1px solid var(--border-subtle);
+        }
+        .pop-item:last-child { border-bottom: none; }
+        .pop-rank {
+            width: 24px; height: 24px; border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.7rem; font-weight: 800; flex-shrink: 0;
+            background: var(--primary-light); color: var(--primary);
+        }
+        .pop-rank.r1 { background: #fef3c7; color: #d97706; }
+        .pop-rank.r2 { background: #f1f5f9; color: #64748b; }
+        .pop-rank.r3 { background: #fff7ed; color: #c2410c; }
+        .pop-name { flex: 1; font-size: 0.82rem; font-weight: 600; color: var(--text-primary); }
+        .pop-count { font-size: 0.72rem; font-weight: 700; background: var(--primary); color: white; padding: 0.18rem 0.5rem; border-radius: 100px; }
+
+        /* Category groups */
+        .cat-group { margin-bottom: 0.875rem; }
+        .cat-group-header {
+            display: flex; align-items: center; gap: 0.5rem;
+            font-size: 0.78rem; font-weight: 700; color: var(--text-secondary);
+            padding: 0.4rem 0.6rem; background: var(--surface-2);
+            border-radius: var(--radius-sm); margin-bottom: 0.4rem;
+            border: 1px solid var(--border-subtle);
+        }
+        .cat-group-header i { color: var(--primary); }
+        .cat-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0.4rem 0.6rem; font-size: 0.79rem;
+            border-radius: var(--radius-sm); transition: var(--transition);
+            cursor: pointer;
+        }
+        .cat-item:hover { background: var(--primary-light); }
+        .cat-item-name { color: var(--text-primary); font-weight: 500; }
+        .cat-item-price { color: var(--success); font-weight: 700; }
+
+        /* Quick tips */
+        .tip-item { display: flex; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--border-subtle); }
+        .tip-item:last-child { border-bottom: none; }
+        .tip-icon { width: 30px; height: 30px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 0.8rem; flex-shrink: 0; }
+        .tip-text { font-size: 0.78rem; color: var(--text-secondary); line-height: 1.45; }
+        .tip-text strong { color: var(--text-primary); font-size: 0.8rem; display: block; margin-bottom: 0.15rem; }
+
+        /* Progress bar */
+        .progress-wrap { margin-bottom: 0.6rem; }
+        .progress-label { display: flex; justify-content: space-between; font-size: 0.73rem; color: var(--text-secondary); margin-bottom: 0.25rem; font-weight: 600; }
+        .progress-bar-bg { height: 6px; background: var(--border); border-radius: 100px; overflow: hidden; }
+        .progress-bar-fill { height: 100%; border-radius: 100px; background: var(--primary); transition: width 0.6s ease; }
+
+        /* ── EMPTY STATE ── */
+        .empty-state {
+            text-align: center; padding: 3.5rem 2rem;
+            color: var(--text-muted);
+        }
+        .empty-state i { font-size: 2.5rem; color: var(--border); display: block; margin-bottom: 1rem; }
+        .empty-state h4 { color: var(--text-secondary); font-weight: 700; margin-bottom: 0.4rem; font-size: 1.05rem; }
+        .empty-state p { font-size: 0.83rem; margin-bottom: 1.25rem; }
+
+        /* ── ALERTS ── */
+        .alert { border-radius: var(--radius-md); border: 1px solid transparent; padding: 0.875rem 1.125rem; margin-bottom: 1.25rem; font-size: 0.875rem; }
+        .alert-success { background: var(--success-light); color: var(--success); border-color: #bbf7d0; }
+        .alert-danger  { background: var(--danger-light);  color: var(--danger);  border-color: #fecaca; }
+        .alert-warning { background: var(--warning-light); color: var(--warning); border-color: #fde68a; }
+
+        /* ── MODAL OVERRIDES ── */
+        .modal-content { border-radius: var(--radius-lg); border: none; box-shadow: 0 24px 64px rgba(0,0,0,0.18); }
+        .modal-header { border-bottom: 1px solid var(--border); padding: 1.25rem 1.5rem; }
+        .modal-body { padding: 1.5rem; }
+        .modal-footer { border-top: 1px solid var(--border); padding: 1rem 1.5rem; }
+        .modal-title { font-weight: 700; font-size: 1rem; }
+        .form-label { font-weight: 600; font-size: 0.83rem; color: var(--text-primary); margin-bottom: 0.35rem; display: block; }
+        .form-control, .form-select {
+            border-radius: var(--radius-sm); border: 1.5px solid var(--border);
+            font-family: inherit; font-size: 0.875rem; padding: 0.55rem 0.875rem;
+            transition: var(--transition);
+        }
+        .form-control:focus, .form-select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(13,110,253,0.08); outline: none; }
+        .form-text { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
+        .form-check-input:checked { background-color: var(--primary); border-color: var(--primary); }
+        .required { color: var(--danger); }
+
+        /* section tab inside modal */
+        .modal-tabs { display: flex; gap: 2px; background: var(--surface-2); border-radius: var(--radius-sm); padding: 3px; border: 1px solid var(--border); margin-bottom: 1.25rem; }
+        .modal-tab-btn {
+            flex: 1; padding: 0.45rem 0.5rem; border: none; border-radius: 6px;
+            font-size: 0.75rem; font-weight: 700; font-family: inherit;
+            cursor: pointer; color: var(--text-muted); background: transparent; transition: var(--transition);
+        }
+        .modal-tab-btn.active { background: var(--primary); color: white; }
+        .modal-tab-btn:hover:not(.active) { background: var(--border); color: var(--text-primary); }
+
+        .tab-pane-custom { display: none; }
+        .tab-pane-custom.active { display: block; }
+
+        /* day pill */
+        .day-pill input { display: none; }
+        .day-pill label {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 38px; height: 38px; border-radius: 50%;
+            border: 2px solid var(--border); cursor: pointer;
+            font-size: 0.72rem; font-weight: 700; color: var(--text-secondary);
+            transition: var(--transition); user-select: none;
+        }
+        .day-pill input:checked + label { border-color: var(--primary); background: var(--primary); color: white; }
+        .day-pill label:hover { border-color: var(--primary); color: var(--primary); }
+
+        /* service detail modal */
+        .detail-stat-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 0.75rem; margin: 1rem 0; }
+        .detail-stat { background: var(--surface-2); border-radius: var(--radius-sm); padding: 0.875rem; text-align: center; border: 1px solid var(--border-subtle); }
+        .detail-stat-val { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); letter-spacing: -0.5px; }
+        .detail-stat-lbl { font-size: 0.67rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-muted); margin-top: 2px; }
+
+        .info-row-modal { display: flex; justify-content: space-between; align-items: flex-start; padding: 0.55rem 0; border-bottom: 1px solid var(--border-subtle); }
+        .info-row-modal:last-child { border-bottom: none; }
+        .info-label-modal { font-size: 0.78rem; color: var(--text-muted); font-weight: 500; }
+        .info-val-modal { font-size: 0.83rem; font-weight: 600; color: var(--text-primary); text-align: right; max-width: 60%; }
+
+        /* ── RESPONSIVE ── */
+        @media (max-width: 992px) {
+            .layout-cols { flex-direction: column !important; }
+            .side-col { width: 100% !important; }
+        }
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.mobile-open { transform: translateX(0); box-shadow: 4px 0 20px rgba(0,0,0,0.12); }
+            .main-content { margin-left: 0; padding: 1rem; }
+            .mobile-menu-toggle { display: flex !important; }
+            .kpi-grid { grid-template-columns: repeat(2,1fr); }
+            .services-grid { grid-template-columns: 1fr; }
+            .controls-bar { flex-direction: column; align-items: stretch; }
+            .controls-left { flex-direction: column; }
+        }
+
+        /* btn primary */
+        .btn-primary-cta {
+            background: var(--primary); color: white; border: none;
+            padding: 0.6rem 1.25rem; border-radius: var(--radius-sm);
+            font-size: 0.875rem; font-weight: 700; font-family: inherit;
+            cursor: pointer; transition: var(--transition);
+            display: inline-flex; align-items: center; gap: 0.4rem;
+        }
+        .btn-primary-cta:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+        .btn-primary-cta:active { transform: none; }
+        .btn-secondary-cta {
+            background: var(--surface); color: var(--text-secondary); border: 1.5px solid var(--border);
+            padding: 0.6rem 1.25rem; border-radius: var(--radius-sm);
+            font-size: 0.875rem; font-weight: 700; font-family: inherit;
+            cursor: pointer; transition: var(--transition);
+            display: inline-flex; align-items: center; gap: 0.4rem;
+        }
+        .btn-secondary-cta:hover { border-color: var(--primary); color: var(--primary); }
+
+        /* toast */
+        .toast-container { position: fixed; top: 1.25rem; right: 1.25rem; z-index: 9999; display: flex; flex-direction: column; gap: 0.5rem; pointer-events: none; }
+        .toast-item {
+            background: var(--text-primary); color: white; padding: 0.75rem 1.125rem;
+            border-radius: var(--radius-md); font-size: 0.83rem; font-weight: 600;
+            box-shadow: var(--shadow-lg); min-width: 260px; pointer-events: all;
+            display: flex; align-items: center; gap: 0.5rem;
+            animation: toastIn 0.22s ease;
+        }
+        @keyframes toastIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+        .toast-success { background: var(--success); }
+        .toast-danger  { background: var(--danger); }
+        .toast-warning { background: var(--warning); }
+
+        /* confirmation dialog */
+        .confirm-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.45); z-index: 2000;
+            align-items: center; justify-content: center; padding: 1rem;
+        }
+        .confirm-overlay.active { display: flex; }
+        .confirm-box {
+            background: white; border-radius: var(--radius-xl);
+            padding: 2rem; max-width: 400px; width: 100%;
+            box-shadow: var(--shadow-lg); text-align: center;
+        }
+        .confirm-box .icon { font-size: 2.5rem; margin-bottom: 0.875rem; }
+        .confirm-box h4 { font-weight: 800; margin-bottom: 0.5rem; }
+        .confirm-box p { color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1.5rem; }
+        .confirm-btns { display: flex; gap: 0.75rem; justify-content: center; }
     </style>
 </head>
 <body>
-    <!-- Mobile Menu Toggle -->
-    <button class="mobile-menu-toggle" id="mobileToggle">
-        <i class="fas fa-bars"></i>
+<button class="mobile-menu-toggle" id="mobileToggle"><i class="fas fa-bars"></i></button>
+<div class="overlay" id="overlay"></div>
+<?php include __DIR__ . '/includes/sidebar.php'; ?>
+
+<div class="main-content">
+
+<?php if (isset($maintenance_warning)): ?>
+<div class="alert alert-warning"><i class="fas fa-tools me-2"></i><strong>Maintenance Mode Active</strong> — Some features may be limited.</div>
+<?php endif; ?>
+
+<?php if ($success): ?>
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+    <i class="fas fa-check-circle me-2"></i> <?php echo $success; ?>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+<?php endif; ?>
+<?php if (!empty($errors)): ?>
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+    <?php foreach ($errors as $e): ?><p class="mb-1"><i class="fas fa-exclamation-circle me-2"></i><?php echo $e; ?></p><?php endforeach; ?>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+<?php endif; ?>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+    <div>
+        <h1><i class="fas fa-concierge-bell"></i> Service Management</h1>
+        <p>Create, manage and optimise your service offerings</p>
+    </div>
+    <button class="btn-primary-cta" data-bs-toggle="modal" data-bs-target="#addServiceModal">
+        <i class="fas fa-plus-circle"></i> Add New Service
     </button>
+</div>
 
-    <!-- Mobile Overlay -->
-    <div class="overlay" id="overlay"></div>
+<!-- KPI STATS -->
+<?php
+    $total_services_count = $stats['total_services'] ?? 0;
+    $available_count = $stats['available_services'] ?? 0;
+    $avg_price_val = $stats['avg_price'] ?? 0;
+    $total_bookings_sum = 0;
+    $total_revenue = 0;
+    foreach ($service_details as $d) {
+        $total_bookings_sum += $d['bookings']['total_bookings'] ?? 0;
+        $total_revenue += ($d['bookings']['completed_bookings'] ?? 0);
+    }
+    $published_count = 0;
+    $draft_count = 0;
+    $paused_count = 0;
+    foreach ($services as $sv) {
+        $st = $sv['service_status'] ?? 'draft';
+        if ($st === 'published') $published_count++;
+        elseif ($st === 'paused') $paused_count++;
+        else $draft_count++;
+    }
+?>
+<div class="kpi-grid">
+    <div class="kpi-card" style="--kpi-color:#0d6efd;--kpi-bg:#eff6ff;">
+        <div class="kpi-icon"><i class="fas fa-briefcase"></i></div>
+        <div class="kpi-value"><?php echo $total_services_count; ?></div>
+        <div class="kpi-label">Total Services</div>
+        <div class="kpi-trend neutral"><i class="fas fa-info-circle"></i> <?php echo $published_count; ?> published</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#198754;--kpi-bg:#f0fdf4;">
+        <div class="kpi-icon"><i class="fas fa-check-circle"></i></div>
+        <div class="kpi-value"><?php echo $available_count; ?></div>
+        <div class="kpi-label">Available Now</div>
+        <div class="kpi-trend <?php echo $paused_count > 0 ? 'neutral' : 'up'; ?>">
+            <i class="fas fa-pause"></i> <?php echo $paused_count; ?> paused
+        </div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#d97706;--kpi-bg:#fffbeb;">
+        <div class="kpi-icon"><i class="fas fa-tag"></i></div>
+        <div class="kpi-value">RWF <?php echo number_format($avg_price_val, 0); ?></div>
+        <div class="kpi-label">Avg. Service Price</div>
+        <div class="kpi-trend neutral"><i class="fas fa-wallet"></i> across all services</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#0891b2;--kpi-bg:#ecfeff;">
+        <div class="kpi-icon"><i class="fas fa-calendar-check"></i></div>
+        <div class="kpi-value"><?php echo $total_bookings_sum; ?></div>
+        <div class="kpi-label">Total Bookings</div>
+        <div class="kpi-trend up"><i class="fas fa-check"></i> <?php echo $total_revenue; ?> completed</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#9333ea;--kpi-bg:#fdf4ff;">
+        <div class="kpi-icon"><i class="fas fa-pen-nib"></i></div>
+        <div class="kpi-value"><?php echo $draft_count; ?></div>
+        <div class="kpi-label">Draft Services</div>
+        <div class="kpi-trend neutral"><i class="fas fa-arrow-right"></i> ready to publish</div>
+    </div>
+</div>
 
-    <!-- Sidebar -->
-    <?php include __DIR__ . '/includes/sidebar.php'; ?>
+<!-- LAYOUT: Main + Sidebar -->
+<div style="display:flex;gap:1.5rem;align-items:flex-start;" class="layout-cols">
 
-    <!-- Main Content -->
-    <div class="main-content">
-        <!-- Maintenance Warning -->
-        <?php if (isset($maintenance_warning)): ?>
-            <div class="alert maintenance-warning">
-                <i class="fas fa-tools me-2"></i>
-                <strong>Maintenance Mode Active</strong>
-                <p class="mb-0 mt-2">The platform is currently under maintenance. Some features may be limited.</p>
-            </div>
-        <?php endif; ?>
+    <!-- MAIN COLUMN -->
+    <div style="flex:1;min-width:0;">
 
-        <!-- Header -->
-        <div class="page-header">
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
-                <div>
-                    <h1><i class="fas fa-concierge-bell"></i> <?php echo __('page_header', [], 'services_page'); ?></h1>
-                    <p><?php echo __('page_description', [], 'services_page'); ?></p>
+        <!-- CONTROLS BAR -->
+        <div class="controls-bar">
+            <div class="controls-left">
+                <div class="search-wrap">
+                    <i class="fas fa-search search-icon"></i>
+                    <input type="text" id="serviceSearch" placeholder="Search services…">
                 </div>
-                <button type="button" class="btn btn-success btn-lg" data-bs-toggle="modal" data-bs-target="#addServiceModal">
-                    <i class="fas fa-plus-circle me-2"></i> <?php echo __('add_service_form.add_button', [], 'services_page'); ?>
+                <select class="filter-select" id="filterStatus">
+                    <option value="">All Status</option>
+                    <option value="published">Published</option>
+                    <option value="paused">Paused</option>
+                    <option value="draft">Draft</option>
+                </select>
+                <select class="filter-select" id="filterCategory">
+                    <option value="">All Categories</option>
+                    <?php foreach ($provider_categories as $cat): ?>
+                    <option value="<?php echo htmlspecialchars($cat['id']); ?>"><?php echo htmlspecialchars($cat['name']); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <select class="filter-select" id="sortServices">
+                    <option value="default">Sort: Default</option>
+                    <option value="name">Name A–Z</option>
+                    <option value="price-low">Price ↑</option>
+                    <option value="price-high">Price ↓</option>
+                    <option value="bookings">Most Booked</option>
+                </select>
+            </div>
+            <div class="controls-right">
+                <div class="view-toggle">
+                    <button class="view-btn active" id="viewGrid" title="Grid"><i class="fas fa-grip"></i></button>
+                    <button class="view-btn" id="viewList" title="List"><i class="fas fa-list"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SERVICES GRID -->
+        <div id="servicesContainer">
+        <?php if (empty($services)): ?>
+            <div class="empty-state" style="background:var(--surface);border-radius:var(--radius-lg);border:1px solid var(--border);">
+                <i class="fas fa-concierge-bell"></i>
+                <h4>No Services Yet</h4>
+                <p>Start by adding your first service to attract clients</p>
+                <button class="btn-primary-cta" data-bs-toggle="modal" data-bs-target="#addServiceModal">
+                    <i class="fas fa-plus-circle"></i> Create First Service
                 </button>
             </div>
-        </div>
-
-        <?php if ($success): ?>
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                <i class="fas fa-check-circle me-2"></i> <?php echo $success; ?>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        <?php endif; ?>
-
-        <?php if (!empty($errors)): ?>
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                <?php foreach ($errors as $error): ?>
-                    <p class="mb-1"><i class="fas fa-exclamation-circle me-2"></i> <?php echo $error; ?></p>
-                <?php endforeach; ?>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        <?php endif; ?>
-
-        <!-- Statistics -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <h3><?php echo $stats['total_services'] ?? 0; ?></h3>
-                <p><?php echo __('stats.total_services', [], 'services_page'); ?></p>
-            </div>
-            <div class="stat-card available">
-                <h3><?php echo $stats['available_services'] ?? 0; ?></h3>
-                <p><?php echo __('stats.available_services', [], 'services_page'); ?></p>
-            </div>
-            <div class="stat-card earnings">
-                <h3>RWF <?php echo number_format($stats['avg_price'] ?? 0, 0); ?></h3>
-                <p><?php echo __('stats.average_price', [], 'services_page'); ?></p>
-            </div>
-            <div class="stat-card" style="border-left-color: #0dcaf0;">
-                <h3><?php 
-                    $total_bookings = 0;
-                    foreach ($service_details as $details) {
-                        if ($details['bookings']) {
-                            $total_bookings += $details['bookings']['total_bookings'] ?? 0;
-                        }
-                    }
-                    echo $total_bookings;
-                ?></h3>
-                <p><i class="fas fa-calendar-check me-1"></i> Total Bookings</p>
-            </div>
-        </div>
-
-        <div class="row">
-            <div class="col-lg-8">
-                <!-- Services List -->
-                <div class="card">
-                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
-                        <h2 style="margin: 0;"><i class="fas fa-list"></i> <?php echo __('services_list.service_name', [], 'services_page'); ?> (<?php echo count($services); ?>)</h2>
-                        <div style="display: flex; gap: 0.5rem;">
-                            <input type="text" id="serviceSearch" class="form-control" placeholder="Search services..." style="max-width: 250px;">
-                            <select id="serviceSort" class="form-select" style="max-width: 150px;">
-                                <option value="default">Sort By</option>
-                                <option value="name">Name (A-Z)</option>
-                                <option value="price-low">Price (Low-High)</option>
-                                <option value="price-high">Price (High-Low)</option>
-                            </select>
+        <?php else: ?>
+            <div class="services-grid" id="servicesGrid">
+            <?php foreach ($services as $service):
+                $sd = $service_details[$service['id']] ?? null;
+                $bookings_count = $sd['bookings']['total_bookings'] ?? 0;
+                $completed_count = $sd['bookings']['completed_bookings'] ?? 0;
+                $avg_rating = $sd['reviews']['avg_rating'] ?? 0;
+                $total_reviews = $sd['reviews']['total_reviews'] ?? 0;
+                $sStatus = $service['service_status'] ?? 'draft';
+                $statusColors = ['published'=>'#198754','paused'=>'#d97706','draft'=>'#9ca3af'];
+                $accentColor = $statusColors[$sStatus] ?? '#9ca3af';
+                $extraItems = !empty($service['optional_extras']) ? json_decode($service['optional_extras'],true) : [];
+                $isNegotiable = !empty($service['negotiable']);
+                $isInstant = ($service['booking_mode'] ?? 'request_approval') === 'instant';
+                // Star rendering
+                $stars = '';
+                for ($si=1;$si<=5;$si++) $stars .= ($si <= round($avg_rating)) ? '★' : '☆';
+            ?>
+            <div class="service-card status-<?php echo $sStatus; ?>"
+                 data-name="<?php echo strtolower(htmlspecialchars($service['name'])); ?>"
+                 data-status="<?php echo $sStatus; ?>"
+                 data-category="<?php echo $service['category_id']; ?>"
+                 data-price="<?php echo $service['price']; ?>"
+                 data-bookings="<?php echo $bookings_count; ?>">
+                <div class="sc-accent-bar" style="background:<?php echo $accentColor; ?>;"></div>
+                <div class="sc-body">
+                    <div class="sc-header">
+                        <div>
+                            <h3 class="sc-title"><?php echo htmlspecialchars($service['name']); ?></h3>
+                            <div class="sc-category">
+                                <i class="fas <?php echo $service['category_icon']; ?>"></i>
+                                <?php echo htmlspecialchars($service['category_name']); ?>
+                            </div>
+                        </div>
+                        <div class="sc-badges">
+                            <?php if ($sStatus === 'published'): ?><span class="badge-pill badge-published"><i class="fas fa-circle" style="font-size:0.45rem;"></i> Live</span>
+                            <?php elseif ($sStatus === 'paused'): ?><span class="badge-pill badge-paused"><i class="fas fa-pause" style="font-size:0.55rem;"></i> Paused</span>
+                            <?php else: ?><span class="badge-pill badge-draft"><i class="fas fa-pencil-alt" style="font-size:0.55rem;"></i> Draft</span>
+                            <?php endif; ?>
+                            <?php if ($isNegotiable): ?><span class="badge-pill badge-neg"><i class="fas fa-handshake" style="font-size:0.55rem;"></i> Neg.</span><?php endif; ?>
+                            <?php if ($isInstant): ?><span class="badge-pill badge-instant"><i class="fas fa-bolt" style="font-size:0.55rem;"></i> Instant</span><?php endif; ?>
                         </div>
                     </div>
-                    
-                    <?php if (empty($services)): ?>
-                        <div class="empty-state">
-                            <i class="fas fa-concierge-bell"></i>
-                            <h4><?php echo __('services_list.empty_title', [], 'services_page'); ?></h4>
-                            <p><?php echo __('services_list.empty_message', [], 'services_page'); ?></p>
-                            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addServiceModal">
-                                <i class="fas fa-plus-circle me-2"></i> Create Your First Service
-                            </button>
-                        </div>
-                    <?php else: ?>
-                        <div class="services-grid">
-                            <?php foreach ($services as $service): ?>
-                                <div class="service-card <?php echo !$service['is_available'] ? 'unavailable' : ''; ?>">
-                                    <div class="service-header">
-                                        <h3 class="service-title"><?php echo htmlspecialchars($service['name']); ?></h3>
-                                        <div style="display: flex; gap: 0.5rem;">
-                                            <?php
-                                                $serviceStatusKey = $service['service_status'] ?? 'draft';
-                                                $serviceStatusLabels = [
-                                                    'published' => ['class' => 'success', 'icon' => 'check-circle', 'label' => 'Published'],
-                                                    'paused' => ['class' => 'warning', 'icon' => 'pause', 'label' => 'Paused'],
-                                                    'draft' => ['class' => 'secondary', 'icon' => 'pencil-alt', 'label' => 'Draft'],
-                                                ];
-                                                $statusInfo = $serviceStatusLabels[$serviceStatusKey] ?? $serviceStatusLabels['draft'];
-                                            ?>
-                                            <span class="status-badge status-<?php echo $statusInfo['class']; ?>">
-                                                <i class="fas fa-<?php echo $statusInfo['icon']; ?> me-1"></i>
-                                                <?php echo htmlspecialchars($statusInfo['label']); ?>
-                                            </span>
-                                            <?php if ($service['negotiable']): ?>
-                                                <span class="badge bg-info">
-                                                    <i class="fas fa-handshake me-1"></i> Negotiable
-                                                </span>
-                                            <?php endif; ?>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="service-category">
-                                        <i class="fas <?php echo $service['category_icon']; ?>"></i>
-                                        <?php echo htmlspecialchars($service['category_name']); ?>
-                                    </div>
-                                    
-                                    <div class="service-description">
-                                        <?php echo htmlspecialchars($service['description']); ?>
-                                    </div>
-                                    
-                                    <!-- Service Statistics -->
-                                    <?php $stats = $service_details[$service['id']] ?? null; ?>
-                                    <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin: 1rem 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; text-align: center;">
-                                        <div>
-                                            <div style="font-size: 1.3rem; font-weight: 700; color: var(--primary);">
-                                                <?php echo $stats && $stats['bookings'] ? $stats['bookings']['total_bookings'] ?? 0 : 0; ?>
-                                            </div>
-                                            <small style="color: var(--secondary); font-weight: 600;">Bookings</small>
-                                        </div>
-                                        <div>
-                                            <div style="font-size: 1.3rem; font-weight: 700; color: var(--success);">
-                                                <?php echo $stats && $stats['reviews'] ? round($stats['reviews']['avg_rating'] ?? 0, 1) : '0'; ?>★
-                                            </div>
-                                            <small style="color: var(--secondary); font-weight: 600;">Rating</small>
-                                        </div>
-                                        <div>
-                                            <div style="font-size: 1.3rem; font-weight: 700; color: var(--warning);">
-                                                <?php echo $stats && $stats['inquiries'] ? $stats['inquiries']['total_inquiries'] ?? 0 : 0; ?>
-                                            </div>
-                                            <small style="color: var(--secondary); font-weight: 600;">Inquiries</small>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="service-meta">
-                                        <div>
-                                            <span class="service-price">RWF <?php echo number_format($service['price']); ?></span>
-                                            <span class="service-duration"><?php echo intval($service['duration']); ?> <?php echo __('services_list.minutes', [], 'services_page'); ?></span>
-                                        </div>
-                                        <div>
-                                            <?php
-                                                $labels = [
-                                                    'fixed_price' => __('add_service_form.payment_fixed_price', [], 'services_page'),
-                                                    'hourly_rate' => __('add_service_form.payment_per_hour', [], 'services_page'),
-                                                    'per_job_estimate' => __('add_service_form.payment_per_job_estimate', [], 'services_page'),
-                                                    'per_day' => __('add_service_form.payment_per_day', [], 'services_page'),
-                                                    'base_price' => __('add_service_form.payment_base_price', [], 'services_page'),
-                                                    'per_service' => __('add_service_form.payment_per_service', [], 'services_page'),
-                                                ];
-                                            ?>
-                                            <span class="badge bg-secondary"><?php echo $labels[$service['payment_type']] ?? __('add_service_form.payment_per_service', [], 'services_page'); ?></span>
-                                        </div>
-                                    </div>
 
-                                    <?php
-                                        $extraItems = !empty($service['optional_extras']) ? json_decode($service['optional_extras'], true) : [];
-                                    ?>
-                                    <?php if (!empty($extraItems)): ?>
-                                        <div class="mb-3">
-                                            <span class="badge bg-warning text-dark">Optional extras: <?php echo count($extraItems); ?></span>
-                                            <small class="text-muted ms-2">
-                                                <?php echo htmlspecialchars($extraItems[0]['label'] . ' (+RWF ' . number_format($extraItems[0]['price']) . ')'); ?><?php if (count($extraItems) > 1) echo ' + ' . (count($extraItems) - 1) . ' more'; ?>
-                                            </small>
-                                        </div>
-                                    <?php endif; ?>
+                    <p class="sc-description"><?php echo htmlspecialchars($service['description']); ?></p>
 
-                                    <div class="service-actions">
-                                        <button type="button" class="btn btn-info btn-sm" 
-                                                data-bs-toggle="modal" data-bs-target="#serviceDetailsModal"
-                                                data-service-id="<?php echo $service['id']; ?>"
-                                                data-service-name="<?php echo htmlspecialchars($service['name']); ?>"
-                                                data-service-description="<?php echo htmlspecialchars($service['description']); ?>"
-                                                data-service-price="<?php echo $service['price']; ?>"
-                                                data-service-duration="<?php echo $service['duration']; ?>"
-                                                data-service-category="<?php echo htmlspecialchars($service['category_name']); ?>"
-                                                data-service-optional-extras="<?php echo htmlspecialchars($service['optional_extras'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
-                                            <i class="fas fa-eye"></i> Details
-                                        </button>
-                                        
-                                        <button type="button" class="btn btn-outline-primary btn-sm" 
-                                                data-bs-toggle="modal" data-bs-target="#editServiceModal"
-                                                data-service-id="<?php echo $service['id']; ?>"
-                                                data-service-name="<?php echo htmlspecialchars($service['name']); ?>"
-                                                data-service-description="<?php echo htmlspecialchars($service['description']); ?>"
-                                                data-service-price="<?php echo $service['price']; ?>"
-                                                data-service-duration="<?php echo $service['duration']; ?>"
-                                                data-service-available="<?php echo $service['is_available']; ?>"
-                                                data-service-status="<?php echo htmlspecialchars($service['service_status'] ?? 'draft'); ?>"
-                                                data-service-payment-type="<?php echo htmlspecialchars($service['payment_type']); ?>"
-                                                data-service-booking-mode="<?php echo htmlspecialchars($service['booking_mode'] ?? 'request_approval'); ?>"
-                                                data-service-availability-days="<?php echo htmlspecialchars($service['availability_days'] ?? ''); ?>"
-                                                data-service-time-slots="<?php echo htmlspecialchars($service['time_slots'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                                data-service-optional-extras="<?php echo htmlspecialchars($service['optional_extras'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
-                                            <i class="fas fa-edit"></i> <?php echo __('services_list.action_edit', [], 'services_page'); ?>
-                                        </button>
-                                        
-                                        <form method="POST" style="display: inline;">
-                                            <input type="hidden" name="service_id" value="<?php echo $service['id']; ?>">
-                                            <?php $statusToggleLabel = ($service['service_status'] ?? 'draft') === 'published' ? 'Pause' : 'Publish'; ?>
-                                            <button type="submit" name="toggle_availability" class="btn btn-<?php echo ($service['service_status'] ?? 'draft') === 'published' ? 'warning' : 'success'; ?> btn-sm">
-                                                <i class="fas fa-<?php echo ($service['service_status'] ?? 'draft') === 'published' ? 'pause' : 'play'; ?>"></i> 
-                                                <?php echo $statusToggleLabel; ?>
-                                            </button>
-                                        </form>
-                                        
-                                        <button type="button" class="btn btn-outline-danger btn-sm" 
-                                                data-bs-toggle="modal" data-bs-target="#deleteServiceModal"
-                                                data-service-id="<?php echo $service['id']; ?>"
-                                                data-service-name="<?php echo htmlspecialchars($service['name']); ?>">
-                                            <i class="fas fa-trash"></i> <?php echo __('services_list.action_delete', [], 'services_page'); ?>
-                                        </button>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
+                    <div class="sc-mini-stats">
+                        <div class="sc-stat">
+                            <div class="sc-stat-num"><?php echo $bookings_count; ?></div>
+                            <div class="sc-stat-lbl">Bookings</div>
                         </div>
+                        <div class="sc-stat">
+                            <div class="sc-stat-num" style="color:#f59e0b;"><?php echo $avg_rating > 0 ? number_format($avg_rating,1) : '—'; ?></div>
+                            <div class="sc-stat-lbl" title="<?php echo $total_reviews; ?> reviews">Rating</div>
+                        </div>
+                        <div class="sc-stat">
+                            <div class="sc-stat-num" style="color:#198754;"><?php echo $completed_count; ?></div>
+                            <div class="sc-stat-lbl">Done</div>
+                        </div>
+                    </div>
+
+                    <?php if (!empty($extraItems)): ?>
+                    <div style="margin-bottom:0.75rem;">
+                        <span class="badge-pill" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;">
+                            <i class="fas fa-plus-circle" style="font-size:0.55rem;"></i> <?php echo count($extraItems); ?> extras
+                        </span>
+                        <span style="font-size:0.72rem;color:var(--text-muted);margin-left:0.4rem;">
+                            <?php echo htmlspecialchars($extraItems[0]['label']); ?>…
+                        </span>
+                    </div>
                     <?php endif; ?>
+
+                    <div class="sc-footer">
+                        <div>
+                            <div class="sc-price">RWF <?php echo number_format($service['price'],0); ?></div>
+                            <div class="sc-price-sub"><?php
+                                $ptLabels=['fixed_price'=>'Fixed','hourly_rate'=>'/hr','per_job_estimate'=>'Per job','per_day'=>'/day','base_price'=>'Base','per_service'=>'Per service'];
+                                echo $ptLabels[$service['payment_type']] ?? $service['payment_type'];
+                            ?></div>
+                        </div>
+                        <div class="sc-duration"><i class="fas fa-clock"></i> <?php echo $service['duration']; ?> min</div>
+                    </div>
+
+                    <div class="sc-actions">
+                        <!-- Details -->
+                        <button class="btn-act btn-act-view" type="button"
+                            data-bs-toggle="modal" data-bs-target="#serviceDetailsModal"
+                            data-service-id="<?php echo $service['id']; ?>"
+                            data-service-name="<?php echo htmlspecialchars($service['name'],ENT_QUOTES); ?>"
+                            data-service-description="<?php echo htmlspecialchars($service['description'],ENT_QUOTES); ?>"
+                            data-service-price="<?php echo $service['price']; ?>"
+                            data-service-duration="<?php echo $service['duration']; ?>"
+                            data-service-category="<?php echo htmlspecialchars($service['category_name'],ENT_QUOTES); ?>"
+                            data-service-optional-extras="<?php echo htmlspecialchars($service['optional_extras'] ?? '',ENT_QUOTES,'UTF-8'); ?>"
+                            data-service-bookings="<?php echo $bookings_count; ?>"
+                            data-service-completed="<?php echo $completed_count; ?>"
+                            data-service-rating="<?php echo number_format($avg_rating,1); ?>"
+                            data-service-reviews="<?php echo $total_reviews; ?>"
+                            data-service-negotiable="<?php echo $isNegotiable ? 'Yes':'No'; ?>"
+                            data-service-min-price="<?php echo $service['min_price'] ?? ''; ?>"
+                            data-service-max-price="<?php echo $service['max_price'] ?? ''; ?>"
+                            data-service-booking-mode="<?php echo htmlspecialchars($service['booking_mode'] ?? 'request_approval',ENT_QUOTES); ?>"
+                            data-service-status="<?php echo $sStatus; ?>"
+                            data-service-payment-type="<?php echo htmlspecialchars($service['payment_type'],ENT_QUOTES); ?>">
+                            <i class="fas fa-eye"></i> Details
+                        </button>
+                        <!-- Edit -->
+                        <button class="btn-act btn-act-edit" type="button"
+                            data-bs-toggle="modal" data-bs-target="#editServiceModal"
+                            data-service-id="<?php echo $service['id']; ?>"
+                            data-service-name="<?php echo htmlspecialchars($service['name'],ENT_QUOTES); ?>"
+                            data-service-description="<?php echo htmlspecialchars($service['description'],ENT_QUOTES); ?>"
+                            data-service-price="<?php echo $service['price']; ?>"
+                            data-service-duration="<?php echo $service['duration']; ?>"
+                            data-service-available="<?php echo $service['is_available']; ?>"
+                            data-service-status="<?php echo $sStatus; ?>"
+                            data-service-payment-type="<?php echo htmlspecialchars($service['payment_type'],ENT_QUOTES); ?>"
+                            data-service-booking-mode="<?php echo htmlspecialchars($service['booking_mode'] ?? 'request_approval',ENT_QUOTES); ?>"
+                            data-service-availability-days="<?php echo htmlspecialchars($service['availability_days'] ?? '',ENT_QUOTES); ?>"
+                            data-service-time-slots="<?php echo htmlspecialchars($service['time_slots'] ?? '',ENT_QUOTES,'UTF-8'); ?>"
+                            data-service-optional-extras="<?php echo htmlspecialchars($service['optional_extras'] ?? '',ENT_QUOTES,'UTF-8'); ?>"
+                            data-service-negotiable="<?php echo $service['negotiable'] ?? 0; ?>"
+                            data-service-min-price="<?php echo $service['min_price'] ?? ''; ?>"
+                            data-service-max-price="<?php echo $service['max_price'] ?? ''; ?>">
+                            <i class="fas fa-pencil-alt"></i> Edit
+                        </button>
+                        <!-- Toggle -->
+                        <form method="POST" style="display:inline;">
+                            <input type="hidden" name="service_id" value="<?php echo $service['id']; ?>">
+                            <?php if ($sStatus === 'published'): ?>
+                            <button type="submit" name="toggle_availability" class="btn-act btn-act-pause">
+                                <i class="fas fa-pause"></i> Pause
+                            </button>
+                            <?php else: ?>
+                            <button type="submit" name="toggle_availability" class="btn-act btn-act-publish">
+                                <i class="fas fa-play"></i> Publish
+                            </button>
+                            <?php endif; ?>
+                        </form>
+                        <!-- Delete -->
+                        <button class="btn-act btn-act-del" type="button"
+                            onclick="confirmDelete(<?php echo $service['id']; ?>, '<?php echo addslashes($service['name']); ?>')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
+            <?php endforeach; ?>
+            </div><!-- /services-grid -->
+            <div id="noResults" style="display:none;" class="empty-state" style="background:var(--surface);border-radius:var(--radius-lg);">
+                <i class="fas fa-search"></i>
+                <h4>No Results</h4>
+                <p>Try adjusting your search or filters</p>
+            </div>
+        <?php endif; ?>
+        </div><!-- /servicesContainer -->
+    </div><!-- /main col -->
 
-            <div class="col-lg-4">
-                <!-- Popular Services -->
-                <div class="card">
-                    <h2><i class="fas fa-chart-line"></i> <?php echo __('popular_services.title', [], 'services_page'); ?></h2>
-                    <div class="popular-services">
-                        <?php if (empty($popular_services)): ?>
-                            <div class="empty-state" style="padding: 1rem;">
-                                <i class="fas fa-chart-bar"></i>
-                                <p><?php echo __('popular_services.no_bookings', [], 'services_page'); ?></p>
-                            </div>
-                        <?php else: ?>
-                            <?php foreach ($popular_services as $popular): ?>
-                                <div class="popular-service-item">
-                                    <div>
-                                        <strong><?php echo htmlspecialchars($popular['name']); ?></strong>
-                                        <div class="text-muted small"><?php echo $popular['booking_count']; ?> <?php echo __('popular_services.bookings', [], 'services_page'); ?></div>
-                                    </div>
-                                    <span class="booking-count"><?php echo $popular['booking_count']; ?></span>
-                                </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
+    <!-- RIGHT SIDEBAR -->
+    <div class="side-col" style="width:300px;flex-shrink:0;">
+
+        <!-- POPULAR SERVICES -->
+        <div class="side-panel">
+            <div class="side-panel-header">
+                <h3><i class="fas fa-fire" style="color:#ef4444;"></i> Most Booked</h3>
+            </div>
+            <div class="side-panel-body">
+                <?php if (empty($popular_services) || max(array_column($popular_services,'booking_count')) == 0): ?>
+                <div style="text-align:center;padding:1rem;color:var(--text-muted);font-size:0.82rem;">
+                    <i class="fas fa-chart-bar" style="font-size:1.5rem;display:block;margin-bottom:0.5rem;"></i>
+                    No booking data yet
                 </div>
+                <?php else: foreach ($popular_services as $ri => $popular): ?>
+                <div class="pop-item">
+                    <div class="pop-rank <?php echo 'r'.($ri+1); ?>">#<?php echo $ri+1; ?></div>
+                    <div class="pop-name"><?php echo htmlspecialchars($popular['name']); ?></div>
+                    <span class="pop-count"><?php echo $popular['booking_count']; ?></span>
+                </div>
+                <?php endforeach; endif; ?>
+            </div>
+        </div>
 
-                <!-- Related Services by Category -->
-                <?php if (!empty($related_services_by_category)): ?>
-                    <div class="card">
-                        <h2><i class="fas fa-folder-open"></i> <?php echo __('related_services.title', [], 'services_page'); ?></h2>
-                        <div class="related-services-list">
-                            <?php foreach ($related_services_by_category as $category_group): ?>
-                                <div class="category-group">
-                                    <div class="category-header">
-                                        <i class="fas <?php echo $category_group['category_icon']; ?>"></i>
-                                        <strong><?php echo htmlspecialchars($category_group['category_name']); ?></strong>
-                                        <span class="badge bg-primary"><?php echo count($category_group['services']); ?></span>
-                                    </div>
-                                    <div class="category-services">
-                                        <?php foreach ($category_group['services'] as $service): ?>
-                                            <div class="related-service-item">
-                                                <div>
-                                                    <small class="service-name"><?php echo htmlspecialchars($service['name']); ?></small>
-                                                </div>
-                                                <small class="service-price-tag">RWF <?php echo number_format($service['price']); ?></small>
-                                            </div>
-                                        <?php endforeach; ?>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
+        <!-- COMPLETION HEALTH -->
+        <?php if (!empty($services)): ?>
+        <div class="side-panel">
+            <div class="side-panel-header">
+                <h3><i class="fas fa-heartbeat" style="color:#0d6efd;"></i> Service Health</h3>
+            </div>
+            <div class="side-panel-body">
+                <?php
+                $pub_pct = $total_services_count > 0 ? round($published_count / $total_services_count * 100) : 0;
+                ?>
+                <div class="progress-wrap">
+                    <div class="progress-label"><span>Published</span><span><?php echo $pub_pct; ?>%</span></div>
+                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:<?php echo $pub_pct; ?>%;background:#198754;"></div></div>
+                </div>
+                <?php
+                $neg_count = array_sum(array_column($services, 'negotiable'));
+                $neg_pct = $total_services_count > 0 ? round($neg_count / $total_services_count * 100) : 0;
+                ?>
+                <div class="progress-wrap" style="margin-top:0.75rem;">
+                    <div class="progress-label"><span>Negotiable</span><span><?php echo $neg_pct; ?>%</span></div>
+                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:<?php echo $neg_pct; ?>%;background:#0891b2;"></div></div>
+                </div>
+                <?php
+                $inst_count = count(array_filter($services, fn($s) => ($s['booking_mode'] ?? '') === 'instant'));
+                $inst_pct = $total_services_count > 0 ? round($inst_count / $total_services_count * 100) : 0;
+                ?>
+                <div class="progress-wrap" style="margin-top:0.75rem;">
+                    <div class="progress-label"><span>Instant Booking</span><span><?php echo $inst_pct; ?>%</span></div>
+                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:<?php echo $inst_pct; ?>%;background:#9333ea;"></div></div>
+                </div>
+                <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border-subtle);">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;text-align:center;">
+                        <div style="background:var(--surface-2);border-radius:var(--radius-sm);padding:0.6rem;border:1px solid var(--border-subtle);">
+                            <div style="font-size:1.2rem;font-weight:800;color:var(--text-primary);"><?php echo $published_count; ?></div>
+                            <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;color:var(--success);">Published</div>
                         </div>
-                    </div>
-                <?php endif; ?>
-
-                <!-- Quick Tips -->
-                <div class="card">
-                    <h2><i class="fas fa-lightbulb"></i> <?php echo 'Service Tips'; ?></h2>
-                    <div class="tips-list">
-                        <div class="popular-service-item">
-                            <i class="fas fa-check text-success"></i>
-                            <div class="ms-2">
-                                <small><?php echo 'Use clear, descriptive service names'; ?></small>
-                            </div>
-                        </div>
-                        <div class="popular-service-item">
-                            <i class="fas fa-check text-success"></i>
-                            <div class="ms-2">
-                                <small><?php echo 'Set competitive but fair pricing'; ?></small>
-                            </div>
-                        </div>
-                        <div class="popular-service-item">
-                            <i class="fas fa-check text-success"></i>
-                            <div class="ms-2">
-                                <small><?php echo 'Be specific about what\'s included'; ?></small>
-                            </div>
-                        </div>
-                        <div class="popular-service-item">
-                            <i class="fas fa-check text-success"></i>
-                            <div class="ms-2">
-                                <small><?php echo 'Keep availability status updated'; ?></small>
-                            </div>
+                        <div style="background:var(--surface-2);border-radius:var(--radius-sm);padding:0.6rem;border:1px solid var(--border-subtle);">
+                            <div style="font-size:1.2rem;font-weight:800;color:var(--text-primary);"><?php echo $draft_count; ?></div>
+                            <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);">Drafts</div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+        <?php endif; ?>
+
+        <!-- SERVICES BY CATEGORY -->
+        <?php if (!empty($related_services_by_category)): ?>
+        <div class="side-panel">
+            <div class="side-panel-header">
+                <h3><i class="fas fa-layer-group" style="color:#0d6efd;"></i> By Category</h3>
+            </div>
+            <div class="side-panel-body">
+                <?php foreach ($related_services_by_category as $catGroup): ?>
+                <div class="cat-group">
+                    <div class="cat-group-header">
+                        <i class="fas <?php echo $catGroup['category_icon']; ?>"></i>
+                        <?php echo htmlspecialchars($catGroup['category_name']); ?>
+                        <span class="pop-count" style="margin-left:auto;"><?php echo count($catGroup['services']); ?></span>
+                    </div>
+                    <?php foreach ($catGroup['services'] as $cs): ?>
+                    <div class="cat-item">
+                        <span class="cat-item-name"><?php echo htmlspecialchars($cs['name']); ?></span>
+                        <span class="cat-item-price">RWF <?php echo number_format($cs['price'],0); ?></span>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- TIPS -->
+        <div class="side-panel">
+            <div class="side-panel-header">
+                <h3><i class="fas fa-lightbulb" style="color:#d97706;"></i> Pro Tips</h3>
+            </div>
+            <div class="side-panel-body">
+                <div class="tip-item">
+                    <div class="tip-icon" style="background:#fffbeb;color:#d97706;"><i class="fas fa-camera"></i></div>
+                    <div class="tip-text"><strong>Add Portfolio Images</strong>Services with photos get 3× more bookings</div>
+                </div>
+                <div class="tip-item">
+                    <div class="tip-icon" style="background:#f0fdf4;color:#198754;"><i class="fas fa-handshake"></i></div>
+                    <div class="tip-text"><strong>Enable Negotiation</strong>Attract more clients with flexible pricing</div>
+                </div>
+                <div class="tip-item">
+                    <div class="tip-icon" style="background:#fdf4ff;color:#9333ea;"><i class="fas fa-bolt"></i></div>
+                    <div class="tip-text"><strong>Instant Booking</strong>Services with instant booking see 40% more conversions</div>
+                </div>
+                <div class="tip-item" style="border:none;">
+                    <div class="tip-icon" style="background:#ecfeff;color:#0891b2;"><i class="fas fa-star"></i></div>
+                    <div class="tip-text"><strong>Request Reviews</strong>Ask completed clients to leave a rating</div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /side col -->
+</div><!-- /layout -->
+</div><!-- /main-content -->
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- CONFIRM DELETE DIALOG -->
+<div class="confirm-overlay" id="confirmOverlay">
+    <div class="confirm-box">
+        <div class="icon" style="color:var(--danger);">🗑️</div>
+        <h4>Delete Service?</h4>
+        <p id="confirmMsg">This service will be permanently deleted and cannot be recovered.</p>
+        <div class="confirm-btns">
+            <button class="btn-secondary-cta" onclick="closeConfirm()">Cancel</button>
+            <form method="POST" id="deleteForm" style="display:inline;">
+                <input type="hidden" name="service_id" id="deleteServiceId">
+                <button type="submit" name="delete_service" class="btn-primary-cta" style="background:var(--danger);">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            </form>
+        </div>
     </div>
+</div>
 
-    <!-- Edit Service Modal -->
-    <div class="modal fade" id="editServiceModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <form method="POST" id="editServiceForm">
-                    <div class="modal-header">
-                        <h5 class="modal-title"><?php echo __('edit_service.title', [], 'services_page'); ?></h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+<!-- ======================= SERVICE DETAILS MODAL ======================= -->
+<div class="modal fade" id="serviceDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-info-circle me-2" style="color:var(--info);"></i><span id="detailServiceName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Stats Row -->
+                <div class="detail-stat-row">
+                    <div class="detail-stat">
+                        <div class="detail-stat-val" id="detailBookings">0</div>
+                        <div class="detail-stat-lbl">Bookings</div>
                     </div>
-                    <div class="modal-body">
-                        <input type="hidden" name="service_id" id="editServiceId">
-                        
-                        <div class="mb-3">
-                            <label class="form-label"><?php echo __('edit_service.name', [], 'services_page'); ?></label>
-                            <input type="text" name="name" class="form-control" id="editServiceName" required>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label"><?php echo __('edit_service.description', [], 'services_page'); ?></label>
-                            <textarea name="description" class="form-control" id="editServiceDescription" required rows="3"></textarea>
-                        </div>
-                        
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label"><?php echo __('edit_service.price', [], 'services_page'); ?> (RWF)</label>
-                                    <input type="number" name="price" class="form-control" id="editServicePrice" required min="0" step="100">
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label"><?php echo __('edit_service.duration', [], 'services_page'); ?></label>
-                                    <input type="number" name="duration" class="form-control" id="editServiceDuration" required min="15" step="15">
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label">Payment Type</label>
-                            <select name="payment_type" class="form-select" id="editServicePaymentType">
-                                <option value="fixed_price"><?php echo __('add_service_form.payment_fixed_price', [], 'services_page'); ?></option>
-                                <option value="hourly_rate"><?php echo __('add_service_form.payment_per_hour', [], 'services_page'); ?></option>
-                                <option value="per_job_estimate"><?php echo __('add_service_form.payment_per_job_estimate', [], 'services_page'); ?></option>
-                                <option value="per_day"><?php echo __('add_service_form.payment_per_day', [], 'services_page'); ?></option>
-                                <option value="base_price"><?php echo __('add_service_form.payment_base_price', [], 'services_page'); ?></option>
-                                <option value="per_service"><?php echo __('add_service_form.payment_per_service', [], 'services_page'); ?></option>
-                            </select>
-                            <div class="form-text">How you charge for this service</div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Booking Mode</label>
-                            <select name="booking_mode" class="form-select" id="editServiceBookingMode">
-                                <option value="request_approval">Request Approval</option>
-                                <option value="instant">Instant Booking</option>
-                            </select>
-                            <div class="form-text">Choose whether this service is confirmed instantly or requires provider approval.</div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Service Status</label>
-                            <select name="service_status" class="form-select" id="editServiceStatus">
-                                <option value="draft">Draft</option>
-                                <option value="published">Published</option>
-                                <option value="paused">Paused</option>
-                            </select>
-                            <div class="form-text">Set whether the service is draft, published for booking, or paused.</div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Available Days</label>
-                            <div class="row g-2">
-                                <?php $weekdays = [1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat', 7 => 'Sun']; ?>
-                                <?php foreach ($weekdays as $dayNumber => $dayLabel): ?>
-                                    <div class="col-auto">
-                                        <div class="form-check">
-                                            <input class="form-check-input edit-availability-day" type="checkbox" name="availability_days[]" value="<?php echo $dayNumber; ?>" id="editAvailabilityDay<?php echo $dayNumber; ?>">
-                                            <label class="form-check-label" for="editAvailabilityDay<?php echo $dayNumber; ?>"><?php echo $dayLabel; ?></label>
-                                        </div>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                            <div class="form-text">Select which days this service can be booked.</div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Available Time Slots</label>
-                            <textarea name="time_slots" class="form-control" id="editTimeSlots" rows="3" placeholder="08:00-12:00\n14:00-18:00"></textarea>
-                            <div class="form-text">Enter one time slot per line in HH:MM-HH:MM format. Leave blank to use the provider's default schedule.</div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label"><?php echo __('add_service_form.optional_extras', [], 'services_page'); ?></label>
-                            <textarea name="optional_extras" id="editOptionalExtras" class="form-control" rows="3" placeholder="<?php echo __('add_service_form.optional_extras_placeholder', [], 'services_page'); ?>"></textarea>
-                            <div class="form-text"><?php echo __('add_service_form.optional_extras_help', [], 'services_page'); ?></div>
-                        </div>
-
-                        <div class="mb-3">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" name="negotiable" id="editNegotiableCheck" value="1">
-                                <label class="form-check-label" for="editNegotiableCheck">
-                                    <strong><?php echo __('edit_service.negotiable', [], 'services_page'); ?></strong>
-                                </label>
-                            </div>
-                            <div class="form-text"><?php echo 'Let clients offer prices within a range you set'; ?></div>
-                        </div>
-
-                        <div id="editNegotiableFields" style="display: none; background: #f0f8ff; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-                            <small class="text-muted mb-2 d-block"><i class="fas fa-info-circle"></i> <?php echo 'Set the price range clients can offer'; ?></small>
-                            
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label"><?php echo __('edit_service.min_price', [], 'services_page'); ?> (RWF)</label>
-                                    <input type="number" name="min_price" class="form-control" id="editMinPrice"
-                                           min="0" step="100" placeholder="4000">
-                                    <div class="form-text"><?php echo 'Lowest clients can offer'; ?></div>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label"><?php echo __('edit_service.max_price', [], 'services_page'); ?> (RWF)</label>
-                                    <input type="number" name="max_price" class="form-control" id="editMaxPrice"
-                                           min="0" step="100" placeholder="6000">
-                                    <div class="form-text"><?php echo 'Highest clients can offer'; ?></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="form-check d-none">
-                            <input class="form-check-input" type="checkbox" name="is_available" id="editServiceAvailable" value="1">
-                            <label class="form-check-label" for="editServiceAvailable">
-                                <?php echo __('edit_service.is_available', [], 'services_page'); ?>
-                            </label>
-                        </div>
+                    <div class="detail-stat">
+                        <div class="detail-stat-val" style="color:#f59e0b;" id="detailRating">—</div>
+                        <div class="detail-stat-lbl">Avg Rating</div>
                     </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><?php echo __('edit_service.cancel_button', [], 'services_page'); ?></button>
-                        <button type="submit" name="update_service" class="btn btn-primary"><?php echo __('edit_service.save_button', [], 'services_page'); ?></button>
+                    <div class="detail-stat">
+                        <div class="detail-stat-val" style="color:var(--success);" id="detailCompleted">0</div>
+                        <div class="detail-stat-lbl">Completed</div>
                     </div>
-                </form>
+                </div>
+
+                <div style="margin-bottom:1rem;">
+                    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-muted);margin-bottom:0.5rem;">Description</div>
+                    <p id="detailDescription" style="font-size:0.875rem;color:var(--text-secondary);line-height:1.6;margin:0;"></p>
+                </div>
+
+                <div>
+                    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-muted);margin-bottom:0.5rem;">Service Details</div>
+                    <div class="info-row-modal"><span class="info-label-modal">Category</span><span class="info-val-modal" id="detailCategory"></span></div>
+                    <div class="info-row-modal"><span class="info-label-modal">Price</span><span class="info-val-modal" id="detailPrice"></span></div>
+                    <div class="info-row-modal"><span class="info-label-modal">Payment Type</span><span class="info-val-modal" id="detailPaymentType"></span></div>
+                    <div class="info-row-modal"><span class="info-label-modal">Duration</span><span class="info-val-modal" id="detailDuration"></span></div>
+                    <div class="info-row-modal"><span class="info-label-modal">Status</span><span class="info-val-modal" id="detailStatus"></span></div>
+                    <div class="info-row-modal"><span class="info-label-modal">Negotiable</span><span class="info-val-modal" id="detailNegotiable"></span></div>
+                    <div class="info-row-modal"><span class="info-label-modal">Price Range</span><span class="info-val-modal" id="detailPriceRange"></span></div>
+                    <div class="info-row-modal"><span class="info-label-modal">Booking Mode</span><span class="info-val-modal" id="detailBookingMode"></span></div>
+                    <div class="info-row-modal"><span class="info-label-modal">Reviews</span><span class="info-val-modal" id="detailReviews"></span></div>
+                    <div class="info-row-modal" id="detailExtrasRow"><span class="info-label-modal">Optional Extras</span><span class="info-val-modal" id="detailExtras"></span></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary-cta" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
+</div>
 
-    <!-- Delete Service Modal -->
-    <div class="modal fade" id="deleteServiceModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <form method="POST" id="deleteServiceForm">
-                    <div class="modal-header">
-                        <h5 class="modal-title"><?php echo __('delete_service.title', [], 'services_page'); ?></h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+<!-- ======================= ADD SERVICE MODAL ======================= -->
+<div class="modal fade" id="addServiceModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <form method="POST" id="serviceForm">
+                <div class="modal-header" style="background:var(--primary-light);">
+                    <h5 class="modal-title"><i class="fas fa-plus-circle me-2" style="color:var(--primary);"></i> Add New Service</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Tab navigation -->
+                    <div class="modal-tabs" id="addTabs">
+                        <button type="button" class="modal-tab-btn active" data-tab="add-basic">Basic Info</button>
+                        <button type="button" class="modal-tab-btn" data-tab="add-pricing">Pricing</button>
+                        <button type="button" class="modal-tab-btn" data-tab="add-schedule">Schedule</button>
+                        <button type="button" class="modal-tab-btn" data-tab="add-advanced">Advanced</button>
                     </div>
-                    <div class="modal-body">
-                        <input type="hidden" name="service_id" id="deleteServiceId">
-                        <p><?php echo __('delete_service.confirm_message', [], 'services_page'); ?></p>
-                        <p class="text-danger"><small><?php echo 'This action cannot be undone. Any future bookings for this service will be affected.'; ?></small></p>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><?php echo __('delete_service.cancel_button', [], 'services_page'); ?></button>
-                        <button type="submit" name="delete_service" class="btn btn-danger"><?php echo __('delete_service.delete_button', [], 'services_page'); ?></button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
 
-    <!-- Add Service Modal -->
-    <div class="modal fade" id="addServiceModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <form method="POST" id="serviceForm">
-                    <div class="modal-header">
-                        <h5 class="modal-title"><i class="fas fa-plus-circle me-2"></i> <?php echo __('add_service_form.title', [], 'services_page'); ?></h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="form-grid">
-                            <div class="mb-3">
-                                <label class="form-label"><?php echo __('add_service_form.name', [], 'services_page'); ?> <span class="required">*</span></label>
-                                <input type="text" name="name" class="form-control" required 
-                                       value="<?php echo $_POST['name'] ?? ''; ?>" 
-                                       placeholder="e.g., Electrical Repair, Plumbing Service">
+                    <!-- Basic Info -->
+                    <div class="tab-pane-custom active" id="add-basic">
+                        <div class="row g-3">
+                            <div class="col-md-8">
+                                <label class="form-label">Service Name <span class="required">*</span></label>
+                                <input type="text" name="name" class="form-control" required placeholder="e.g., Electrical Installation, House Cleaning…" value="<?php echo htmlspecialchars($_POST['name'] ?? ''); ?>">
                             </div>
-
-                            <div class="mb-3">
-                                <label class="form-label"><?php echo __('add_service_form.category', [], 'services_page'); ?> <span class="required">*</span></label>
+                            <div class="col-md-4">
+                                <label class="form-label">Category <span class="required">*</span></label>
                                 <select name="category_id" class="form-select" required>
-                                    <option value=""><?php echo __('add_service_form.category', [], 'services_page'); ?></option>
-                                    <?php foreach ($provider_categories as $category): ?>
-                                        <option value="<?php echo $category['id']; ?>" 
-                                            <?php echo ($_POST['category_id'] ?? '') == $category['id'] ? 'selected' : ''; ?>>
-                                            <i class="fas <?php echo $category['icon']; ?>"></i> 
-                                            <?php echo htmlspecialchars($category['name']); ?>
-                                        </option>
+                                    <option value="">Select…</option>
+                                    <?php foreach ($provider_categories as $cat): ?>
+                                    <option value="<?php echo $cat['id']; ?>" <?php echo ($_POST['category_id'] ?? '') == $cat['id'] ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($cat['name']); ?>
+                                    </option>
                                     <?php endforeach; ?>
                                 </select>
                                 <?php if (empty($provider_categories)): ?>
-                                    <div class="form-text text-warning">
-                                        <i class="fas fa-exclamation-triangle"></i> 
-                                        <?php echo 'No categories assigned. Please update your profile first.'; ?>
-                                    </div>
+                                <div class="form-text text-warning"><i class="fas fa-exclamation-triangle"></i> No categories. Update your profile first.</div>
                                 <?php endif; ?>
                             </div>
-
-                            <div class="mb-3">
-                                <label class="form-label"><?php echo __('add_service_form.price', [], 'services_page'); ?> (RWF) <span class="required">*</span></label>
-                                <input type="number" name="price" class="form-control" required 
-                                       value="<?php echo $_POST['price'] ?? ''; ?>" 
-                                       min="0" step="100" placeholder="5000" id="basePrice">
-                                <div class="form-text"><?php echo 'Standard price for this service'; ?></div>
+                            <div class="col-12">
+                                <label class="form-label">Description <span class="required">*</span></label>
+                                <textarea name="description" class="form-control" rows="3" required placeholder="Describe what this service includes, what clients can expect…"><?php echo htmlspecialchars($_POST['description'] ?? ''); ?></textarea>
+                                <div class="form-text">A clear description helps clients understand and choose your service.</div>
                             </div>
-
-                            <div class="mb-3">
-                                <label class="form-label"><?php echo __('add_service_form.duration', [], 'services_page'); ?> (minutes) <span class="required">*</span></label>
-                                <input type="number" name="duration" class="form-control" required 
-                                       value="<?php echo $_POST['duration'] ?? '60'; ?>" 
-                                       min="15" step="15" placeholder="60">
-                                <div class="form-text"><?php echo 'Estimated time to complete this service'; ?></div>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label"><?php echo __('add_service_form.payment_type', [], 'services_page'); ?></label>
-                                <select name="payment_type" class="form-select">
-                                    <option value="fixed_price"><?php echo __('add_service_form.payment_fixed_price', [], 'services_page'); ?></option>
-                                    <option value="hourly_rate"><?php echo __('add_service_form.payment_per_hour', [], 'services_page'); ?></option>
-                                    <option value="per_job_estimate"><?php echo __('add_service_form.payment_per_job_estimate', [], 'services_page'); ?></option>
-                                    <option value="per_day"><?php echo __('add_service_form.payment_per_day', [], 'services_page'); ?></option>
-                                    <option value="base_price"><?php echo __('add_service_form.payment_base_price', [], 'services_page'); ?></option>
-                                    <option value="per_service"><?php echo __('add_service_form.payment_per_service', [], 'services_page'); ?></option>
+                            <div class="col-md-6">
+                                <label class="form-label">Service Status</label>
+                                <select name="service_status" class="form-select" id="addServiceStatus">
+                                    <option value="draft">Draft (not visible)</option>
+                                    <option value="published">Published (live)</option>
+                                    <option value="paused">Paused</option>
                                 </select>
-                                <div class="form-text"><?php echo 'How you charge for this service'; ?></div>
                             </div>
-
-                            <div class="mb-3">
+                            <div class="col-md-6">
                                 <label class="form-label">Booking Mode</label>
                                 <select name="booking_mode" class="form-select">
-                                    <option value="request_approval" <?php echo (($_POST['booking_mode'] ?? '') === 'request_approval') ? 'selected' : ''; ?>>Request Approval</option>
-                                    <option value="instant" <?php echo (($_POST['booking_mode'] ?? '') === 'instant') ? 'selected' : ''; ?>>Instant Booking</option>
+                                    <option value="request_approval">Request Approval</option>
+                                    <option value="instant">Instant Booking ⚡</option>
                                 </select>
-                                <div class="form-text">Choose whether this service is confirmed instantly or requires provider approval.</div>
+                                <div class="form-text">Instant booking requires no confirmation from you.</div>
                             </div>
+                        </div>
+                    </div>
 
-                            <div class="mb-3">
-                                <label class="form-label">Service Status</label>
-                                <select name="service_status" class="form-select">
-                                    <option value="draft" <?php echo (($_POST['service_status'] ?? '') === 'draft') ? 'selected' : ''; ?>>Draft</option>
-                                    <option value="published" <?php echo (($_POST['service_status'] ?? '') === 'published') ? 'selected' : ''; ?>>Published</option>
-                                    <option value="paused" <?php echo (($_POST['service_status'] ?? '') === 'paused') ? 'selected' : ''; ?>>Paused</option>
+                    <!-- Pricing -->
+                    <div class="tab-pane-custom" id="add-pricing">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Base Price (RWF) <span class="required">*</span></label>
+                                <input type="number" name="price" class="form-control" required min="0" step="100" placeholder="5000" id="addBasePrice" value="<?php echo htmlspecialchars($_POST['price'] ?? ''); ?>">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Payment Type</label>
+                                <select name="payment_type" class="form-select">
+                                    <option value="fixed_price">Fixed Price</option>
+                                    <option value="hourly_rate">Per Hour</option>
+                                    <option value="per_job_estimate">Per Job (estimate)</option>
+                                    <option value="per_day">Per Day</option>
+                                    <option value="per_service">Per Service</option>
+                                    <option value="base_price">Base Price</option>
                                 </select>
-                                <div class="form-text">Set whether the service is draft, published for booking, or paused.</div>
                             </div>
-
-                            <div class="mb-3">
-                                <label class="form-label">Available Days</label>
-                                <div class="row g-2">
-                                    <?php $weekdays = [1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat', 7 => 'Sun']; ?>
-                                    <?php foreach ($weekdays as $dayNumber => $dayLabel): ?>
-                                        <div class="col-auto">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" name="availability_days[]" value="<?php echo $dayNumber; ?>" id="availabilityDay<?php echo $dayNumber; ?>"
-                                                    <?php echo in_array($dayNumber, $_POST['availability_days'] ?? [1,2,3,4,5]) ? 'checked' : ''; ?> >
-                                                <label class="form-check-label" for="availabilityDay<?php echo $dayNumber; ?>"><?php echo $dayLabel; ?></label>
-                                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Duration (minutes) <span class="required">*</span></label>
+                                <input type="number" name="duration" class="form-control" required min="15" step="15" placeholder="60" value="<?php echo htmlspecialchars($_POST['duration'] ?? '60'); ?>">
+                            </div>
+                            <div class="col-12">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="negotiable" id="addNegotiableCheck" value="1" <?php echo isset($_POST['negotiable']) ? 'checked' : ''; ?>>
+                                    <label class="form-check-label" for="addNegotiableCheck">
+                                        <strong>Allow Price Negotiation</strong>
+                                        <span style="font-size:0.78rem;color:var(--text-muted);display:block;">Clients can offer prices within your range</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div id="addNegotiableFields" style="display:none;" class="col-12">
+                                <div style="background:var(--primary-light);padding:1rem;border-radius:var(--radius-md);border:1px solid #bfdbfe;">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Minimum Price (RWF)</label>
+                                            <input type="number" name="min_price" class="form-control" min="0" step="100" placeholder="4000" value="<?php echo htmlspecialchars($_POST['min_price'] ?? ''); ?>">
+                                            <div class="form-text">Lowest offer you'll accept</div>
                                         </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Maximum Price (RWF)</label>
+                                            <input type="number" name="max_price" class="form-control" min="0" step="100" placeholder="10000" value="<?php echo htmlspecialchars($_POST['max_price'] ?? ''); ?>">
+                                            <div class="form-text">Highest clients can offer</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Schedule -->
+                    <div class="tab-pane-custom" id="add-schedule">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">Available Days</label>
+                                <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.35rem;">
+                                    <?php $weekdays=[1=>'Mo',2=>'Tu',3=>'We',4=>'Th',5=>'Fr',6=>'Sa',7=>'Su']; ?>
+                                    <?php foreach ($weekdays as $dn => $dl): ?>
+                                    <div class="day-pill">
+                                        <input type="checkbox" name="availability_days[]" value="<?php echo $dn; ?>" id="addDay<?php echo $dn; ?>" <?php echo in_array($dn,[1,2,3,4,5]) ? 'checked' : ''; ?>>
+                                        <label for="addDay<?php echo $dn; ?>"><?php echo $dl; ?></label>
+                                    </div>
                                     <?php endforeach; ?>
                                 </div>
-                                <div class="form-text">Select which days this service can be booked.</div>
+                                <div class="form-text">Select the days clients can book this service.</div>
                             </div>
-
-                            <div class="mb-3">
-                                <label class="form-label">Available Time Slots</label>
-                                <textarea name="time_slots" class="form-control" rows="3" placeholder="08:00-12:00\n14:00-18:00"><?php echo htmlspecialchars($_POST['time_slots'] ?? ''); ?></textarea>
-                                <div class="form-text">Enter one time slot per line in HH:MM-HH:MM format. Leave blank to use the provider's default schedule.</div>
+                            <div class="col-12">
+                                <label class="form-label">Time Slots (optional)</label>
+                                <textarea name="time_slots" class="form-control" rows="3" placeholder="08:00-12:00&#10;14:00-18:00"></textarea>
+                                <div class="form-text">One time slot per line in HH:MM-HH:MM format. Leave blank for default provider schedule.</div>
                             </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label"><?php echo __('add_service_form.optional_extras', [], 'services_page'); ?></label>
-                            <textarea name="optional_extras" id="optionalExtras" class="form-control" rows="3" placeholder="<?php echo __('add_service_form.optional_extras_placeholder', [], 'services_page'); ?>"><?php echo $_POST['optional_extras'] ?? ''; ?></textarea>
-                            <div class="form-text"><?php echo __('add_service_form.optional_extras_help', [], 'services_page'); ?></div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label"><?php echo __('add_service_form.description', [], 'services_page'); ?> <span class="required">*</span></label>
-                            <textarea name="description" class="form-control" required rows="4" 
-                                      placeholder="Describe what this service includes, your expertise, materials used, etc."><?php echo $_POST['description'] ?? ''; ?></textarea>
-                            <div class="form-text">Be specific about what clients can expect</div>
-                        </div>
-
-                        <div class="mb-3">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" name="negotiable" id="negotiableCheck" value="1"
-                                       <?php echo isset($_POST['negotiable']) ? 'checked' : ''; ?>>
-                                <label class="form-check-label" for="negotiableCheck">
-                                    <strong><?php echo __('add_service_form.negotiable', [], 'services_page'); ?></strong>
-                                </label>
-                            </div>
-                            <div class="form-text"><?php echo 'Let clients offer prices within a range you set'; ?></div>
-                        </div>
-
-                        <div id="negotiableFields" style="display: <?php echo isset($_POST['negotiable']) ? 'block' : 'none'; ?>; background: #f0f8ff; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-                            <small class="text-muted mb-2 d-block"><i class="fas fa-info-circle"></i> <?php echo 'Set the price range clients can offer'; ?></small>
-                            
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label"><?php echo __('add_service_form.min_price', [], 'services_page'); ?> (RWF)</label>
-                                    <input type="number" name="min_price" class="form-control" 
-                                           value="<?php echo $_POST['min_price'] ?? ''; ?>" 
-                                           min="0" step="100" placeholder="4000" id="minPrice">
-                                    <div class="form-text"><?php echo 'Lowest clients can offer'; ?></div>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="form-label"><?php echo __('add_service_form.max_price', [], 'services_page'); ?> (RWF)</label>
-                                    <input type="number" name="max_price" class="form-control" 
-                                           value="<?php echo $_POST['max_price'] ?? ''; ?>" 
-                                           min="0" step="100" placeholder="6000" id="maxPrice">
-                                    <div class="form-text"><?php echo 'Highest clients can offer'; ?></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="form-check mb-3 d-none">
-                            <input class="form-check-input" type="checkbox" name="is_available" id="is_available" value="1" 
-                                   <?php echo isset($_POST['is_available']) ? 'checked' : 'checked'; ?>>
-                            <label class="form-check-label" for="is_available">
-                                <?php echo __('add_service_form.is_available', [], 'services_page'); ?>
-                            </label>
                         </div>
                     </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><?php echo 'Cancel'; ?></button>
-                        <button type="submit" name="add_service" class="btn btn-success">
-                            <i class="fas fa-plus me-2"></i> <?php echo __('add_service_form.add_button', [], 'services_page'); ?>
-                        </button>
+
+                    <!-- Advanced -->
+                    <div class="tab-pane-custom" id="add-advanced">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">Optional Extras</label>
+                                <textarea name="optional_extras" class="form-control" rows="4" placeholder="Emergency service (+10000)&#10;Weekend surcharge (+5000)&#10;Materials included (+3000)"></textarea>
+                                <div class="form-text">One extra per line. Format: <code>Label (+price)</code></div>
+                            </div>
+                        </div>
                     </div>
-                </form>
-            </div>
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary-cta" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" name="add_service" class="btn-primary-cta"><i class="fas fa-plus-circle"></i> Add Service</button>
+                </div>
+            </form>
         </div>
     </div>
+</div>
 
-    <!-- Service Details Modal -->
-    <div class="modal fade" id="serviceDetailsModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header" style="background: linear-gradient(135deg, var(--primary), #0a58ca); color: white;">
-                    <h5 class="modal-title"><i class="fas fa-eye me-2"></i> Service Details</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+<!-- ======================= EDIT SERVICE MODAL ======================= -->
+<div class="modal fade" id="editServiceModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <form method="POST" id="editServiceForm">
+                <input type="hidden" name="service_id" id="editServiceId">
+                <div class="modal-header" style="background:var(--primary-light);">
+                    <h5 class="modal-title"><i class="fas fa-pencil-alt me-2" style="color:var(--primary);"></i> Edit Service</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="row mb-4">
-                        <div class="col-md-6">
-                            <h6 class="text-muted mb-1">Service Name</h6>
-                            <h5 id="detailServiceName" class="mb-3"></h5>
-                            
-                            <h6 class="text-muted mb-1">Category</h6>
-                            <p id="detailServiceCategory" class="mb-3"></p>
-                        </div>
-                        <div class="col-md-6">
-                            <h6 class="text-muted mb-1">Price</h6>
-                            <h5 id="detailServicePrice" class="mb-3 text-success"></h5>
-                            
-                            <h6 class="text-muted mb-1">Duration</h6>
-                            <p id="detailServiceDuration" class="mb-3"></p>
-                        </div>
+                    <div class="modal-tabs" id="editTabs">
+                        <button type="button" class="modal-tab-btn active" data-tab="edit-basic">Basic Info</button>
+                        <button type="button" class="modal-tab-btn" data-tab="edit-pricing">Pricing</button>
+                        <button type="button" class="modal-tab-btn" data-tab="edit-schedule">Schedule</button>
+                        <button type="button" class="modal-tab-btn" data-tab="edit-advanced">Advanced</button>
                     </div>
 
-                    <div class="mb-4">
-                        <h6 class="text-muted mb-2">Description</h6>
-                        <p id="detailServiceDescription" style="line-height: 1.6; color: #555;"></p>
-                    </div>
-
-                    <div class="mb-4">
-                        <h6 class="text-muted mb-2">Optional Extras</h6>
-                        <ul id="detailServiceExtras" class="list-group mb-0"></ul>
-                        <p id="detailServiceExtrasNone" class="text-muted mb-0">No optional extras listed.</p>
-                    </div>
-
-                    <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 10px;">
-                        <h6 class="mb-3">Service Performance</h6>
-                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; text-align: center;">
-                            <div style="padding: 1rem; background: white; border-radius: 8px; border-left: 3px solid var(--primary);">
-                                <div style="font-size: 1.8rem; font-weight: 700; color: var(--primary);" id="detailBookings">0</div>
-                                <small style="color: var(--secondary); font-weight: 600;">Total Bookings</small>
+                    <!-- Basic -->
+                    <div class="tab-pane-custom active" id="edit-basic">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">Service Name <span class="required">*</span></label>
+                                <input type="text" name="name" class="form-control" required id="editServiceName" placeholder="Service name">
                             </div>
-                            <div style="padding: 1rem; background: white; border-radius: 8px; border-left: 3px solid var(--success);">
-                                <div style="font-size: 1.8rem; font-weight: 700; color: var(--success);" id="detailRating">0★</div>
-                                <small style="color: var(--secondary); font-weight: 600;">Avg Rating</small>
+                            <div class="col-12">
+                                <label class="form-label">Description <span class="required">*</span></label>
+                                <textarea name="description" class="form-control" rows="3" required id="editServiceDescription" placeholder="Describe this service…"></textarea>
                             </div>
-                            <div style="padding: 1rem; background: white; border-radius: 8px; border-left: 3px solid var(--warning);">
-                                <div style="font-size: 1.8rem; font-weight: 700; color: var(--warning);" id="detailInquiries">0</div>
-                                <small style="color: var(--secondary); font-weight: 600;">Inquiries</small>
+                            <div class="col-md-6">
+                                <label class="form-label">Service Status</label>
+                                <select name="service_status" class="form-select" id="editServiceStatus">
+                                    <option value="draft">Draft</option>
+                                    <option value="published">Published (live)</option>
+                                    <option value="paused">Paused</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Booking Mode</label>
+                                <select name="booking_mode" class="form-select" id="editServiceBookingMode">
+                                    <option value="request_approval">Request Approval</option>
+                                    <option value="instant">Instant Booking ⚡</option>
+                                </select>
+                            </div>
+                            <div class="d-none">
+                                <input class="form-check-input" type="checkbox" name="is_available" id="editServiceAvailable" value="1">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pricing -->
+                    <div class="tab-pane-custom" id="edit-pricing">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Base Price (RWF) <span class="required">*</span></label>
+                                <input type="number" name="price" class="form-control" required min="0" step="100" id="editServicePrice">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Duration (minutes) <span class="required">*</span></label>
+                                <input type="number" name="duration" class="form-control" required min="15" step="15" id="editServiceDuration">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Payment Type</label>
+                                <select name="payment_type" class="form-select" id="editServicePaymentType">
+                                    <option value="fixed_price">Fixed Price</option>
+                                    <option value="hourly_rate">Per Hour</option>
+                                    <option value="per_job_estimate">Per Job (estimate)</option>
+                                    <option value="per_day">Per Day</option>
+                                    <option value="per_service">Per Service</option>
+                                    <option value="base_price">Base Price</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="negotiable" id="editNegotiableCheck" value="1">
+                                    <label class="form-check-label" for="editNegotiableCheck">
+                                        <strong>Allow Price Negotiation</strong>
+                                        <span style="font-size:0.78rem;color:var(--text-muted);display:block;">Clients can offer prices within your range</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div id="editNegotiableFields" style="display:none;" class="col-12">
+                                <div style="background:var(--primary-light);padding:1rem;border-radius:var(--radius-md);border:1px solid #bfdbfe;">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Minimum Price (RWF)</label>
+                                            <input type="number" name="min_price" class="form-control" min="0" step="100" id="editMinPrice">
+                                            <div class="form-text">Lowest offer you'll accept</div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Maximum Price (RWF)</label>
+                                            <input type="number" name="max_price" class="form-control" min="0" step="100" id="editMaxPrice">
+                                            <div class="form-text">Highest clients can offer</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Schedule -->
+                    <div class="tab-pane-custom" id="edit-schedule">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">Available Days</label>
+                                <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.35rem;">
+                                    <?php foreach ($weekdays as $dn => $dl): ?>
+                                    <div class="day-pill">
+                                        <input type="checkbox" name="availability_days[]" value="<?php echo $dn; ?>" id="editDay<?php echo $dn; ?>" class="edit-availability-day">
+                                        <label for="editDay<?php echo $dn; ?>"><?php echo $dl; ?></label>
+                                    </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Time Slots (optional)</label>
+                                <textarea name="time_slots" class="form-control" rows="3" id="editTimeSlots" placeholder="08:00-12:00&#10;14:00-18:00"></textarea>
+                                <div class="form-text">One slot per line: HH:MM-HH:MM</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Advanced -->
+                    <div class="tab-pane-custom" id="edit-advanced">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">Optional Extras</label>
+                                <textarea name="optional_extras" class="form-control" rows="4" id="editOptionalExtras" placeholder="Emergency service (+10000)&#10;Weekend surcharge (+5000)"></textarea>
+                                <div class="form-text">One extra per line: <code>Label (+price)</code></div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn-secondary-cta" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" name="update_service" class="btn-primary-cta"><i class="fas fa-save"></i> Save Changes</button>
                 </div>
-            </div>
+            </form>
         </div>
     </div>
+</div>
 
-    <!-- Bootstrap JS -->
-    <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Service Details Modal
-        const serviceDetailsModal = document.getElementById('serviceDetailsModal');
-        if (serviceDetailsModal) {
-            serviceDetailsModal.addEventListener('show.bs.modal', function (event) {
-                const button = event.relatedTarget;
-                const serviceId = button.getAttribute('data-service-id');
-                const serviceName = button.getAttribute('data-service-name');
-                const serviceDescription = button.getAttribute('data-service-description');
-                const servicePrice = button.getAttribute('data-service-price');
-                const serviceDuration = button.getAttribute('data-service-duration');
-                const serviceCategory = button.getAttribute('data-service-category');
-                const serviceExtras = button.getAttribute('data-service-optional-extras');
-                
-                document.getElementById('detailServiceName').textContent = serviceName;
-                document.getElementById('detailServiceCategory').textContent = serviceCategory;
-                document.getElementById('detailServicePrice').textContent = 'RWF ' + parseInt(servicePrice).toLocaleString();
-                document.getElementById('detailServiceDuration').textContent = serviceDuration + ' minutes';
-                document.getElementById('detailServiceDescription').textContent = serviceDescription;
-
-                const extrasList = document.getElementById('detailServiceExtras');
-                const extrasNone = document.getElementById('detailServiceExtrasNone');
-                extrasList.innerHTML = '';
-                if (serviceExtras) {
-                    try {
-                        const extras = JSON.parse(serviceExtras);
-                        if (Array.isArray(extras) && extras.length) {
-                            extras.forEach(extra => {
-                                const li = document.createElement('li');
-                                li.className = 'list-group-item d-flex justify-content-between align-items-center';
-                                li.textContent = extra.label;
-
-                                const badge = document.createElement('span');
-                                badge.className = 'badge bg-secondary';
-                                badge.textContent = '+RWF ' + parseFloat(extra.price).toLocaleString();
-
-                                li.appendChild(badge);
-                                extrasList.appendChild(li);
-                            });
-                        }
-                    } catch (error) {
-                        console.warn('Unable to parse service extras', error);
-                    }
-                }
-                extrasNone.style.display = extrasList.children.length ? 'none' : 'block';
-                
-                // You can fetch stats via AJAX here if needed
-            });
-        }
-        
-        // Negotiable toggle for Add Form
-        const negotiableCheck = document.getElementById('negotiableCheck');
-        const negotiableFields = document.getElementById('negotiableFields');
-        
-        if (negotiableCheck) {
-            negotiableCheck.addEventListener('change', function() {
-                negotiableFields.style.display = this.checked ? 'block' : 'none';
-            });
-        }
-
-        // Negotiable toggle for Edit Modal
-        const editNegotiableCheck = document.getElementById('editNegotiableCheck');
-        const editNegotiableFields = document.getElementById('editNegotiableFields');
-        
-        if (editNegotiableCheck) {
-            editNegotiableCheck.addEventListener('change', function() {
-                editNegotiableFields.style.display = this.checked ? 'block' : 'none';
-            });
-        }
-        
-        // Mobile sidebar toggle
-        const mobileToggle = document.getElementById('mobileToggle');
-        const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('overlay');
-        
-        mobileToggle.addEventListener('click', () => {
+<script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── Mobile sidebar ──────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+    const toggle = document.getElementById('mobileToggle');
+    const sidebar = document.getElementById('providerSidebar') || document.querySelector('.sidebar');
+    const overlay = document.getElementById('overlay');
+    if (toggle && sidebar) {
+        toggle.addEventListener('click', () => {
             sidebar.classList.toggle('mobile-open');
             overlay.classList.toggle('active');
         });
-        
         overlay.addEventListener('click', () => {
             sidebar.classList.remove('mobile-open');
             overlay.classList.remove('active');
         });
-        
-        // Edit Service Modal
-        const editServiceModal = document.getElementById('editServiceModal');
-        if (editServiceModal) {
-            editServiceModal.addEventListener('show.bs.modal', function (event) {
-                const button = event.relatedTarget;
-                const serviceId = button.getAttribute('data-service-id');
-                const serviceName = button.getAttribute('data-service-name');
-                const serviceDescription = button.getAttribute('data-service-description');
-                const servicePrice = button.getAttribute('data-service-price');
-                const serviceDuration = button.getAttribute('data-service-duration');
-                const serviceAvailable = button.getAttribute('data-service-available');
-                const serviceBookingMode = button.getAttribute('data-service-booking-mode');
-                const serviceAvailabilityDays = button.getAttribute('data-service-availability-days');
-                const serviceTimeSlots = button.getAttribute('data-service-time-slots');
-                
-                document.getElementById('editServiceId').value = serviceId;
-                document.getElementById('editServiceName').value = serviceName;
-                document.getElementById('editServiceDescription').value = serviceDescription;
-                document.getElementById('editServicePrice').value = servicePrice;
-                document.getElementById('editServiceDuration').value = serviceDuration;
-                document.getElementById('editServiceAvailable').checked = serviceAvailable === '1';
-                
-                // Set payment type
-                const paymentType = button.getAttribute('data-service-payment-type');
-                const paymentTypeSelect = document.getElementById('editServicePaymentType');
-                paymentTypeSelect.value = paymentType;
+    }
 
-                const bookingModeSelect = document.getElementById('editServiceBookingMode');
-                if (bookingModeSelect) {
-                    bookingModeSelect.value = serviceBookingMode || 'request_approval';
-                }
+    // Auto-dismiss alerts
+    setTimeout(() => {
+        document.querySelectorAll('.alert').forEach(el => { try { new bootstrap.Alert(el).close(); } catch(e){} });
+    }, 5000);
+});
 
-                const serviceStatus = button.getAttribute('data-service-status');
-                const editServiceStatus = document.getElementById('editServiceStatus');
-                if (editServiceStatus) {
-                    editServiceStatus.value = serviceStatus || 'draft';
-                }
+// ── TOAST ───────────────────────────────────────────────────────────────
+function showToast(msg, type='success') {
+    const c = document.getElementById('toastContainer');
+    const t = document.createElement('div');
+    t.className = 'toast-item toast-' + type;
+    const icons = {success:'check-circle',danger:'exclamation-circle',warning:'exclamation-triangle'};
+    t.innerHTML = '<i class="fas fa-' + (icons[type]||'info-circle') + '"></i> ' + msg;
+    c.appendChild(t);
+    setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity 0.3s'; setTimeout(()=>t.remove(),300); }, 3500);
+}
 
-                const availabilityDays = serviceAvailabilityDays ? serviceAvailabilityDays.split(',').map(day => parseInt(day, 10)) : [1,2,3,4,5];
-                document.querySelectorAll('.edit-availability-day').forEach(checkbox => {
-                    checkbox.checked = availabilityDays.includes(parseInt(checkbox.value, 10));
-                });
+// ── VIEW TOGGLE ─────────────────────────────────────────────────────────
+document.getElementById('viewGrid')?.addEventListener('click', function() {
+    this.classList.add('active');
+    document.getElementById('viewList').classList.remove('active');
+    const g = document.getElementById('servicesGrid');
+    if(g) { g.classList.remove('services-list-view'); g.classList.add('services-grid'); }
+});
+document.getElementById('viewList')?.addEventListener('click', function() {
+    this.classList.add('active');
+    document.getElementById('viewGrid').classList.remove('active');
+    const g = document.getElementById('servicesGrid');
+    if(g) { g.classList.remove('services-grid'); g.classList.add('services-list-view'); }
+});
 
-                const editTimeSlots = document.getElementById('editTimeSlots');
-                if (editTimeSlots) {
-                    editTimeSlots.value = '';
-                    if (serviceTimeSlots) {
-                        try {
-                            const slots = JSON.parse(serviceTimeSlots);
-                            if (Array.isArray(slots)) {
-                                editTimeSlots.value = slots.map(slot => `${slot.start}-${slot.end}`).join('\n');
-                            }
-                        } catch (error) {
-                            editTimeSlots.value = serviceTimeSlots;
-                        }
-                    }
-                }
+// ── SEARCH / FILTER / SORT ───────────────────────────────────────────────
+function applyFilters() {
+    const search = (document.getElementById('serviceSearch').value || '').toLowerCase().trim();
+    const status = document.getElementById('filterStatus').value;
+    const cat    = document.getElementById('filterCategory').value;
+    const sort   = document.getElementById('sortServices').value;
 
-                const serviceExtrasRaw = button.getAttribute('data-service-optional-extras');
-                const editOptionalExtras = document.getElementById('editOptionalExtras');
-                if (editOptionalExtras) {
-                    editOptionalExtras.value = '';
-                    if (serviceExtrasRaw) {
-                        try {
-                            const extras = JSON.parse(serviceExtrasRaw);
-                            if (Array.isArray(extras)) {
-                                editOptionalExtras.value = extras.map(extra => `${extra.label} (+${parseFloat(extra.price).toFixed(0)})`).join('\n');
-                            }
-                        } catch (error) {
-                            console.warn('Unable to parse optional extras for edit modal', error);
-                        }
-                    }
-                }
-            });
-        }
-        
-        // Delete Service Modal
-        const deleteServiceModal = document.getElementById('deleteServiceModal');
-        if (deleteServiceModal) {
-            deleteServiceModal.addEventListener('show.bs.modal', function (event) {
-                const button = event.relatedTarget;
-                const serviceId = button.getAttribute('data-service-id');
-                const serviceName = button.getAttribute('data-service-name');
-                
-                document.getElementById('deleteServiceId').value = serviceId;
-                document.getElementById('deleteServiceName').textContent = serviceName;
-            });
-        }
-        
-        // Auto-dismiss alerts
-        setTimeout(() => {
-            const alerts = document.querySelectorAll('.alert');
-            alerts.forEach(alert => {
-                const bsAlert = new bootstrap.Alert(alert);
-                bsAlert.close();
-            });
-        }, 5000);
-        
-        // Form validation
-        document.getElementById('serviceForm')?.addEventListener('submit', function(e) {
-            const price = parseFloat(this.querySelector('input[name="price"]').value);
-            const duration = parseInt(this.querySelector('input[name="duration"]').value);
-            
-            if (price < 0) {
-                e.preventDefault();
-                alert('Price cannot be negative');
-                return false;
-            }
-            
-            if (duration < 15) {
-                e.preventDefault();
-                alert('Duration must be at least 15 minutes');
-                return false;
-            }
+    const grid = document.getElementById('servicesGrid');
+    if (!grid) return;
+    const cards = Array.from(grid.querySelectorAll('.service-card'));
+    let visible = 0;
+
+    cards.forEach(card => {
+        const name   = card.dataset.name || '';
+        const cStatus= card.dataset.status || '';
+        const cCat   = card.dataset.category || '';
+        const matches = (!search || name.includes(search))
+                     && (!status || cStatus === status)
+                     && (!cat    || cCat === cat);
+        card.style.display = matches ? '' : 'none';
+        if (matches) visible++;
+    });
+
+    document.getElementById('noResults').style.display = visible === 0 ? 'block' : 'none';
+
+    // Sort
+    if (sort !== 'default') {
+        const visCards = cards.filter(c => c.style.display !== 'none');
+        visCards.sort((a, b) => {
+            if (sort === 'name') return (a.dataset.name||'').localeCompare(b.dataset.name||'');
+            if (sort === 'price-low') return parseFloat(a.dataset.price||0) - parseFloat(b.dataset.price||0);
+            if (sort === 'price-high') return parseFloat(b.dataset.price||0) - parseFloat(a.dataset.price||0);
+            if (sort === 'bookings') return parseInt(b.dataset.bookings||0) - parseInt(a.dataset.bookings||0);
+            return 0;
         });
-        
-        // Confirm delete action
-        document.getElementById('deleteServiceForm')?.addEventListener('submit', function(e) {
-            if (!confirm('Are you absolutely sure you want to delete this service? This cannot be undone.')) {
-                e.preventDefault();
-            }
-        });
-        
-        // Price formatting
-        document.querySelectorAll('input[name="price"]').forEach(input => {
-            input.addEventListener('blur', function() {
-                if (this.value) {
-                    this.value = parseFloat(this.value).toFixed(0);
-                }
+        visCards.forEach(c => grid.appendChild(c));
+    }
+}
+
+['serviceSearch','filterStatus','filterCategory','sortServices'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', applyFilters);
+    if (el && el.tagName === 'SELECT') el.addEventListener('change', applyFilters);
+});
+
+// ── MODAL TABS ─────────────────────────────────────────────────────────
+function initModalTabs(tabsEl) {
+    if (!tabsEl) return;
+    tabsEl.querySelectorAll('.modal-tab-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            tabsEl.querySelectorAll('.modal-tab-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            const target = this.dataset.tab;
+            tabsEl.closest('.modal-body').querySelectorAll('.tab-pane-custom').forEach(p => {
+                p.classList.toggle('active', p.id === target);
             });
         });
-        
-        // Add Service Analytics
-        document.addEventListener('DOMContentLoaded', function() {
-            // Update service statistics dynamically
-            const serviceCards = document.querySelectorAll('.service-card');
-            serviceCards.forEach((card, index) => {
-                // Add staggered animation
-                card.style.animation = `slideIn 0.3s ease-out ${index * 0.1}s both`;
-            });
-            
-            // Search functionality
-            const serviceSearch = document.getElementById('serviceSearch');
-            if (serviceSearch) {
-                serviceSearch.addEventListener('input', function() {
-                    filterServices(this.value);
-                });
-            }
-            
-            // Sort functionality
-            const serviceSort = document.getElementById('serviceSort');
-            if (serviceSort) {
-                serviceSort.addEventListener('change', function() {
-                    if (this.value !== 'default') {
-                        sortServices(this.value);
-                    }
-                });
-            }
-        });
-        
-        // Search/Filter Services (Optional feature)
-        function filterServices(searchTerm) {
-            const cards = document.querySelectorAll('.service-card');
-            cards.forEach(card => {
-                const title = card.querySelector('.service-title')?.textContent || '';
-                const description = card.querySelector('.service-description')?.textContent || '';
-                const category = card.querySelector('.service-category')?.textContent || '';
-                
-                const matches = title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                category.toLowerCase().includes(searchTerm.toLowerCase());
-                
-                card.parentElement.style.display = matches ? 'block' : 'none';
-            });
-        }
-        
-        // Sort Services
-        function sortServices(sortBy) {
-            const servicesGrid = document.querySelector('.services-grid');
-            const cards = Array.from(document.querySelectorAll('.service-card'));
-            
-            cards.sort((a, b) => {
-                let aVal, bVal;
-                
-                switch(sortBy) {
-                    case 'name':
-                        aVal = a.querySelector('.service-title')?.textContent || '';
-                        bVal = b.querySelector('.service-title')?.textContent || '';
-                        return aVal.localeCompare(bVal);
-                    case 'price-low':
-                        aVal = parseInt(a.querySelector('.service-price')?.textContent.replace(/\D/g, '') || 0);
-                        bVal = parseInt(b.querySelector('.service-price')?.textContent.replace(/\D/g, '') || 0);
-                        return aVal - bVal;
-                    case 'price-high':
-                        aVal = parseInt(a.querySelector('.service-price')?.textContent.replace(/\D/g, '') || 0);
-                        bVal = parseInt(b.querySelector('.service-price')?.textContent.replace(/\D/g, '') || 0);
-                        return bVal - aVal;
-                    default:
-                        return 0;
-                }
-            });
-            
-            servicesGrid.innerHTML = '';
-            cards.forEach(card => servicesGrid.appendChild(card));
-        }
-    </script>
+    });
+}
+initModalTabs(document.getElementById('addTabs'));
+initModalTabs(document.getElementById('editTabs'));
+
+// Reset tabs when modal opens
+document.getElementById('addServiceModal')?.addEventListener('show.bs.modal', () => {
+    const tabs = document.getElementById('addTabs');
+    tabs?.querySelectorAll('.modal-tab-btn').forEach((b,i) => b.classList.toggle('active',i===0));
+    document.querySelectorAll('#add-basic,#add-pricing,#add-schedule,#add-advanced').forEach((p,i) => p.classList.toggle('active',i===0));
+});
+
+// ── NEGOTIABLE TOGGLE ───────────────────────────────────────────────────
+function wireNegotiable(checkId, fieldsId) {
+    const chk = document.getElementById(checkId);
+    const flds = document.getElementById(fieldsId);
+    if (!chk || !flds) return;
+    chk.addEventListener('change', () => { flds.style.display = chk.checked ? 'block' : 'none'; });
+}
+wireNegotiable('addNegotiableCheck', 'addNegotiableFields');
+wireNegotiable('editNegotiableCheck', 'editNegotiableFields');
+
+// ── CONFIRM DELETE ───────────────────────────────────────────────────────
+function confirmDelete(id, name) {
+    document.getElementById('deleteServiceId').value = id;
+    document.getElementById('confirmMsg').textContent = 'Permanently delete "' + name + '"? This cannot be undone.';
+    document.getElementById('confirmOverlay').classList.add('active');
+}
+function closeConfirm() {
+    document.getElementById('confirmOverlay').classList.remove('active');
+}
+document.getElementById('confirmOverlay')?.addEventListener('click', function(e) {
+    if (e.target === this) closeConfirm();
+});
+
+// ── SERVICE DETAILS MODAL ───────────────────────────────────────────────
+document.getElementById('serviceDetailsModal')?.addEventListener('show.bs.modal', function(event) {
+    const btn = event.relatedTarget;
+    if (!btn) return;
+    const get = attr => btn.getAttribute('data-service-' + attr) || '';
+
+    document.getElementById('detailServiceName').textContent = get('name');
+    document.getElementById('detailDescription').textContent = get('description');
+    document.getElementById('detailBookings').textContent = get('bookings');
+    document.getElementById('detailCompleted').textContent = get('completed');
+    const rating = parseFloat(get('rating'));
+    document.getElementById('detailRating').textContent = rating > 0 ? rating.toFixed(1) + '★' : '—';
+    document.getElementById('detailCategory').textContent = get('category');
+    document.getElementById('detailPrice').textContent = 'RWF ' + parseInt(get('price')).toLocaleString();
+    document.getElementById('detailDuration').textContent = get('duration') + ' minutes';
+    document.getElementById('detailStatus').textContent = get('status').charAt(0).toUpperCase() + get('status').slice(1);
+    document.getElementById('detailNegotiable').textContent = get('negotiable');
+    const minP = get('min-price'), maxP = get('max-price');
+    document.getElementById('detailPriceRange').textContent = (minP && maxP) ? 'RWF ' + parseInt(minP).toLocaleString() + ' – RWF ' + parseInt(maxP).toLocaleString() : 'N/A';
+    document.getElementById('detailBookingMode').textContent = get('booking-mode') === 'instant' ? '⚡ Instant Booking' : 'Request Approval';
+    document.getElementById('detailReviews').textContent = get('reviews') + ' reviews';
+    const ptMap = {fixed_price:'Fixed Price',hourly_rate:'Per Hour',per_job_estimate:'Per Job (estimate)',per_day:'Per Day',per_service:'Per Service',base_price:'Base Price'};
+    document.getElementById('detailPaymentType').textContent = ptMap[get('payment-type')] || get('payment-type');
+
+    // Extras
+    const extrasRaw = get('optional-extras');
+    const extrasEl = document.getElementById('detailExtras');
+    const extrasRow = document.getElementById('detailExtrasRow');
+    if (extrasRaw) {
+        try {
+            const extras = JSON.parse(extrasRaw);
+            extrasEl.textContent = extras.map(e => e.label + ' (+RWF ' + parseInt(e.price).toLocaleString() + ')').join(', ');
+            extrasRow.style.display = '';
+        } catch { extrasRow.style.display = 'none'; }
+    } else { extrasRow.style.display = 'none'; }
+});
+
+// ── EDIT MODAL POPULATE ─────────────────────────────────────────────────
+document.getElementById('editServiceModal')?.addEventListener('show.bs.modal', function(event) {
+    const btn = event.relatedTarget;
+    if (!btn) return;
+    const get = attr => btn.getAttribute('data-service-' + attr) || '';
+
+    document.getElementById('editServiceId').value = get('id');
+    document.getElementById('editServiceName').value = get('name');
+    document.getElementById('editServiceDescription').value = get('description');
+    document.getElementById('editServicePrice').value = get('price');
+    document.getElementById('editServiceDuration').value = get('duration');
+    document.getElementById('editServiceStatus').value = get('status') || 'draft';
+    document.getElementById('editServicePaymentType').value = get('payment-type') || 'fixed_price';
+    document.getElementById('editServiceBookingMode').value = get('booking-mode') || 'request_approval';
+    document.getElementById('editServiceAvailable').checked = get('available') === '1';
+
+    // Negotiable
+    const neg = get('negotiable') === '1';
+    document.getElementById('editNegotiableCheck').checked = neg;
+    document.getElementById('editNegotiableFields').style.display = neg ? 'block' : 'none';
+    document.getElementById('editMinPrice').value = get('min-price');
+    document.getElementById('editMaxPrice').value = get('max-price');
+
+    // Days
+    const days = (get('availability-days') || '1,2,3,4,5').split(',').map(d => parseInt(d.trim()));
+    document.querySelectorAll('.edit-availability-day').forEach(cb => {
+        cb.checked = days.includes(parseInt(cb.value));
+    });
+
+    // Time slots
+    const slotsRaw = get('time-slots');
+    const slotsEl = document.getElementById('editTimeSlots');
+    slotsEl.value = '';
+    if (slotsRaw) {
+        try {
+            const slots = JSON.parse(slotsRaw);
+            if (Array.isArray(slots)) slotsEl.value = slots.map(s => s.start + '-' + s.end).join('\n');
+        } catch { slotsEl.value = slotsRaw; }
+    }
+
+    // Extras
+    const extrasRaw = get('optional-extras');
+    const extrasEl = document.getElementById('editOptionalExtras');
+    extrasEl.value = '';
+    if (extrasRaw) {
+        try {
+            const extras = JSON.parse(extrasRaw);
+            if (Array.isArray(extras)) extrasEl.value = extras.map(e => e.label + ' (+' + parseInt(e.price) + ')').join('\n');
+        } catch {}
+    }
+
+    // Reset to first tab
+    const editTabs = document.getElementById('editTabs');
+    editTabs?.querySelectorAll('.modal-tab-btn').forEach((b,i) => b.classList.toggle('active',i===0));
+    document.querySelectorAll('#edit-basic,#edit-pricing,#edit-schedule,#edit-advanced').forEach((p,i) => p.classList.toggle('active',i===0));
+});
+
+// ── FORM VALIDATION ────────────────────────────────────────────────────
+document.getElementById('serviceForm')?.addEventListener('submit', function(e) {
+    const price = parseFloat(this.querySelector('input[name="price"]').value);
+    const duration = parseInt(this.querySelector('input[name="duration"]').value);
+    if (price < 0) { e.preventDefault(); showToast('Price cannot be negative','warning'); return; }
+    if (duration < 15) { e.preventDefault(); showToast('Duration must be at least 15 minutes','warning'); return; }
+});
+
+// Staggered card entrance
+document.querySelectorAll('.service-card').forEach((card, i) => {
+    card.style.opacity = '0';
+    card.style.transform = 'translateY(16px)';
+    setTimeout(() => {
+        card.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
+        card.style.opacity = '1';
+        card.style.transform = 'translateY(0)';
+    }, 80 + i * 50);
+});
+</script>
 </body>
 </html>

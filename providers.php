@@ -3,6 +3,7 @@ session_start();
 require_once 'config/database.php';
 require_once 'includes/mailer.php';
 require_once 'includes/functions.php';
+require_once 'includes/provider_sections.php';
 require_once 'includes/chat.php';
 
 $db = Database::getInstance()->getConnection();
@@ -742,6 +743,140 @@ if (empty($providers) && !empty($searchQuery)) {
     $suggestions = $suggestionStmt->fetchAll(PDO::FETCH_COLUMN);
 }
 
+// Load smart provider sections for the landing results page
+$recommendedProviders = getProviderSection($db, 'recommended', $currentUserId ?: 0, $userCity, 6);
+$featuredProviders = getProviderSection($db, 'featured', $currentUserId ?: 0, $userCity, 6);
+$nearYouProviders = getProviderSection($db, 'near_you', $currentUserId ?: 0, $userCity, 6);
+$availableNowProviders = getProviderSection($db, 'available_now', $currentUserId ?: 0, $userCity, 6);
+$trendingProviders = getProviderSection($db, 'trending', $currentUserId ?: 0, $userCity, 6);
+$bestOverallProviders = getProviderSection($db, 'best_overall', $currentUserId ?: 0, $userCity, 6);
+$verifiedProviders = getProviderSection($db, 'verified', $currentUserId ?: 0, $userCity, 6);
+
+function renderProviderCard(array $provider): void {
+    global $isLoggedIn, $isProvider;
+    $prov_img = $provider['profile_image'] ?? '';
+    $prov_initial = strtoupper(substr($provider['full_name'] ?? '', 0, 1)) ?: '?';
+    $distance = $provider['distance_km'] ?? ($provider['distance'] ?? null);
+    $distanceLabel = $distance !== null ? round($distance, 1) : null;
+    $currentRequest = $_SERVER['REQUEST_URI'] ?? '/providers.php';
+    $returnUrl = $currentRequest . (strpos($currentRequest, '?') === false ? '?' : '&') . 'open_booking=' . urlencode($provider['id']);
+    $loginUrl = 'login.php?next=' . urlencode($returnUrl);
+    ?>
+    <div class="col-md-6 col-lg-4">
+        <div class="card provider-card h-100">
+            <div class="card-body p-0">
+                <div class="provider-image position-relative">
+                    <?php if ($distanceLabel !== null): ?>
+                        <span class="distance-badge">
+                            <i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($distanceLabel); ?> km
+                        </span>
+                    <?php endif; ?>
+                    <div class="status-indicator <?php echo htmlspecialchars($provider['availability'] ?? 'unavailable'); ?>"></div>
+                    <?php if (!empty($prov_img)): ?>
+                        <img src="uploads/profiles/<?php echo htmlspecialchars($prov_img); ?>" 
+                             class="card-img-top provider-img" 
+                             alt="<?php echo htmlspecialchars($provider['full_name']); ?>"
+                             onerror="this.style.display='none'; var av = this.parentNode.querySelector('.avatar'); if(av) av.style.display='flex';">
+                        <div class="avatar" style="display:none;">
+                            <span class="text-white fw-bold"><?php echo $prov_initial; ?></span>
+                        </div>
+                    <?php else: ?>
+                        <div class="avatar">
+                            <span class="text-white fw-bold"><?php echo $prov_initial; ?></span>
+                        </div>
+                    <?php endif; ?>
+                    <div class="action-buttons">
+                        <form method="POST" class="d-inline">
+                            <input type="hidden" name="provider_id" value="<?php echo intval($provider['id']); ?>">
+                            <button type="submit" name="add_to_favorites" class="action-btn btn-favorite" title="Add to favorites">
+                                <i class="fas fa-heart"></i>
+                            </button>
+                        </form>
+                        <button class="action-btn btn-complaint" title="Report issue" onclick="openComplaintModal(<?php echo intval($provider['id']); ?>, '<?php echo htmlspecialchars($provider['full_name'], ENT_QUOTES); ?>')">
+                            <i class="fas fa-flag"></i>
+                        </button>
+                        <button class="action-btn btn-emergency" title="Emergency report" onclick="openEmergencyModal(<?php echo intval($provider['id']); ?>, '<?php echo htmlspecialchars($provider['full_name'], ENT_QUOTES); ?>')">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body-inner">
+                    <h5 class="card-title">
+                        <?php echo htmlspecialchars($provider['full_name']); ?>
+                        <?php if (!empty($provider['verification_level']) && $provider['verification_level'] !== 'none'): ?>
+                            <span class="badge-<?php echo htmlspecialchars($provider['verification_level']); ?> verification-badge">
+                                <i class="fas fa-shield-alt"></i><?php echo ucfirst(htmlspecialchars($provider['verification_level'])); ?>
+                            </span>
+                        <?php endif; ?>
+                        <?php if (!empty($provider['is_featured'])): ?>
+                            <span class="badge-featured verification-badge">
+                                <i class="fas fa-star"></i>Featured
+                            </span>
+                        <?php endif; ?>
+                    </h5>
+                    <p class="text-muted mb-1" style="font-size:0.87rem;font-weight:500;">
+                        <?php echo htmlspecialchars($provider['profession'] ?? ''); ?>
+                    </p>
+                    <p class="text-muted mb-2" style="font-size:0.82rem;">
+                        <i class="fas fa-map-marker-alt me-1" style="color:var(--primary);font-size:0.78rem;"></i>
+                        <?php echo htmlspecialchars($provider['location'] ?? $provider['provider_location'] ?? ''); ?>
+                    </p>
+                    <div class="rating mb-2">
+                        <?php 
+                        $rating = (float)($provider['average_rating'] ?? 0);
+                        for ($i = 1; $i <= 5; $i++): 
+                            if ($i <= $rating): ?>
+                                <i class="fas fa-star text-warning" style="font-size:0.8rem;"></i>
+                            <?php else: ?>
+                                <i class="far fa-star text-warning" style="font-size:0.8rem;"></i>
+                            <?php endif;
+                        endfor; ?>
+                        <span class="text-muted ms-1" style="font-size:0.8rem;">(<?php echo intval($provider['total_reviews'] ?? 0); ?>)</span>
+                    </div>
+                    <?php if (!empty($provider['hourly_rate'])): ?>
+                        <p class="provider-rate mb-3">
+                            <?php echo number_format((float)$provider['hourly_rate']); ?> <span style="font-size:0.78rem;font-weight:500;color:var(--secondary);">RWF/hr</span>
+                        </p>
+                    <?php endif; ?>
+                    <a href="provider-profile.php?id=<?php echo intval($provider['id']); ?>" class="btn-view-profile d-block text-center text-decoration-none">
+                        <i class="fas fa-eye me-1"></i> View Profile
+                    </a>
+                    <?php if ($isLoggedIn && !$isProvider): ?>
+                        <button class="quick-book-btn" onclick="openBookingModal(<?php echo intval($provider['id']); ?>, '<?php echo htmlspecialchars($provider['full_name'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($provider['profession'] ?? '', ENT_QUOTES); ?>')">
+                            <i class="fas fa-calendar-check me-1"></i> Quick Book
+                        </button>
+                    <?php else: ?>
+                        <a href="<?php echo $loginUrl; ?>" class="quick-book-btn d-block text-center text-decoration-none">
+                            <i class="fas fa-sign-in-alt me-1"></i> Login to Book
+                        </a>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php
+}
+
+function renderProviderSection(string $title, string $subtitle, string $badge, array $providers): void {
+    if (empty($providers)) {
+        return;
+    }
+    ?>
+    <section class="provider-section mb-5">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3 mb-4">
+            <div>
+                <div class="section-badge"><?php echo htmlspecialchars($badge); ?></div>
+                <h2 class="mb-2"><?php echo htmlspecialchars($title); ?></h2>
+                <p class="text-muted mb-0"><?php echo htmlspecialchars($subtitle); ?></p>
+            </div>
+        </div>
+        <div class="row g-4">
+            <?php foreach ($providers as $provider): renderProviderCard($provider); endforeach; ?>
+        </div>
+    </section>
+    <?php
+}
+
 // Handle add to favorites
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_favorites'])) {
     // require DB connection and $currentUserId (already captured above)
@@ -1318,6 +1453,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_favorites'])) 
         }
 
         .section-header { text-align: center; margin-bottom: 2.5rem; }
+
+        .provider-section {
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .provider-section .section-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.45rem 0.95rem;
+            border-radius: 999px;
+            background: rgba(37,99,235,0.08);
+            color: var(--primary);
+            font-size: 0.78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 0.85rem;
+        }
+
+        .provider-section h2 {
+            font-size: clamp(1.25rem, 2.4vw, 1.65rem);
+            margin-bottom: 0.35rem;
+            color: var(--dark);
+        }
+
+        .provider-section p {
+            margin-bottom: 0;
+            color: var(--secondary);
+        }
+
+        .provider-sections { margin-bottom: 2rem; }
+
+        .provider-section .row.g-4 { margin: 0; }
 
         .section-title {
             font-size: clamp(1.5rem, 3vw, 2.1rem);
@@ -1901,6 +2074,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_favorites'])) 
                     <?php endforeach; ?>
                     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
+            <?php endif; ?>
+
+            <?php if (!empty($recommendedProviders) || !empty($featuredProviders) || !empty($nearYouProviders) || !empty($availableNowProviders) || !empty($trendingProviders) || !empty($bestOverallProviders) || !empty($verifiedProviders)): ?>
+                <section class="provider-sections py-4">
+                    <?php
+                        renderProviderSection('Recommended for You', 'Top providers personalized by ML and final score.', 'Recommended', $recommendedProviders);
+                        renderProviderSection('Featured Providers', 'Providers with admin promotion and trusted listings.', 'Featured', $featuredProviders);
+                        renderProviderSection('Near You', 'Closest providers based on your location.', 'Near You', $nearYouProviders);
+                        renderProviderSection('Available Now', 'Providers who are currently available for quick booking.', 'Available Now', $availableNowProviders);
+                        renderProviderSection('Trending Providers', 'Providers with strong recent activity and interest.', 'Trending', $trendingProviders);
+                        renderProviderSection('Best Overall', 'Top-rated providers across the platform.', 'Best Overall', $bestOverallProviders);
+                        renderProviderSection('Verified Providers', 'Trusted providers with verified status.', 'Verified', $verifiedProviders);
+                    ?>
+                </section>
             <?php endif; ?>
 
             <?php if (!empty($providers)): ?>

@@ -128,10 +128,103 @@ $stmt = $db->prepare("
 $stmt->execute([$provider['id']]);
 $upcoming_today = $stmt->fetch()['upcoming_today'];
 
+// Handle AJAX requests for real-time updates
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'dashboard_data') {
+    header('Content-Type: application/json');
+    
+    // Get updated statistics
+    $stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE provider_id = ?");
+    $stmt->execute([$provider['id']]);
+    $total_bookings = $stmt->fetch()['total'];
+
+    $stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE provider_id = ? AND status = 'pending'");
+    $stmt->execute([$provider['id']]);
+    $pending_bookings = $stmt->fetch()['total'];
+
+    $stmt = $db->prepare("SELECT COUNT(*) as total FROM reviews WHERE provider_id = ?");
+    $stmt->execute([$provider['id']]);
+    $total_reviews = $stmt->fetch()['total'];
+
+    $total_earnings = 0;
+    if (isCommissionEnabled()) {
+        $stmt = $db->prepare("
+            SELECT SUM(amount) as total_earnings 
+            FROM bookings 
+            WHERE provider_id = ? AND status = 'completed' AND payment_status = 'completed'
+        ");
+        $stmt->execute([$provider['id']]);
+        $earnings_data = $stmt->fetch();
+        $total_earnings = $earnings_data['total_earnings'] ?? 0;
+    }
+
+    $stmt = $db->prepare("
+        SELECT COUNT(*) as today_bookings 
+        FROM bookings 
+        WHERE provider_id = ? AND DATE(preferred_date) = CURDATE() 
+        AND status IN ('confirmed', 'pending')
+    ");
+    $stmt->execute([$provider['id']]);
+    $today_bookings = $stmt->fetch()['today_bookings'];
+
+    $stmt = $db->prepare("
+        SELECT COUNT(*) as upcoming_today
+        FROM bookings 
+        WHERE provider_id = ? AND DATE(preferred_date) = CURDATE() 
+        AND status IN ('confirmed', 'pending')
+        AND (preferred_time IS NULL OR preferred_time > CURTIME())
+    ");
+    $stmt->execute([$provider['id']]);
+    $upcoming_today = $stmt->fetch()['upcoming_today'];
+
+    // Get recent bookings
+    $stmt = $db->prepare("
+        SELECT b.*, u.full_name as client_name, u.phone as client_phone, u.email as client_email,
+               s.name as service_name,
+               DATE_FORMAT(b.preferred_date, '%W, %M %d, %Y') as formatted_date,
+               DATE_FORMAT(b.preferred_time, '%h:%i %p') as formatted_time
+        FROM bookings b
+        JOIN users u ON b.client_id = u.id
+        LEFT JOIN provider_services s ON b.service_id = s.id
+        WHERE b.provider_id = ?
+        ORDER BY b.preferred_date DESC, b.preferred_time DESC
+        LIMIT 5
+    ");
+    $stmt->execute([$provider['id']]);
+    $recent_bookings = $stmt->fetchAll();
+
+    // Format recent bookings for JSON
+    $formatted_recent_bookings = array_map(function($booking) {
+        return [
+            'id' => $booking['id'],
+            'client_name' => htmlspecialchars($booking['client_name']),
+            'client_email' => htmlspecialchars($booking['client_email']),
+            'service_name' => htmlspecialchars($booking['service_name'] ?? 'Service'),
+            'service_description' => htmlspecialchars($booking['service_description']),
+            'formatted_date' => $booking['formatted_date'],
+            'formatted_time' => $booking['formatted_time'],
+            'status' => $booking['status']
+        ];
+    }, $recent_bookings);
+
+    echo json_encode([
+        'success' => true,
+        'stats' => [
+            'total_bookings' => $total_bookings,
+            'pending_bookings' => $pending_bookings,
+            'total_reviews' => $total_reviews,
+            'average_rating' => $provider['average_rating'] ?? 0,
+            'total_earnings' => $total_earnings,
+            'today_bookings' => $today_bookings,
+            'upcoming_today' => $upcoming_today
+        ],
+        'recent_bookings' => $formatted_recent_bookings
+    ]);
+    exit();
+}
+
 // Handle status update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
     $new_status = sanitize($_POST['availability']);
-    $stmt = $db->prepare("UPDATE service_providers SET availability = ? WHERE user_id = ?");
     if ($stmt->execute([$new_status, $_SESSION['user_id']])) {
         $_SESSION['success_message'] = "Availability status updated successfully!";
     } else {
@@ -182,6 +275,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['booking_action'])) {
         $stmt = $db->prepare("UPDATE bookings SET status = ? WHERE id = ?");
         if ($stmt->execute([$new_status, $booking_id])) {
             $_SESSION['success_message'] = "Booking {$action}ed successfully!";
+
+            if ($new_status === 'completed') {
+                $bookingDetails = $db->prepare("SELECT client_id FROM bookings WHERE id = ?");
+                $bookingDetails->execute([$booking_id]);
+                $bookingRecord = $bookingDetails->fetch(PDO::FETCH_ASSOC);
+                if ($bookingRecord) {
+                    updateMlPredictionOutcome($db, (int) $bookingRecord['client_id'], $provider['id'], 1);
+                }
+            }
             
             // Send notification if enabled
             if (isEmailNotificationsEnabled()) {
@@ -2534,6 +2636,104 @@ $profile_completion = ($completed_fields / count($required_fields)) * 100;
         }
         
         window.addEventListener('resize', handleResize);
+
+        // ===== REAL-TIME DASHBOARD UPDATES =====
+        let lastUpdate = Date.now();
+        const UPDATE_INTERVAL = 30000; // 30 seconds
+
+        function updateDashboardData() {
+            fetch('dashboard.php?ajax=dashboard_data', {
+                method: 'GET',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateStats(data.stats);
+                    updateRecentBookings(data.recent_bookings);
+                    lastUpdate = Date.now();
+                }
+            })
+            .catch(error => {
+                console.error('Error updating dashboard:', error);
+            });
+        }
+
+        function updateStats(stats) {
+            // Update stat cards
+            document.querySelector('.stat-card .stat-content h3').textContent = stats.total_bookings;
+            document.querySelector('.stat-card .stat-content p').textContent = 'Total Bookings';
+
+            const pendingCard = document.querySelectorAll('.stat-card .stat-content')[1];
+            pendingCard.querySelector('h3').textContent = stats.pending_bookings;
+            pendingCard.querySelector('p').textContent = 'Pending Bookings';
+
+            const ratingCard = document.querySelectorAll('.stat-card .stat-content')[2];
+            ratingCard.querySelector('h3').textContent = parseFloat(stats.average_rating).toFixed(1);
+            ratingCard.querySelector('p').textContent = 'Average Rating';
+
+            const scheduleCard = document.querySelectorAll('.stat-card .stat-content')[3];
+            scheduleCard.querySelector('h3').textContent = stats.upcoming_today;
+            scheduleCard.querySelector('p').textContent = 'Today\'s Bookings';
+
+            // Update earnings if exists
+            const earningsCard = document.querySelector('.stat-card.earnings .stat-content h3');
+            if (earningsCard) {
+                earningsCard.textContent = 'RWF ' + parseInt(stats.total_earnings).toLocaleString();
+            }
+        }
+
+        function updateRecentBookings(bookings) {
+            const container = document.querySelector('.bookings-list');
+            if (!container || bookings.length === 0) return;
+
+            container.innerHTML = bookings.map(booking => `
+                <div class="booking-item">
+                    <div class="booking-header">
+                        <div class="booking-client">
+                            <div class="client-avatar">
+                                ${booking.client_name.charAt(0).toUpperCase()}
+                            </div>
+                            <div class="client-info">
+                                <h5>${booking.client_name}</h5>
+                                <p>
+                                    <i class="fas fa-envelope"></i> ${booking.client_email}
+                                </p>
+                            </div>
+                        </div>
+                        <span class="badge badge-${booking.status}">
+                            ${booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
+                        </span>
+                    </div>
+                    
+                    <div class="booking-details">
+                        ${booking.service_name ? `<div class="booking-service">
+                            <i class="fas fa-concierge-bell me-2"></i>${booking.service_name}
+                        </div>` : ''}
+                        <p class="booking-description">
+                            ${booking.service_description}
+                        </p>
+                    </div>
+                    
+                    <div class="booking-footer">
+                        <div class="booking-time">
+                            <i class="fas fa-calendar-alt"></i>
+                            <span>${booking.formatted_date}</span>
+                            ${booking.formatted_time ? `<i class="fas fa-clock ms-2"></i>
+                            <span>${booking.formatted_time}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Start periodic updates
+        setInterval(updateDashboardData, UPDATE_INTERVAL);
+
+        // Initial update after page load
+        setTimeout(updateDashboardData, 5000);
     </script>
 </body>
 </html>

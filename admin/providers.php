@@ -4,6 +4,7 @@ require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once '../includes/mailer.php';
 require_once '../includes/provider_requirements.php';
+require_once '../includes/admin_ranking.php';
 
 // Check admin access
 if (!isLoggedIn() || !isAdmin()) {
@@ -261,6 +262,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $success = "Search ranking boost updated successfully";
         } catch (Exception $e) {
             $errors[] = "Failed to update search ranking";
+        }
+    }
+
+    if (isset($_POST['update_admin_ranking'])) {
+        $id = intval($_POST['provider_id']);
+        $admin_promotion_boost = max(0, min(20, intval($_POST['admin_promotion_boost'] ?? 0)));
+        $admin_priority_level = max(0, min(3, intval($_POST['admin_priority_level'] ?? 0)));
+        $admin_score_override = isset($_POST['admin_score_override']) && $_POST['admin_score_override'] !== ''
+            ? max(0, min(100, intval($_POST['admin_score_override'])))
+            : null;
+
+        try {
+            $stmt = $db->prepare("UPDATE service_providers SET admin_promotion_boost = ?, admin_priority_level = ?, admin_score_override = ? WHERE id = ?");
+            $stmt->execute([$admin_promotion_boost, $admin_priority_level, $admin_score_override, $id]);
+
+            if (admin_ranking_table_has_column($db, 'service_providers', 'admin_ranking_score')) {
+                $provider = getProviderDetails($db, $id);
+                if ($provider) {
+                    $score = calculate_admin_score($provider);
+                    $db->prepare("UPDATE service_providers SET admin_ranking_score = ? WHERE id = ?")->execute([$score, $id]);
+                }
+            }
+
+            $success = "Admin ranking settings updated successfully";
+        } catch (Exception $e) {
+            $errors[] = "Failed to update admin ranking settings";
         }
     }
     
@@ -1882,10 +1909,38 @@ function getWorkingDaysArray($working_days) {
                         <small>100 (Highest)</small>
                     </div>
                 </div>
-                
+
+                <div class="form-group">
+                    <label>Admin Promotion Boost (0-20)</label>
+                    <input type="number" name="admin_promotion_boost" class="form-control" id="admin_promotion_boost" min="0" max="20" value="0">
+                    <small class="text-muted">A direct visibility boost for admin ranking.</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Admin Priority Level</label>
+                    <select name="admin_priority_level" class="form-control" id="admin_priority_level">
+                        <option value="0">None</option>
+                        <option value="1">Low</option>
+                        <option value="2">Medium</option>
+                        <option value="3">High</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Admin Score Override (0-100)</label>
+                    <input type="number" name="admin_score_override" class="form-control" id="admin_score_override" min="0" max="100" placeholder="Leave blank to calculate automatically">
+                </div>
+
+                <div class="form-group">
+                    <label>Computed Admin Ranking Score</label>
+                    <div class="form-control" id="admin_ranking_score_display">0</div>
+                    <small class="text-muted">This value is derived from the current admin ranking settings.</small>
+                </div>
+
                 <div class="form-buttons">
                     <button type="submit" name="update_featured_status" class="btn btn-primary">Update Featured Status</button>
                     <button type="submit" name="update_search_boost" class="btn btn-secondary">Update Search Boost</button>
+                    <button type="submit" name="update_admin_ranking" class="btn btn-info">Update Admin Ranking</button>
                     <button type="button" class="btn btn-secondary" onclick="closeModal('searchRankingModal')">Cancel</button>
                 </div>
             </form>
@@ -2108,6 +2163,10 @@ function getWorkingDaysArray($working_days) {
                     document.getElementById('featured_until').value = data.featured_until || '';
                     document.getElementById('search_boost').value = data.search_boost || '0';
                     document.getElementById('search_boost_value').textContent = data.search_boost || '0';
+                    document.getElementById('admin_promotion_boost').value = data.admin_promotion_boost || '0';
+                    document.getElementById('admin_priority_level').value = data.admin_priority_level || '0';
+                    document.getElementById('admin_score_override').value = data.admin_score_override ?? '';
+                    document.getElementById('admin_ranking_score_display').textContent = data.admin_ranking_score ?? '0';
                     
                     document.getElementById('searchRankingModal').style.display = 'block';
                 })

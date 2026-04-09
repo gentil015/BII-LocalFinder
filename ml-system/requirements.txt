@@ -10,3 +10,5 @@ numpy
 joblib
 mysql-connector-python
 python-dotenv
+matplotlib
+seaborn

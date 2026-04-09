@@ -331,6 +331,7 @@ $total_cats = (int) $cat_stmt->fetchColumn();
             transition: var(--transition);
             text-decoration: none;
             color: inherit;
+            cursor: pointer;
         }
         .service-card:hover {
             transform: translateY(-4px);
@@ -550,7 +551,7 @@ $total_cats = (int) $cat_stmt->fetchColumn();
             <aside class="filter-sidebar">
                 <div class="filter-title"><i class="fas fa-filter"></i> Filters</div>
 
-                <form method="GET" action="services.php" id="filterForm">
+                <form method="GET" action="services.php" id="filterForm" onsubmit="trackSearchFormSubmit(event)">
 
                     <!-- Search -->
                     <div class="filter-section">
@@ -566,7 +567,8 @@ $total_cats = (int) $cat_stmt->fetchColumn();
                         <div class="filter-section-title">Category</div>
                         <div class="category-filter-list">
                             <a href="?<?php echo http_build_query(array_filter(['search'=>$search,'sort'=>$sort,'min_price'=>$min_price,'max_price'=>$max_price])); ?>"
-                               class="category-filter-btn <?php echo $category_id === 0 ? 'active' : ''; ?>">
+                               class="category-filter-btn <?php echo $category_id === 0 ? 'active' : ''; ?>"
+                               onclick="trackClick('category_filter','services_page',0,{category:'all'})">
                                 <i class="fas fa-th-large"></i> All Categories
                             </a>
                             <?php foreach ($categories as $i => $cat):
@@ -577,7 +579,8 @@ $total_cats = (int) $cat_stmt->fetchColumn();
                                 if ($cat_count === 0) continue;
                             ?>
                                 <a href="?<?php echo http_build_query(array_filter(['search'=>$search,'category'=>$cat['id'],'sort'=>$sort,'min_price'=>$min_price,'max_price'=>$max_price])); ?>"
-                                   class="category-filter-btn <?php echo $category_id === (int)$cat['id'] ? 'active' : ''; ?>">
+                                   class="category-filter-btn <?php echo $category_id === (int)$cat['id'] ? 'active' : ''; ?>"
+                                   onclick="trackClick('category_filter','services_page',0,{category:<?php echo (int)$cat['id']; ?>})">
                                     <i class="fas <?php echo htmlspecialchars($cat['icon'] ?? 'fa-briefcase'); ?>"></i>
                                     <?php echo htmlspecialchars($cat['name']); ?>
                                     <span class="cat-count"><?php echo $cat_count; ?></span>
@@ -648,18 +651,21 @@ $total_cats = (int) $cat_stmt->fetchColumn();
                 <?php if (!empty($search) || $category_id || $min_price || $max_price): ?>
                     <div class="active-filters">
                         <?php if (!empty($search)): ?>
-                            <a href="?<?php echo http_build_query(array_filter(['category'=>$category_id,'sort'=>$sort,'min_price'=>$min_price,'max_price'=>$max_price])); ?>" class="filter-tag">
+                            <a href="?<?php echo http_build_query(array_filter(['category'=>$category_id,'sort'=>$sort,'min_price'=>$min_price,'max_price'=>$max_price])); ?>" class="filter-tag"
+                               onclick="trackClick('remove_filter','services_page',0,{filter:'search'})">
                                 <i class="fas fa-times"></i> "<?php echo htmlspecialchars($search); ?>"
                             </a>
                         <?php endif; ?>
                         <?php if ($category_id): ?>
                             <?php $cat_name = array_values(array_filter($categories, fn($c) => (int)$c['id'] === $category_id))[0]['name'] ?? ''; ?>
-                            <a href="?<?php echo http_build_query(array_filter(['search'=>$search,'sort'=>$sort,'min_price'=>$min_price,'max_price'=>$max_price])); ?>" class="filter-tag">
+                            <a href="?<?php echo http_build_query(array_filter(['search'=>$search,'sort'=>$sort,'min_price'=>$min_price,'max_price'=>$max_price])); ?>" class="filter-tag"
+                               onclick="trackClick('remove_filter','services_page',0,{filter:'category', category:<?php echo $category_id; ?>})">
                                 <i class="fas fa-times"></i> <?php echo htmlspecialchars($cat_name); ?>
                             </a>
                         <?php endif; ?>
                         <?php if ($min_price || $max_price): ?>
-                            <a href="?<?php echo http_build_query(array_filter(['search'=>$search,'category'=>$category_id,'sort'=>$sort])); ?>" class="filter-tag">
+                            <a href="?<?php echo http_build_query(array_filter(['search'=>$search,'category'=>$category_id,'sort'=>$sort])); ?>" class="filter-tag"
+                               onclick="trackClick('remove_filter','services_page',0,{filter:'price'})">
                                 <i class="fas fa-times"></i> Price filter
                             </a>
                         <?php endif; ?>
@@ -672,14 +678,16 @@ $total_cats = (int) $cat_stmt->fetchColumn();
                         <i class="fas fa-search"></i>
                         <h3>No services found</h3>
                         <p>Try adjusting your filters or search term to find what you're looking for.</p>
-                        <a href="services.php" class="btn-book-now" style="margin-top:1rem;display:inline-flex;">
+                        <a href="services.php" class="btn-book-now" style="margin-top:1rem;display:inline-flex;"
+                           onclick="trackClick('reset_filters','services_page',0)">
                             <i class="fas fa-refresh"></i> Reset Filters
                         </a>
                     </div>
                 <?php else: ?>
                     <div class="services-grid">
                         <?php foreach ($services as $i => $service): ?>
-                            <div class="service-card">
+                            <div class="service-card" data-service-id="<?php echo $service['id']; ?>"
+                                 onclick="trackClick('open_service','service',<?php echo $service['id']; ?>); window.location.href='service.php?service_id=<?php echo $service['id']; ?>'">
                                 <div class="service-card-banner cat-<?php echo $i % 6; ?>"></div>
                                 <div class="service-card-body">
                                     <!-- Category badge -->
@@ -750,8 +758,11 @@ $total_cats = (int) $cat_stmt->fetchColumn();
                                             <span class="availability-pill <?php echo htmlspecialchars($service['availability'] ?? 'available'); ?>">
                                                 <?php echo ucfirst($service['availability'] ?? 'Available'); ?>
                                             </span>
+                                            <button class="btn-book-now" onclick="event.stopPropagation(); trackClick('view_service','service',<?php echo $service['id']; ?>); window.location.href='service.php?service_id=<?php echo $service['id']; ?>'">
+                                                <i class="fas fa-eye"></i> View Service
+                                            </button>
                                             <a href="provider-profile.php?id=<?php echo $service['provider_id']; ?>&service_id=<?php echo $service['id']; ?>"
-                                               class="btn-book-now">
+                                               class="btn-book-now" onclick="event.stopPropagation(); trackClick('book_now','service',<?php echo $service['id']; ?>)">
                                                 <i class="fas fa-calendar-plus"></i> Book Now
                                             </a>
                                         </div>
@@ -765,18 +776,21 @@ $total_cats = (int) $cat_stmt->fetchColumn();
                     <?php if ($total_pages > 1): ?>
                         <div class="pagination">
                             <?php if ($page > 1): ?>
-                                <a href="?<?php echo http_build_query(array_filter(['search'=>$search,'category'=>$category_id,'sort'=>$sort,'min_price'=>$min_price,'max_price'=>$max_price,'page'=>$page-1])); ?>" class="page-btn">
+                                <a href="?<?php echo http_build_query(array_filter(['search'=>$search,'category'=>$category_id,'sort'=>$sort,'min_price'=>$min_price,'max_price'=>$max_price,'page'=>$page-1])); ?>" class="page-btn"
+                               onclick="trackClick('pagination','services_page',0,{page:<?php echo $page-1; ?>})">
                                     <i class="fas fa-chevron-left"></i> Prev
                                 </a>
                             <?php endif; ?>
                             <?php for ($p = max(1,$page-2); $p <= min($total_pages,$page+2); $p++): ?>
                                 <a href="?<?php echo http_build_query(array_filter(['search'=>$search,'category'=>$category_id,'sort'=>$sort,'min_price'=>$min_price,'max_price'=>$max_price,'page'=>$p])); ?>"
-                                   class="page-btn <?php echo $p === $page ? 'active' : ''; ?>">
+                                   class="page-btn <?php echo $p === $page ? 'active' : ''; ?>"
+                                   onclick="trackClick('pagination','services_page',0,{page:<?php echo $p; ?>})">
                                     <?php echo $p; ?>
                                 </a>
                             <?php endfor; ?>
                             <?php if ($page < $total_pages): ?>
-                                <a href="?<?php echo http_build_query(array_filter(['search'=>$search,'category'=>$category_id,'sort'=>$sort,'min_price'=>$min_price,'max_price'=>$max_price,'page'=>$page+1])); ?>" class="page-btn">
+                                <a href="?<?php echo http_build_query(array_filter(['search'=>$search,'category'=>$category_id,'sort'=>$sort,'min_price'=>$min_price,'max_price'=>$max_price,'page'=>$page+1])); ?>" class="page-btn"
+                               onclick="trackClick('pagination','services_page',0,{page:<?php echo $page+1; ?>})">
                                     Next <i class="fas fa-chevron-right"></i>
                                 </a>
                             <?php endif; ?>
@@ -787,6 +801,7 @@ $total_cats = (int) $cat_stmt->fetchColumn();
         </div><!-- /page-layout -->
     </div><!-- /main-content -->
 
+    <?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
     <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
         // Mobile sidebar
@@ -811,10 +826,33 @@ $total_cats = (int) $cat_stmt->fetchColumn();
 
         // Sort dropdown — preserve all current filters
         function applySortChange(sortValue) {
+            trackClick('sort_change', 'services_page', 0, { sort: sortValue });
             const url  = new URL(window.location.href);
             url.searchParams.set('sort', sortValue);
             url.searchParams.delete('page');
             window.location.href = url.toString();
+        }
+
+        function trackSearchFormSubmit(event) {
+            const form = event.target;
+            const search = form.querySelector('input[name="search"]')?.value.trim() || '';
+            const category = form.querySelector('select[name="category"]')?.value || '';
+            const minPrice = form.querySelector('input[name="min_price"]')?.value || '';
+            const maxPrice = form.querySelector('input[name="max_price"]')?.value || '';
+
+            if (search) {
+                trackSearch(search, 'services', {
+                    category: category || null,
+                    min_price: minPrice || null,
+                    max_price: maxPrice || null
+                }, <?php echo $total_services; ?>);
+            } else {
+                trackClick('search_submit', 'services_page', 0, {
+                    category: category || null,
+                    min_price: minPrice || null,
+                    max_price: maxPrice || null
+                });
+            }
         }
 
         // Auto-submit filter form on category click (already done via links)

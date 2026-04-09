@@ -764,7 +764,8 @@ $payment_label = $payment_labels[$service['payment_type']] ?? 'Per Service';
                 <div class="card-title"><i class="fas fa-th-large"></i> More Services by <?php echo htmlspecialchars($service['provider_name']); ?></div>
                 <div class="other-services-grid">
                     <?php foreach ($other_services as $os): ?>
-                        <a href="service.php?service_id=<?php echo $os['id']; ?>" class="other-service-card">
+                        <a href="service.php?service_id=<?php echo $os['id']; ?>" class="other-service-card"
+                           onclick="trackClick('other_service_click','service',<?php echo $os['id']; ?>)">
                             <div class="other-service-cat">
                                 <i class="fas <?php echo htmlspecialchars($os['category_icon'] ?? 'fa-briefcase'); ?>"></i>
                                 <?php echo htmlspecialchars($os['category_name']); ?>
@@ -831,17 +832,19 @@ $payment_label = $payment_labels[$service['payment_type']] ?? 'Per Service';
 
                     <?php if ($service['negotiable']): ?>
                         <!-- Negotiable: offer button -->
-                        <button class="btn-offer-primary" onclick="openOfferModal()">
+                        <button class="btn-offer-primary" onclick="trackClick('open_offer_modal','service',<?php echo $service_id; ?>); openOfferModal()">
                             <i class="fas fa-handshake"></i> Send a Price Offer
                         </button>
                         <a href="booking.php?provider_id=<?php echo $service['provider_id']; ?>&service_id=<?php echo $service_id; ?>"
-                           class="btn-outline-accent">
+                           class="btn-outline-accent"
+                           onclick="trackClick('book_now','service',<?php echo $service_id; ?>)">
                             <i class="fas fa-calendar"></i> Standard Booking
                         </a>
                     <?php else: ?>
                         <!-- Fixed price: direct book -->
                         <a href="booking.php?provider_id=<?php echo $service['provider_id']; ?>&service_id=<?php echo $service_id; ?>"
-                           class="btn-book-primary">
+                           class="btn-book-primary"
+                           onclick="trackClick('book_now','service',<?php echo $service_id; ?>)">
                             <i class="fas fa-calendar-plus"></i> Book Now
                         </a>
                     <?php endif; ?>
@@ -849,7 +852,8 @@ $payment_label = $payment_labels[$service['payment_type']] ?? 'Per Service';
                     <!-- Favorite -->
                     <form method="POST" action="provider-profile.php?id=<?php echo $service['provider_id']; ?>" style="margin-top:.75rem;">
                         <input type="hidden" name="toggle_favorite" value="1">
-                        <button type="submit" class="btn-fav <?php echo $is_favorite ? 'active' : ''; ?>">
+                        <button type="submit" class="btn-fav <?php echo $is_favorite ? 'active' : ''; ?>"
+                                onclick="trackClick('favorite_toggle','provider',<?php echo $service['provider_id']; ?>,{service_id:<?php echo $service_id; ?>})">
                             <i class="<?php echo $is_favorite ? 'fas' : 'far'; ?> fa-heart"></i>
                             <?php echo $is_favorite ? 'Remove from Favorites' : 'Save to Favorites'; ?>
                         </button>
@@ -924,7 +928,8 @@ $payment_label = $payment_labels[$service['payment_type']] ?? 'Per Service';
                     </span>
                 </div>
 
-                <a href="provider-profile.php?id=<?php echo $service['provider_id']; ?>" class="btn-view-profile">
+                <a href="provider-profile.php?id=<?php echo $service['provider_id']; ?>" class="btn-view-profile"
+                   onclick="trackClick('view_provider_profile','provider',<?php echo $service['provider_id']; ?>,{service_id:<?php echo $service_id; ?>})">
                     <i class="fas fa-eye"></i> View Full Profile
                 </a>
             </div>
@@ -1011,6 +1016,7 @@ $payment_label = $payment_labels[$service['payment_type']] ?? 'Per Service';
 <!-- Toast container -->
 <div id="toastContainer" style="position:fixed;top:1.25rem;right:1.25rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem;"></div>
 
+<?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
 <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
 <script>
     // ── Mobile sidebar ─────────────────────────────────────────────────────
@@ -1046,12 +1052,14 @@ $payment_label = $payment_labels[$service['payment_type']] ?? 'Per Service';
 
     // ── Offer modal ────────────────────────────────────────────────────────
     function openOfferModal() {
+        trackClick('open_offer_modal', 'service', <?php echo $service_id; ?>);
         document.getElementById('offerModal')?.classList.add('active');
         document.body.style.overflow = 'hidden';
         document.getElementById('offerPrice')?.focus();
     }
 
     function closeOfferModal() {
+        trackClick('close_offer_modal', 'service', <?php echo $service_id; ?>);
         document.getElementById('offerModal')?.classList.remove('active');
         document.body.style.overflow = '';
     }
@@ -1085,6 +1093,11 @@ $payment_label = $payment_labels[$service['payment_type']] ?? 'Per Service';
         const min     = <?php echo (float)($service['min_price'] ?? 0); ?>;
         const max     = <?php echo (float)($service['max_price'] ?? 0); ?>;
         const svcId   = <?php echo $service_id; ?>;
+
+        trackClick('submit_offer', 'service', svcId, {
+            price: price || null,
+            note: note ? note.substring(0, 100) : null
+        });
 
         if (!price || price < min || price > max) {
             showToast('Please enter a valid price within the allowed range.', 'danger');

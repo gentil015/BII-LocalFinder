@@ -18,10 +18,9 @@ try {
 }
 
 $current = basename($_SERVER['PHP_SELF']);
-$sidebar_width = $current === 'messages.php' ? '60px' : '260px';
 ?>
-<style>:root { --sidebar-width: <?php echo $sidebar_width; ?>; }</style>
-<aside class="sidebar <?php echo $current === 'messages.php' ? 'icon-only' : ''; ?>" id="clientSidebar">
+<style>:root { --sidebar-width: 280px; }</style>
+<aside class="sidebar icon-only" id="clientSidebar">
 
     <!-- Brand Header -->
     <div class="sidebar-brand">
@@ -30,11 +29,9 @@ $sidebar_width = $current === 'messages.php' ? '60px' : '260px';
         </div>
         <div class="sidebar-brand-text">
             <span class="sidebar-brand-name"><?php echo htmlspecialchars($platform_name); ?></span>
-            <span class="sidebar-brand-role">Client Area</span>
+            <span class="sidebar-brand-role">Clients Area</span>
         </div>
-        <button class="sidebar-toggle" id="sidebarToggle" title="Toggle Sidebar">
-            <i class="fas fa-bars"></i>
-        </button>
+
     </div>
 
     <!-- Navigation -->
@@ -68,6 +65,13 @@ $sidebar_width = $current === 'messages.php' ? '60px' : '260px';
                 <a href="providers.php?section=offers" class="<?php echo (isset($_GET['section']) && $_GET['section'] === 'offers') ? 'active' : ''; ?>">
                     <span class="nav-icon"><i class="fas fa-tags"></i></span>
                     <span class="nav-label">Special Offers</span>
+                </a>
+            </li>
+
+            <li>
+                <a href="services.php" class="<?php echo $current === 'services.php' ? 'active' : ''; ?>">
+                    <span class="nav-icon"><i class="fas fa-tools"></i></span>
+                    <span class="nav-label">Services</span>
                 </a>
             </li>
 
@@ -172,7 +176,7 @@ $sidebar_width = $current === 'messages.php' ? '60px' : '260px';
 
 /* ── SIDEBAR SHELL ── */
 .sidebar {
-    width: var(--sidebar-width);
+    width: 70px;
     background: var(--sb-surface);
     border-right: 1px solid var(--sb-border);
     position: fixed;
@@ -413,13 +417,17 @@ $sidebar_width = $current === 'messages.php' ? '60px' : '260px';
 
 /* ── MAIN CONTENT OFFSET ── */
 .main-content {
-    margin-left: var(--sidebar-width) !important;
+    margin-left: 85px;
     transition: margin-left 0.18s cubic-bezier(0.4,0,0.2,1);
 }
 
-/* ── ICON-ONLY MODE ── */
+/* ── ICON-ONLY MODE (DEFAULT) ── */
+.sidebar.icon-only {
+    width: 70px;
+}
+
 .sidebar.icon-only .sidebar-brand-text { display: none; }
-.sidebar.icon-only .sidebar-brand { justify-content: center; padding: 1rem 0.5rem; }
+.sidebar.icon-only .sidebar-brand { justify-content: center; padding: 1rem 0.5rem; width: 70px; }
 .sidebar.icon-only .nav-section-label { display: none; }
 .sidebar.icon-only .nav-label { display: none; }
 .sidebar.icon-only .sidebar-menu a { justify-content: center; padding: 0.6rem; position: relative; }
@@ -428,17 +436,37 @@ $sidebar_width = $current === 'messages.php' ? '60px' : '260px';
 .sidebar.icon-only .footer-logout { justify-content: center; padding: 0.6rem; }
 .sidebar.icon-only .nav-badge { position: absolute; top: -5px; right: -5px; font-size: 0.6rem; min-width: 16px; height: 16px; }
 
+/* ── HOVER EXPANDED MODE ── */
+.sidebar.hover-expanded {
+    width: 280px;
+    box-shadow: 2px 0 12px rgba(0,0,0,0.08);
+}
+
+.sidebar.hover-expanded .sidebar-brand-text { display: flex; }
+.sidebar.hover-expanded .sidebar-brand { justify-content: flex-start; padding: 1.25rem 1.25rem 1rem; }
+.sidebar.hover-expanded .nav-section-label { display: block; }
+.sidebar.hover-expanded .nav-label { display: inline; }
+.sidebar.hover-expanded .sidebar-menu a { justify-content: flex-start; padding: 0.6rem 0.875rem; }
+.sidebar.hover-expanded .sidebar-menu a .nav-icon { width: 32px; height: 32px; }
+.sidebar.hover-expanded .sidebar-footer { padding: 0.625rem 0.75rem; }
+.sidebar.hover-expanded .footer-logout { justify-content: flex-start; }
+
 /* ── MOBILE ── */
 @media (max-width: 768px) {
     .sidebar {
+        width: 70px;
         transform: translateX(-100%);
         box-shadow: none;
     }
 
-    .sidebar.mobile-open {
+    .sidebar.hover-expanded {
         transform: translateX(0);
+        width: 280px;
         box-shadow: 4px 0 20px rgba(0,0,0,0.12);
     }
+
+    .sidebar.icon-only .sidebar-brand-text { display: none; }
+    .sidebar.hover-expanded .sidebar-brand-text { display: flex; }
 
     .main-content {
         margin-left: 0 !important;
@@ -449,21 +477,47 @@ $sidebar_width = $current === 'messages.php' ? '60px' : '260px';
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const sidebar = document.getElementById('clientSidebar');
-    const toggle = document.getElementById('sidebarToggle');
-    const isMessages = <?php echo $current === 'messages.php' ? 'true' : 'false'; ?>;
+    const mainContent = document.querySelector('.main-content');
+    
+    if (!sidebar) return;
 
-    function updateSidebarWidth() {
-        const isCollapsed = sidebar.classList.contains('icon-only');
-        const width = isCollapsed ? '60px' : '260px';
-        document.documentElement.style.setProperty('--sidebar-width', width);
+    // Hover to expand
+    sidebar.addEventListener('mouseenter', function() {
+        sidebar.classList.add('hover-expanded');
+        if (mainContent) {
+            mainContent.style.transition = 'none';
+            mainContent.style.marginLeft = '280px';
+            // Force reflow
+            mainContent.offsetHeight;
+            mainContent.style.transition = 'margin-left 0.18s cubic-bezier(0.4,0,0.2,1)';
+        }
+    });
+
+    // Hover out to collapse
+    sidebar.addEventListener('mouseleave', function() {
+        sidebar.classList.remove('hover-expanded');
+        if (mainContent) {
+            mainContent.style.transition = 'none';
+            mainContent.style.marginLeft = '85px';
+            // Force reflow
+            mainContent.offsetHeight;
+            mainContent.style.transition = 'margin-left 0.18s cubic-bezier(0.4,0,0.2,1)';
+        }
+    });
+
+    // Set initial margin for icon-only state (85px to account for sidebar + badges)
+    if (mainContent) {
+        mainContent.style.marginLeft = '85px';
+        mainContent.style.transition = 'margin-left 0.18s cubic-bezier(0.4,0,0.2,1)';
     }
 
+    // Add tooltips when icon-only
     function updateTooltips() {
-        const isCollapsed = sidebar.classList.contains('icon-only');
+        const isIconOnly = sidebar.classList.contains('icon-only');
         const links = sidebar.querySelectorAll('.sidebar-menu a, .footer-logout');
         links.forEach(link => {
             const label = link.querySelector('.nav-label');
-            if (isCollapsed && label) {
+            if (isIconOnly && label) {
                 link.title = label.textContent.trim();
             } else {
                 link.removeAttribute('title');
@@ -471,25 +525,10 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    if (isMessages) {
-        sidebar.classList.add('icon-only');
-        toggle.style.display = 'none';
-        updateSidebarWidth();
-        updateTooltips();
-    } else {
-        const collapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-        if (collapsed) {
-            sidebar.classList.add('icon-only');
-        }
-        updateSidebarWidth();
-        updateTooltips();
+    updateTooltips();
 
-        toggle.addEventListener('click', function() {
-            sidebar.classList.toggle('icon-only');
-            updateSidebarWidth();
-            updateTooltips();
-            localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('icon-only'));
-        });
-    }
+    // Update tooltips on hover state changes
+    sidebar.addEventListener('mouseenter', updateTooltips);
+    sidebar.addEventListener('mouseleave', updateTooltips);
 });
 </script>

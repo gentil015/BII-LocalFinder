@@ -1,58 +1,392 @@
-# ML Recommendation System
+# Multi-Model ML Recommendation System
 
-This system provides real-time provider ranking and personalized recommendations for the Bii LocalFinder platform using machine learning.
+This system provides real-time provider ranking and personalized recommendations for the Bii LocalFinder platform using multiple specialized machine learning models.
 
 ## Overview
 
-The ML system consists of:
-- **Real-time provider ranking** using behavioral features (views, clicks, messages, rating, price, response time)
-- **Batch prediction API** for efficient processing of multiple providers
-- **Fallback ranking** using rating and response time when ML API is unavailable
-- **FastAPI prediction service** with vectorized processing
-- **PHP client integration** with automatic fallback logic
+The ML system consists of **6 specialized models**:
+- **Recommendation Model**: Predicts hiring probability for personalized recommendations
+- **Search Ranking Model**: Ranks providers in search results based on relevance
+- **Personalization Model**: Learns user preferences for customized suggestions
+- **Provider Performance Model**: Predicts provider success metrics and performance scores
+- **User Engagement Model**: Predicts user interaction patterns and engagement levels
+- **User Segmentation Model**: Clusters users into behavioral segments for targeted marketing
 
-## Recent Improvements
+## Architecture
 
-### 🚀 Real-time Provider Ranking
-- **Batch API endpoint** (`/predict/batch`) accepts multiple providers in one request
-- **Vectorized predictions** for optimal performance with large provider lists
-- **Automatic fallback** to rating + response time scoring when API is unavailable
-- **Efficient feature building** with database query optimization
+```
+ml-system/
+├── models/                          # Individual model directories
+│   ├── recommendation/             # Hiring probability prediction
+│   ├── search_ranking/             # Search result ranking
+│   ├── personalization/            # User preference learning
+│   ├── provider_performance/       # Provider metrics prediction
+│   ├── user_engagement/            # User behavior prediction
+│   └── user_segmentation/          # User behavioral clustering
+├── data/                           # Training data export scripts
+├── api/                            # FastAPI service and PHP clients
+├── utils/                          # Shared utilities
+└── train_all_models.py            # Master training script
+```
 
-### 📈 Performance Optimizations
-- Single API call for all providers instead of individual requests
-- Vectorized model predictions using NumPy
-- Reduced network overhead and latency
-- Smart caching of provider features
+## Quick Start
 
-### 🛡️ Reliability Features
-- **Graceful degradation** - system works even when ML API is down
-- **Fallback scoring** based on rating (70%) and response time (30%)
-- **Error handling** with detailed logging
-- **Health checks** for API monitoring
-
-## Setup
-
-1. Install Python dependencies:
+1. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
 
-2. Configure environment variables:
+2. **Configure environment:**
    ```bash
    cp .env.example .env
    # Edit .env with your database credentials
    ```
 
-3. Train the model:
+3. **Train all models:**
    ```bash
-   python model/train_model.py
+   python train_all_models.py
    ```
+
+4. **Start the API service:**
+   ```bash
+   uvicorn api.multi_model_app:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+## Model Details
+
+### 1. Recommendation Model
+- **Purpose**: Predicts the probability that a user will hire a provider
+- **Features**: Provider activity (views, clicks, messages), ratings, pricing, response times, user behavior patterns
+- **Use Case**: Personalized provider recommendations on homepage and search results
+- **Algorithm**: RandomForest Classifier
+
+### 2. Search Ranking Model
+- **Purpose**: Ranks providers in search results by relevance to the query
+- **Features**: Provider quality metrics, search context, user preferences, location/category matching
+- **Use Case**: Improving search result quality and user satisfaction
+- **Algorithm**: RandomForest Regressor
+
+### 3. Personalization Model
+- **Purpose**: Learns individual user preferences for providers
+- **Features**: User booking history, provider characteristics, interaction patterns
+- **Use Case**: Highly personalized provider suggestions
+- **Algorithm**: RandomForest Classifier
+
+### 4. Provider Performance Model
+- **Purpose**: Predicts provider success metrics and overall performance
+- **Features**: Provider profile data, historical performance, activity metrics
+- **Use Case**: Provider analytics and performance insights
+- **Algorithm**: RandomForest Regressor (multi-output)
+
+### 5. User Engagement Model
+- **Purpose**: Predicts user engagement and interaction likelihood
+- **Features**: User profile, session context, provider characteristics, interaction history
+- **Use Case**: Optimizing user experience and conversion rates
+- **Algorithm**: RandomForest Classifier
+
+## API Endpoints
+
+The FastAPI service provides the following endpoints:
+
+### Recommendation Model
+```http
+POST /predict/recommendation
+POST /predict/recommendation/batch
+```
+
+### Search Ranking Model
+```http
+POST /predict/search_ranking
+POST /predict/search_ranking/batch
+```
+
+### Personalization Model
+```http
+POST /predict/personalization
+```
+
+### Provider Performance Model
+```http
+POST /predict/provider_performance
+```
+
+### User Engagement Model
+```http
+POST /predict/user_engagement
+```
+
+### Management
+```http
+GET  /health          # Service health check
+GET  /models/info     # Model metadata
+POST /reload-models   # Reload model bundles
+```
+
+## PHP Integration
+
+Use the `MultiModelRecommender` class for PHP integration:
+
+```php
+require_once '../includes/MultiModelRecommender.php';
+$recommender = new MultiModelRecommender($db);
+
+// Recommendation ranking
+$providers = $recommender->rankByRecommendation($providers, $userId);
+
+// Search ranking
+$providers = $recommender->rankBySearchRelevance($providers, $searchQuery, $userId, $filters);
+
+// Personalization
+$preferences = $recommender->getPersonalizedPreferences($userId, $providers);
+
+// Provider performance
+$performance = $recommender->predictProviderPerformance($providerData);
+
+// User engagement
+$engagement = $recommender->predictUserEngagement($userId, $providerData, $context);
+```
+
+## Training Data
+
+Each model requires specific training data exported from your database:
+
+- **Recommendation Data**: Booking history with provider-user interactions
+- **Search Ranking Data**: Search queries with click-through data
+- **Personalization Data**: User-provider interaction patterns
+- **Provider Performance Data**: Provider metrics and historical performance
+- **User Engagement Data**: User session and interaction data
+
+Run data export scripts individually or use the master training script.
+
+## Performance & Reliability
+
+### Features
+- **Batch Processing**: Efficient handling of multiple providers in single requests
+- **Graceful Degradation**: System works even when individual models are unavailable
+- **Automatic Fallback**: Rating-based scoring when ML API is down
+- **Health Monitoring**: Built-in health checks and model status tracking
+- **Error Handling**: Comprehensive error handling with detailed logging
+
+### Optimization
+- Vectorized predictions using NumPy
+- Reduced network overhead through batching
+- Smart caching of provider features
+- Asynchronous processing capabilities
+
+## Deployment
+
+### Production Setup
+1. Train models on a regular schedule (weekly/monthly)
+2. Deploy models to production API servers
+3. Monitor model performance and drift
+4. Retrain models when accuracy degrades
+
+### Monitoring
+- Check `/health` endpoint for service status
+- Monitor prediction logs for anomalies
+- Track model performance metrics
+- Set up alerts for API failures
+
+## Troubleshooting
+
+### Common Issues
+- **Model not found**: Ensure models are trained and saved correctly
+- **Database connection failed**: Check database credentials in `.env`
+- **Memory errors**: Reduce batch sizes or increase server memory
+- **Slow predictions**: Check model file sizes and server resources
+
+### Logs
+- Prediction logs: `logs/predictions.jsonl`
+- Training reports: `training_report.json`
+- Model evaluations: `models/*/evaluation.json`
+
+## Development
+
+### Adding New Models
+1. Create model directory under `models/`
+2. Implement training script with proper feature engineering
+3. Add data export script in `data/`
+4. Update `multi_model_app.py` with new endpoints
+5. Update `MultiModelRecommender.php` with new methods
+6. Add to `train_all_models.py`
+
+### Model Validation
+- Always validate features match between training and prediction
+- Test models with edge cases and missing data
+- Monitor feature distributions for drift
+- Regular retraining with fresh datacorn api.multi_model_app:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+## Model Details
+
+### 1. Recommendation Model
+- **Purpose**: Predicts the probability that a user will hire a provider
+- **Features**: Provider activity (views, clicks, messages), ratings, pricing, response times, user behavior patterns
+- **Use Case**: Personalized provider recommendations on homepage and search results
+- **Algorithm**: RandomForest Classifier
+
+### 2. Search Ranking Model
+- **Purpose**: Ranks providers in search results by relevance to the query
+- **Features**: Provider quality metrics, search context, user preferences, location/category matching
+- **Use Case**: Improving search result quality and user satisfaction
+- **Algorithm**: RandomForest Regressor
+
+### 3. Personalization Model
+- **Purpose**: Learns individual user preferences for providers
+- **Features**: User booking history, provider characteristics, interaction patterns
+- **Use Case**: Highly personalized provider suggestions
+- **Algorithm**: RandomForest Classifier
+
+### 4. Provider Performance Model
+- **Purpose**: Predicts provider success metrics and overall performance
+- **Features**: Provider profile data, historical performance, activity metrics
+- **Use Case**: Provider analytics and performance insights
+- **Algorithm**: RandomForest Regressor (multi-output)
+
+### 5. User Engagement Model
+- **Purpose**: Predicts user engagement and interaction likelihood
+- **Features**: User profile, session context, provider characteristics, interaction history
+- **Use Case**: Optimizing user experience and conversion rates
+- **Algorithm**: RandomForest Classifier
+
+## API Endpoints
+
+The FastAPI service provides the following endpoints:
+
+### Recommendation Model
+```http
+POST /predict/recommendation
+POST /predict/recommendation/batch
+```
+
+### Search Ranking Model
+```http
+POST /predict/search_ranking
+POST /predict/search_ranking/batch
+```
+
+### Personalization Model
+```http
+POST /predict/personalization
+```
+
+### Provider Performance Model
+```http
+POST /predict/provider_performance
+```
+
+### User Engagement Model
+```http
+POST /predict/user_engagement
+```
+
+### Management
+```http
+GET  /health          # Service health check
+GET  /models/info     # Model metadata
+POST /reload-models   # Reload model bundles
+```
+
+## PHP Integration
+
+Use the `MultiModelRecommender` class for PHP integration:
+
+```php
+require_once '../includes/MultiModelRecommender.php';
+$recommender = new MultiModelRecommender($db);
+
+// Recommendation ranking
+$providers = $recommender->rankByRecommendation($providers, $userId);
+
+// Search ranking
+$providers = $recommender->rankBySearchRelevance($providers, $searchQuery, $userId, $filters);
+
+// Personalization
+$preferences = $recommender->getPersonalizedPreferences($userId, $providers);
+
+// Provider performance
+$performance = $recommender->predictProviderPerformance($providerData);
+
+// User engagement
+$engagement = $recommender->predictUserEngagement($userId, $providerData, $context);
+```
+
+## Training Data
+
+Each model requires specific training data exported from your database:
+
+- **Recommendation Data**: Booking history with provider-user interactions
+- **Search Ranking Data**: Search queries with click-through data
+- **Personalization Data**: User-provider interaction patterns
+- **Provider Performance Data**: Provider metrics and historical performance
+- **User Engagement Data**: User session and interaction data
+
+Run data export scripts individually or use the master training script.
+
+## Performance & Reliability
+
+### Features
+- **Batch Processing**: Efficient handling of multiple providers in single requests
+- **Graceful Degradation**: System works even when individual models are unavailable
+- **Automatic Fallback**: Rating-based scoring when ML API is down
+- **Health Monitoring**: Built-in health checks and model status tracking
+- **Error Handling**: Comprehensive error handling with detailed logging
+
+### Optimization
+- Vectorized predictions using NumPy
+- Reduced network overhead through batching
+- Smart caching of provider features
+- Asynchronous processing capabilities
+
+## Deployment
+
+### Production Setup
+1. Train models on a regular schedule (weekly/monthly)
+2. Deploy models to production API servers
+3. Monitor model performance and drift
+4. Retrain models when accuracy degrades
+
+### Monitoring
+- Check `/health` endpoint for service status
+- Monitor prediction logs for anomalies
+- Track model performance metrics
+- Set up alerts for API failures
+
+## Troubleshooting
+
+### Common Issues
+- **Model not found**: Ensure models are trained and saved correctly
+- **Database connection failed**: Check database credentials in `.env`
+- **Memory errors**: Reduce batch sizes or increase server memory
+- **Slow predictions**: Check model file sizes and server resources
+
+### Logs
+- Prediction logs: `logs/predictions.jsonl`
+- Training reports: `training_report.json`
+- Model evaluations: `models/*/evaluation.json`
+
+## Development
+
+### Adding New Models
+1. Create model directory under `models/`
+2. Implement training script with proper feature engineering
+3. Add data export script in `data/`
+4. Update `multi_model_app.py` with new endpoints
+5. Update `MultiModelRecommender.php` with new methods
+6. Add to `train_all_models.py`
+
+### Model Validation
+- Always validate features match between training and prediction
+- Test models with edge cases and missing data
+- Monitor feature distributions for drift
+- Regular retraining with fresh data
 
 4. Start the prediction service:
    ```bash
    uvicorn api.app:app --host 0.0.0.0 --port 8000 --reload
    ```
+
+5. After retraining, the `ml-system/retrain.sh` pipeline will automatically request the FastAPI `/reload-model` endpoint to load the new model if the service is reachable.
 
 5. Test the system:
    ```bash
@@ -75,10 +409,46 @@ Predicts hire probability for multiple providers at once.
       "messages": 10,
       "rating": 4.5,
       "price": 50000,
-      "avg_response_time": 2.5
+      "avg_response_time": 2.5,
+      "user_avg_price": 0,
+      "user_avg_response_time": 24,
+      "user_total_bookings": 0
     }
   }
 ]
+```
+
+### POST `/predict/action`
+Predicts the hire probability for a single provider and returns a recommended action.
+
+**Request:**
+```json
+{
+  "provider_id": 1,
+  "features": {
+    "views": 150,
+    "clicks": 25,
+    "messages": 10,
+    "rating": 4.5,
+    "price": 50000,
+    "avg_response_time": 2.5,
+    "user_avg_price": 0,
+    "user_avg_response_time": 24,
+    "user_total_bookings": 0
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "provider_id": 1,
+  "prediction": 1,
+  "probability": 0.785,
+  "confidence": "high",
+  "action": "recommend",
+  "action_reason": "Strong candidate for recommendation."
+}
 ```
 
 **Response:**

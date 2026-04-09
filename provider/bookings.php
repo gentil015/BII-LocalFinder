@@ -82,6 +82,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
                             WHERE user_id = ?
                         ");
                         $updateProfileStmt->execute([$bookingDetails['client_id'], $bookingDetails['client_id']]);
+
+                        updateMlPredictionOutcome($db, $bookingDetails['client_id'], $provider['id'], 1);
                     }
                     
                     // Check if rating is required after completion

@@ -3,6 +3,8 @@ session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once '../includes/event_tracking.php';
+require_once '../includes/geolocation.php';
+require_once '../includes/final_ranking.php';
 
 if (!isLoggedIn()) { redirect('login.php'); }
 if (isProvider())  { redirect('provider/dashboard.php'); }
@@ -67,14 +69,25 @@ try {
     $s = $db->prepare("SELECT user_avg_price, user_avg_response_time FROM user_profiles WHERE user_id = ?");
     $s->execute([$uid]);
     $up = $s->fetch(PDO::FETCH_ASSOC);
-    if ($up) { $userAvgPrice = (float)($up['user_avg_price'] ?? 0); $userAvgResp = (float)($up['user_avg_response_time'] ?? 24); }
+    if ($up) {
+        $userAvgPrice = (float)($up['user_avg_price'] ?? 0);
+        $userAvgResp = (float)($up['user_avg_response_time'] ?? 24);
+    } else {
+        $s = $db->prepare("SELECT AVG(amount) AS avg_price, AVG(TIMESTAMPDIFF(HOUR, created_at, responded_at)) AS avg_response_time FROM bookings WHERE client_id = ?");
+        $s->execute([$uid]);
+        $fb = $s->fetch(PDO::FETCH_ASSOC);
+        if ($fb) {
+            $userAvgPrice = (float)($fb['avg_price'] ?? 0);
+            $userAvgResp = (float)($fb['avg_response_time'] ?? 24);
+        }
+    }
 } catch (Throwable $e) {}
 
 // ── Filters ────────────────────────────────────────────────────────────────────
 $search    = trim($_GET['search']    ?? '');
 $category  = trim($_GET['category']  ?? '');
 $location  = trim($_GET['location']  ?? '');
-$sort      = trim($_GET['sort']      ?? 'ml');   // ml | rating | reviews | newest | price_asc | price_desc
+$sort      = trim($_GET['sort']      ?? 'ml');   // ml | system | rating | reviews | newest | price_asc | price_desc
 $avail     = trim($_GET['avail']     ?? '');      // available | busy | ''
 $minRating = (float)($_GET['min_rating'] ?? 0);
 $verified  = isset($_GET['verified']) ? (bool)$_GET['verified'] : false;
@@ -138,9 +151,9 @@ $cStmt->execute($params);
 $totalProviders = (int)$cStmt->fetchColumn();
 $totalPages     = max(1, (int)ceil($totalProviders / $perPage));
 
-// Fetch provider rows (fetch all for ML scoring, then paginate after)
-$fetchLimit = ($sort === 'ml') ? min($totalProviders, 80) : $perPage;
-$fetchOffset = ($sort === 'ml') ? 0 : $offset;
+// Fetch provider rows (fetch all for ML/system scoring, then paginate after)
+$fetchLimit = ($sort === 'ml' || $sort === 'system') ? min($totalProviders, 120) : $perPage;
+$fetchOffset = ($sort === 'ml' || $sort === 'system') ? 0 : $offset;
 
 $orderBy = match($sort) {
     'rating'     => "sp.average_rating DESC, sp.total_reviews DESC",
@@ -154,13 +167,35 @@ $orderBy = match($sort) {
 $favCheck   = count($favIds) > 0 ? "(sp.id IN (" . implode(',', array_fill(0, count($favIds), '?')) . ")) as is_fav" : "0 as is_fav";
 $favParams  = count($favIds) > 0 ? $favIds : [];
 
+$providerColumns = [];
+try {
+    $colStmt = $db->query("SHOW COLUMNS FROM service_providers");
+    $providerColumns = $colStmt->fetchAll(PDO::FETCH_COLUMN, 0);
+} catch (Throwable $e) {
+    $providerColumns = [];
+}
+
+$extraSelects = [];
+if (in_array('admin_score', $providerColumns, true)) {
+    $extraSelects[] = 'sp.admin_score';
+}
+if (in_array('system_score', $providerColumns, true)) {
+    $extraSelects[] = 'sp.system_score';
+}
+if (in_array('system_ranking_score', $providerColumns, true)) {
+    $extraSelects[] = 'sp.system_ranking_score';
+}
+$extraSelectsSql = $extraSelects ? ", " . implode(', ', $extraSelects) : "";
+
 $mainSQL = "
     SELECT sp.*, u.full_name, u.email, u.profile_image,
            sp.location as provider_location, u.is_verified as user_verified,
            $favCheck,
            (SELECT AVG(price) FROM provider_services ps WHERE ps.provider_id=sp.id AND ps.is_available=1) as avg_price,
            (SELECT COUNT(*) FROM bookings b WHERE b.provider_id=sp.id AND b.status='completed') as completed_jobs,
-           (SELECT COUNT(*) FROM provider_views pv WHERE pv.provider_id=sp.id) as view_count
+           (SELECT COUNT(*) FROM bookings b WHERE b.provider_id=sp.id) as total_jobs,
+           (SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, responded_at)) FROM bookings WHERE provider_id=sp.id AND responded_at IS NOT NULL) as avg_response_hours,
+           (SELECT COUNT(*) FROM provider_views pv WHERE pv.provider_id=sp.id) as view_count$extraSelectsSql
     FROM service_providers sp
     JOIN users u ON sp.user_id = u.id
     WHERE $whereSQL
@@ -173,11 +208,24 @@ $stmt = $db->prepare($mainSQL);
 $stmt->execute($mainParams);
 $rawProviders = $stmt->fetchAll();
 
-// ── ML RANKING (only when sort=ml) ────────────────────────────────────────────
+// ── Ranking ────────────────────────────────────────────────────────────────
 $mlApiStatus = 'fallback';
 $mlScoreMap  = [];
+$isSystemSort = $sort === 'system';
 
 if ($sort === 'ml' && !empty($rawProviders)) {
+    $finalRankingWeights = [
+        'ml' => (float)getSetting($db, 'ranking_weight_ml', 0.5),
+        'system' => (float)getSetting($db, 'ranking_weight_system', 0.3),
+        'admin' => (float)getSetting($db, 'ranking_weight_admin', 0.2),
+    ];
+
+    $targetLocation = $location !== '' ? $location : $clientLocation;
+    $userCoords = GeolocationHelper::getLocationCoordinates($db, $targetLocation);
+
+    $useSearchRanking = $search !== '' || $category !== '' || $location !== '';
+    $predictEndpoint = $useSearchRanking ? '/predict/search_ranking/batch' : '/predict/recommendation/batch';
+
     // Build feature vectors
     $batchPayload = [];
     foreach ($rawProviders as $p) {
@@ -206,29 +254,57 @@ if ($sort === 'ml' && !empty($rawProviders)) {
             if ($ar !== null && $ar !== false) $avgResp = (float)$ar;
         } catch (Throwable $e) {}
 
-        $batchPayload[] = [
-            'provider_id' => $pid,
-            'features' => [
-                'views'                  => max(0.0, (float)($p['view_count'] ?? 0)),
-                'clicks'                 => max(0.0, $clicks),
-                'messages'               => max(0.0, $msgs),
-                'rating'                 => min(5.0, max(0.0, (float)($p['average_rating'] ?? 0))),
-                'price'                  => max(0.0, (float)($p['avg_price'] ?? 0)),
-                'avg_response_time'      => max(0.0, $avgResp),
+        $providerPrice = max(0.0, (float)($p['avg_price'] ?? 0));
+        $priceMatch = 0;
+        if ($userAvgPrice > 0 && $providerPrice > 0) {
+            $priceMatch = ($providerPrice >= $userAvgPrice * 0.8 && $providerPrice <= $userAvgPrice * 1.2) ? 1 : 0;
+        }
+
+        $features = [
+            'views'                  => max(0.0, (float)($p['view_count'] ?? 0)),
+            'clicks'                 => max(0.0, $clicks),
+            'messages'               => max(0.0, $msgs),
+            'rating'                 => min(5.0, max(0.0, (float)($p['average_rating'] ?? 0))),
+            'price'                  => $providerPrice,
+            'avg_response_time'      => max(0.0, $avgResp),
+        ];
+
+        if ($useSearchRanking) {
+            $features = array_merge($features, [
+                'is_verified'                => (int)(($p['is_verified'] ?? 0) || ($p['user_verified'] ?? 0)),
+                'is_featured'                => (int)($p['is_featured'] ?? 0),
+                'experience_years'           => max(0, (int)($p['experience_years'] ?? 0)),
+                'completion_rate'            => isset($p['total_jobs']) && (int)$p['total_jobs'] > 0
+                    ? min(1.0, max(0.0, (int)($p['completed_jobs'] ?? 0) / max(1, (int)$p['total_jobs'])))
+                    : 0.0,
+                'search_query_length'        => mb_strlen($search),
+                'category_match'             => $category !== '' && trim($p['profession'] ?? '') === $category ? 1 : 0,
+                'location_match'             => $location !== '' && trim($p['provider_location'] ?? '') === $location ? 1 : 0,
+                'price_match'                => $priceMatch,
+                'availability_match'         => $avail === '' || strtolower(trim($p['availability'] ?? '')) === strtolower($avail) ? 1 : 0,
+                'user_search_frequency'      => min(50, max(0, $userTotalBookings)),
+                'user_category_preference'   => isset($bookedProfessions[$p['profession']]) ? 1.0 : 0.0,
+                'user_price_range_preference'=> $userAvgPrice > 0 ? $userAvgPrice : 0.0,
+            ]);
+        } else {
+            $features = array_merge($features, [
                 'user_avg_price'         => max(0.0, $userAvgPrice),
                 'user_avg_response_time' => max(0.0, $userAvgResp),
                 'user_total_bookings'    => max(0, $userTotalBookings),
-            ]
-        ];
+            ]);
+        }
+
+        $batchPayload[] = $features;
     }
 
     // Call FastAPI
-    $ch = curl_init('http://localhost:8000/predict/batch');
+    $ch = curl_init('http://localhost:8000' . $predictEndpoint);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true,
         CURLOPT_POSTFIELDS     => json_encode($batchPayload),
         CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-        CURLOPT_TIMEOUT => 3, CURLOPT_CONNECTTIMEOUT => 2,
+        CURLOPT_TIMEOUT        => 3,
+        CURLOPT_CONNECTTIMEOUT => 2,
     ]);
     $mlRaw   = curl_exec($ch);
     $mlErrno = curl_errno($ch);
@@ -237,18 +313,20 @@ if ($sort === 'ml' && !empty($rawProviders)) {
     if (!$mlErrno && $mlRaw) {
         $mlResults = json_decode($mlRaw, true);
         if (is_array($mlResults) && !empty($mlResults)) {
-            foreach ($mlResults as $r) {
-                $mlScoreMap[(int)$r['provider_id']] = [
-                    'score'      => (float)$r['probability'],
-                    'prediction' => (int)$r['prediction'],
-                    'confidence' => (string)$r['confidence'],
+            foreach ($mlResults as $index => $r) {
+                $providerId = (int)($rawProviders[$index]['id'] ?? 0);
+                $prediction = isset($r['prediction']) ? (float)$r['prediction'] : 0.0;
+                $mlScoreMap[$providerId] = [
+                    'score'      => $prediction,
+                    'prediction' => $prediction,
+                    'confidence' => isset($r['probabilities']) ? 'ml' : 'n/a',
                 ];
             }
             $mlApiStatus = 'ml';
         }
     }
 
-    // Attach scores
+    // Attach scores and compute final ranking
     foreach ($rawProviders as &$p) {
         $pid = (int)$p['id'];
         $ml  = $mlScoreMap[$pid] ?? null;
@@ -273,17 +351,142 @@ if ($sort === 'ml' && !empty($rawProviders)) {
             min(0.3, (int)($p['total_reviews'] ?? 0) / 100 * 0.3)
         );
 
+        if ($useSearchRanking) {
+            // Search ranking model predicts 0-100 relevance, normalize to 0-1
+            $baseScore = min(100.0, max(0.0, $baseScore)) / 100.0;
+        }
+
         $p['ml_score']       = min(1.0, $baseScore + $personalBoost);
-        $p['ml_raw_score']   = $ml ? $ml['score'] : $baseScore;
+        $p['ml_raw_score']   = $baseScore;
         $p['ml_confidence']  = $ml ? $ml['confidence'] : 'low';
         $p['personal_boost'] = $personalBoost;
+
+        $distanceKm = null;
+        if ($userCoords && !empty($p['latitude']) && !empty($p['longitude'])) {
+            $distanceKm = GeolocationHelper::haversineDistance(
+                $userCoords['latitude'], $userCoords['longitude'],
+                (float)$p['latitude'], (float)$p['longitude']
+            );
+        }
+
+        $distanceScore = $distanceKm !== null ? GeolocationHelper::calculateDistanceScore($distanceKm) : 5.0;
+        $availability = strtolower(trim($p['availability'] ?? ''));
+        $availabilityScore = $availability === 'available' ? 10.0 : ($availability === 'busy' ? 7.0 : 4.0);
+
+        $responseHours = isset($p['avg_response_hours']) && $p['avg_response_hours'] !== null ? (float)$p['avg_response_hours'] : null;
+        if ($responseHours === null) {
+            $responseScore = 6.0;
+        } elseif ($responseHours <= 1) {
+            $responseScore = 10.0;
+        } elseif ($responseHours <= 3) {
+            $responseScore = 9.0;
+        } elseif ($responseHours <= 6) {
+            $responseScore = 8.0;
+        } elseif ($responseHours <= 12) {
+            $responseScore = 7.0;
+        } elseif ($responseHours <= 24) {
+            $responseScore = 5.0;
+        } elseif ($responseHours <= 48) {
+            $responseScore = 3.0;
+        } else {
+            $responseScore = 1.0;
+        }
+
+        $totalJobs = max(0, (int)($p['total_jobs'] ?? 0));
+        $completedJobs = max(0, (int)($p['completed_jobs'] ?? 0));
+        $completionScore = $totalJobs > 0 ? min(10.0, ($completedJobs / $totalJobs) * 10) : 5.0;
+
+        $p['distance_km'] = $distanceKm;
+        $p['system_score'] = round(
+            $distanceScore * 0.30 +
+            $availabilityScore * 0.25 +
+            $responseScore * 0.25 +
+            $completionScore * 0.20,
+        2);
+        $p['distance_score'] = $distanceScore;
+        $p['availability_score'] = $availabilityScore;
+        $p['response_score'] = $responseScore;
+        $p['completion_score'] = $completionScore;
+
+        $p = calculate_final_score($p, $finalRankingWeights);
     }
     unset($p);
 
-    // Sort by personalized ML score
-    usort($rawProviders, fn($a, $b) => $b['ml_score'] <=> $a['ml_score']);
+    usort($rawProviders, fn($a, $b) => ($b['final_score'] ?? 0) <=> ($a['final_score'] ?? 0));
 
     // Paginate after sorting
+    $providers = array_slice($rawProviders, $offset, $perPage);
+
+} elseif ($isSystemSort && !empty($rawProviders)) {
+    $targetLocation = $location !== '' ? $location : $clientLocation;
+    $userCoords = GeolocationHelper::getLocationCoordinates($db, $targetLocation);
+
+    foreach ($rawProviders as &$p) {
+        $distanceKm = null;
+        if ($userCoords && !empty($p['latitude']) && !empty($p['longitude'])) {
+            $distanceKm = GeolocationHelper::haversineDistance(
+                $userCoords['latitude'], $userCoords['longitude'],
+                (float)$p['latitude'], (float)$p['longitude']
+            );
+        }
+
+        $distanceScore = $distanceKm !== null ? GeolocationHelper::calculateDistanceScore($distanceKm) : 5.0;
+        $availability = strtolower(trim($p['availability'] ?? ''));
+        $availabilityScore = $availability === 'available' ? 10.0 : ($availability === 'busy' ? 7.0 : 4.0);
+
+        $responseHours = isset($p['avg_response_hours']) && $p['avg_response_hours'] !== null ? (float)$p['avg_response_hours'] : null;
+        if ($responseHours === null) {
+            $responseScore = 6.0;
+        } elseif ($responseHours <= 1) {
+            $responseScore = 10.0;
+        } elseif ($responseHours <= 3) {
+            $responseScore = 9.0;
+        } elseif ($responseHours <= 6) {
+            $responseScore = 8.0;
+        } elseif ($responseHours <= 12) {
+            $responseScore = 7.0;
+        } elseif ($responseHours <= 24) {
+            $responseScore = 5.0;
+        } elseif ($responseHours <= 48) {
+            $responseScore = 3.0;
+        } else {
+            $responseScore = 1.0;
+        }
+
+        $totalJobs = max(0, (int)($p['total_jobs'] ?? 0));
+        $completedJobs = max(0, (int)($p['completed_jobs'] ?? 0));
+        $completionScore = $totalJobs > 0 ? min(10.0, ($completedJobs / $totalJobs) * 10) : 5.0;
+
+        $p['distance_km'] = $distanceKm;
+        $p['system_score'] = round(
+            $distanceScore * 0.30 +
+            $availabilityScore * 0.25 +
+            $responseScore * 0.25 +
+            $completionScore * 0.20,
+        2);
+        $p['distance_score'] = $distanceScore;
+        $p['availability_score'] = $availabilityScore;
+        $p['response_score'] = $responseScore;
+        $p['completion_score'] = $completionScore;
+        $p['ml_score']      = 0.0;
+        $p['ml_raw_score']  = 0.0;
+        $p['ml_confidence'] = 'n/a';
+        $p['personal_boost'] = 0.0;
+    }
+    unset($p);
+
+    usort($rawProviders, function($a, $b) {
+        $scoreCompare = $b['system_score'] <=> $a['system_score'];
+        if ($scoreCompare !== 0) {
+            return $scoreCompare;
+        }
+        $ratingCompare = ($b['average_rating'] ?? 0) <=> ($a['average_rating'] ?? 0);
+        if ($ratingCompare !== 0) {
+            return $ratingCompare;
+        }
+        return ($b['total_reviews'] ?? 0) <=> ($a['total_reviews'] ?? 0);
+    });
+
     $providers = array_slice($rawProviders, $offset, $perPage);
 
 } else {
@@ -338,6 +541,211 @@ $catIcons = [
     'Tutoring'=>'fa-book','IT Support'=>'fa-laptop','Photography'=>'fa-camera',
     'default'=>'fa-star'
 ];
+
+function buildQuery(array $params): string {
+    unset($params['ajax']);
+    return http_build_query($params);
+}
+
+function renderProviderCardHtml(array $p, string $sort, string $clientLocation, array $bookedProfessions, array $favIds, array $recentlyViewedIds): string {
+    $pid = (int)$p['id'];
+    $init = strtoupper(substr($p['full_name'] ?? '', 0, 1)) ?: '?';
+    $hasImg = !empty($p['profile_image']);
+    $mlScore = (float)($p['ml_score'] ?? 0);
+    $mlRaw = (float)($p['ml_raw_score'] ?? 0);
+    $mlConf = $p['ml_confidence'] ?? 'n/a';
+    $pBoost = (float)($p['personal_boost'] ?? 0);
+    $finalScore = round((float)($p['final_score'] ?? ($mlScore * 100)), 1);
+    $displayScore = $finalScore;
+    $isTopPick = $displayScore >= 60;
+    $isFav = in_array($pid, $favIds, true);
+    $isBooked = isset($p['profession']) && isset($bookedProfessions[$p['profession']]);
+    $isNearby = ($p['provider_location'] ?? '') === $clientLocation && $clientLocation !== '';
+    $isViewed = in_array($pid, $recentlyViewedIds, true);
+    $avStatus = $p['availability'] ?? 'available';
+    $isVerif = ($p['is_verified'] ?? false) || ($p['user_verified'] ?? false);
+    $rating = (float)($p['average_rating'] ?? 0);
+    $reviews = (int)($p['total_reviews'] ?? 0);
+    $avgPrice = (float)($p['avg_price'] ?? 0);
+    $jobs = (int)($p['completed_jobs'] ?? 0);
+    $dotClass = $displayScore >= 60 ? 'dot-green' : ($displayScore >= 35 ? 'dot-blue' : 'dot-gray');
+    $fillClass = $displayScore >= 60 ? 'ml-fill-high' : ($displayScore >= 35 ? 'ml-fill-medium' : 'ml-fill-low');
+    ob_start();
+    ?>
+    <div class="prov-card <?php echo $isTopPick ? 'top-pick' : ''; ?>" id="pcard-<?php echo $pid; ?>">
+
+      <!-- Banner -->
+      <div class="prov-banner">
+        <div class="prov-banner-pattern"></div>
+        <div class="prov-avatar-wrap">
+          <?php if ($hasImg): ?>
+            <img src="../uploads/profiles/<?php echo htmlspecialchars($p['profile_image']); ?>"
+                 alt="<?php echo htmlspecialchars($p['full_name']); ?>"
+                 onerror="this.style.display='none';this.parentNode.textContent='<?php echo addslashes($init); ?>'">
+          <?php else: ?><?php echo $init; ?><?php endif; ?>
+        </div>
+        <div class="prov-banner-meta">
+          <?php if ($sort === 'ml'): ?>
+          <div class="ml-score-badge">
+            <span class="dot <?php echo $dotClass; ?>"></span>
+            <?php echo round($displayScore); ?>% match
+          </div>
+          <?php endif; ?>
+          <span class="avail-badge <?php echo htmlspecialchars($avStatus); ?>">
+            <?php echo ucfirst(htmlspecialchars($avStatus)); ?>
+          </span>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div class="prov-body">
+        <div class="prov-name-row">
+          <span class="prov-name"><?php echo htmlspecialchars($p['full_name']); ?></span>
+          <?php if ($isVerif): ?><i class="fas fa-circle-check prov-verified" title="Verified"></i><?php endif; ?>
+        </div>
+        <div class="prov-profession"><?php echo htmlspecialchars($p['profession']); ?></div>
+
+        <div class="prov-stats">
+          <div class="prov-stat">
+            <i class="fas fa-star" style="color:var(--amber);"></i>
+            <strong><?php echo number_format($rating, 1); ?></strong>
+            <span style="color:var(--text-3);">(<?php echo $reviews; ?>)</span>
+          </div>
+          <?php if ($jobs > 0): ?>
+          <div class="prov-stat">
+            <i class="fas fa-briefcase" style="color:var(--green);"></i>
+            <strong><?php echo $jobs; ?></strong> done
+          </div>
+          <?php endif; ?>
+        </div>
+
+        <?php if ($avgPrice > 0): ?>
+        <div class="prov-price">~RWF <?php echo number_format($avgPrice, 0); ?> <span>/ service</span></div>
+        <?php endif; ?>
+
+        <?php if ($sort === 'ml' && $displayScore > 0): ?>
+        <div class="ml-bar-wrap">
+          <div class="ml-bar-label">
+            <span><i class="fas fa-robot" style="font-size:.6rem;margin-right:2px;"></i>Smart score</span>
+            <span><?php echo round($displayScore); ?>%</span>
+          </div>
+          <div class="ml-bar-track">
+            <div class="ml-bar-fill <?php echo $fillClass; ?>" style="width:<?php echo round($displayScore); ?>%"></div>
+          </div>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($isFav || $isBooked || $isNearby || $isViewed): ?>
+        <div class="pers-tags">
+          <?php if ($isFav):   ?><span class="pers-tag fav"><i class="fas fa-heart"></i> Favorite</span><?php endif; ?>
+          <?php if ($isBooked):?><span class="pers-tag booked"><i class="fas fa-check-circle"></i> You've booked</span><?php endif; ?>
+          <?php if ($isNearby):?><span class="pers-tag nearby"><i class="fas fa-map-pin"></i> Near you</span><?php endif; ?>
+          <?php if ($isViewed):?><span class="pers-tag viewed"><i class="fas fa-eye"></i> Viewed</span><?php endif; ?>
+        </div>
+        <?php endif; ?>
+
+        <?php if (!empty($p['provider_location'])): ?>
+        <div class="prov-location">
+          <i class="fas fa-map-marker-alt" style="color:var(--accent);font-size:.65rem;"></i>
+          <?php echo htmlspecialchars($p['provider_location']); ?>
+        </div>
+        <?php endif; ?>
+      </div>
+
+      <!-- Footer -->
+      <div class="prov-footer">
+        <a href="provider-profile.php?id=<?php echo $pid; ?>" class="btn-view-prof"
+           onclick="trackClick('provider_card_view','provider',<?php echo $pid; ?>)">
+          <i class="fas fa-arrow-right"></i> View Profile
+        </a>
+        <button class="btn-fav <?php echo $isFav ? 'favorited' : ''; ?>"
+                data-provider-id="<?php echo $pid; ?>"
+                title="<?php echo $isFav ? 'Remove from favorites' : 'Add to favorites'; ?>">
+          <i class="<?php echo $isFav ? 'fas' : 'far'; ?> fa-heart"></i>
+        </button>
+      </div>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+
+function renderProvidersGridHtml(array $providers, string $sort, string $clientLocation, array $bookedProfessions, array $favIds, array $recentlyViewedIds): string {
+    if (empty($providers)) {
+        return '<div class="empty-state">' .
+               '<i class="fas fa-user-slash"></i>' .
+               '<h3>No providers found</h3>' .
+               '<p>Try adjusting your search or removing some filters</p>' .
+               '<a href="providers.php" class="btn-reset"><i class="fas fa-redo"></i> Reset search</a>' .
+               '</div>';
+    }
+    $html = '';
+    foreach ($providers as $p) {
+        $html .= renderProviderCardHtml($p, $sort, $clientLocation, $bookedProfessions, $favIds, $recentlyViewedIds);
+    }
+    return $html;
+}
+
+function renderResultsCountHtml(int $totalProviders, string $search, string $category): string {
+    $text = '<strong>' . number_format($totalProviders) . '</strong> provider' . ($totalProviders !== 1 ? 's' : '') . ' found';
+    if ($search) {
+        $text .= ' for "<strong>' . htmlspecialchars($search) . '</strong>"';
+    }
+    if ($category) {
+        $text .= ' in <strong>' . htmlspecialchars($category) . '</strong>';
+    }
+    return $text;
+}
+
+function renderMlStatusHtml(string $sort, string $mlApiStatus): string {
+    if ($sort === 'ml') {
+        $classes = $mlApiStatus === 'ml' ? 'live' : 'heur';
+        $label = $mlApiStatus === 'ml' ? 'Smart Ranked' : 'Heuristic Smart Ranked';
+        return '<span class="ml-status-pill ' . $classes . '" id="mlStatusPill"><span class="ml-dot ' . $classes . '"></span>' . $label . '</span>';
+    }
+    if ($sort === 'system') {
+        return '<span class="ml-status-pill heur" id="mlStatusPill"><span class="ml-dot heur"></span>System Ranked</span>';
+    }
+    return '<span id="mlStatusPill"></span>';
+}
+
+function renderPaginationHtml(int $page, int $totalPages, array $queryParams): string {
+    if ($totalPages <= 1) {
+        return '';
+    }
+    $html = '';
+    $baseParams = $queryParams;
+    unset($baseParams['ajax']);
+    $html .= '<div class="pagination-wrap">';
+    if ($page > 1) {
+        $q = buildQuery(array_merge($baseParams, ['page' => $page - 1]));
+        $html .= '<a class="page-btn" href="?'.$q.'"><i class="fas fa-chevron-left"></i> Prev</a>';
+    }
+    for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++) {
+        $q = buildQuery(array_merge($baseParams, ['page' => $i]));
+        $active = $i === $page ? ' active' : '';
+        $html .= '<a class="page-btn'.$active.'" href="?'.$q.'">'.$i.'</a>';
+    }
+    if ($page < $totalPages) {
+        $q = buildQuery(array_merge($baseParams, ['page' => $page + 1]));
+        $html .= '<a class="page-btn" href="?'.$q.'">Next <i class="fas fa-chevron-right"></i></a>';
+    }
+    $html .= '</div>';
+    return $html;
+}
+
+$ajax = isset($_GET['ajax']) && $_GET['ajax'] === '1';
+if ($ajax) {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'providers_html' => renderProvidersGridHtml($providers, $sort, $clientLocation, $bookedProfessions, $favIds, $recentlyViewedIds),
+        'results_count_html' => renderResultsCountHtml($totalProviders, $search, $category),
+        'ml_status_html' => renderMlStatusHtml($sort, $mlApiStatus),
+        'pagination_html' => renderPaginationHtml($page, $totalPages, $_GET),
+        'current_page' => $page,
+        'total_pages' => $totalPages,
+    ]);
+    exit;
+}
 
 // Track page view
 try { trackEvent('providers_page_view','page',0,['filters'=>compact('search','category','location','sort','avail')],$uid); } catch(Throwable $e){}
@@ -956,24 +1364,31 @@ h1,h2,h3,h4,h5 { font-family: 'Syne', sans-serif; }
     <!-- Results header -->
     <div class="results-header">
       <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
-        <span class="results-count">
+        <span class="results-count" id="resultsCountText">
           <strong><?php echo number_format($totalProviders); ?></strong>
           provider<?php echo $totalProviders!==1?'s':''; ?> found
           <?php if ($search): ?> for "<strong><?php echo htmlspecialchars($search); ?></strong>"<?php endif; ?>
           <?php if ($category): ?> in <strong><?php echo htmlspecialchars($category); ?></strong><?php endif; ?>
         </span>
         <?php if ($sort === 'ml'): ?>
-          <span class="ml-status-pill <?php echo $mlApiStatus==='ml'?'live':'heur'; ?>">
+          <span class="ml-status-pill <?php echo $mlApiStatus==='ml'?'live':'heur'; ?>" id="mlStatusPill">
             <span class="ml-dot <?php echo $mlApiStatus==='ml'?'live':'heur'; ?>"></span>
-            <?php echo $mlApiStatus==='ml'?'ML Ranked':'Heuristic Ranked'; ?>
+            <?php echo $mlApiStatus==='ml'?'Smart Ranked':'Heuristic Smart Ranked'; ?>
           </span>
+        <?php elseif ($sort === 'system'): ?>
+          <span class="ml-status-pill heur" id="mlStatusPill">
+            <span class="ml-dot heur"></span>
+            System Ranked
+          </span>
+        <?php else: ?>
+          <span id="mlStatusPill"></span>
         <?php endif; ?>
       </div>
 
       <!-- Sort chips -->
       <div class="sort-chips">
         <?php
-        $sorts = ['ml'=>'✦ Smart','rating'=>'⭐ Rating','reviews'=>'💬 Reviews','newest'=>'🆕 Newest','price_asc'=>'↑ Price','price_desc'=>'↓ Price'];
+        $sorts = ['ml'=>'✦ Smart','system'=>'⚙️ System','rating'=>'⭐ Rating','reviews'=>'💬 Reviews','newest'=>'🆕 Newest','price_asc'=>'↑ Price','price_desc'=>'↓ Price'];
         foreach ($sorts as $sv => $sl):
           $href = 'providers.php?sort='.$sv
             .($search    ? '&search='.urlencode($search)    : '')
@@ -997,7 +1412,7 @@ h1,h2,h3,h4,h5 { font-family: 'Syne', sans-serif; }
 
     <!-- Advanced Filters Drawer -->
     <div class="filter-drawer" id="filterDrawer">
-      <form method="GET" action="providers.php">
+      <form method="GET" action="providers.php" id="filterForm">
         <input type="hidden" name="search"   value="<?php echo htmlspecialchars($search); ?>">
         <input type="hidden" name="category" value="<?php echo htmlspecialchars($category); ?>">
         <input type="hidden" name="location" value="<?php echo htmlspecialchars($location); ?>">
@@ -1028,7 +1443,7 @@ h1,h2,h3,h4,h5 { font-family: 'Syne', sans-serif; }
     </div>
 
     <!-- ── PROVIDER GRID ──────────────────────────── -->
-    <div class="providers-grid">
+    <div class="providers-grid" id="providersGrid">
       <?php if (empty($providers)): ?>
         <div class="empty-state">
           <i class="fas fa-user-slash"></i>
@@ -1041,13 +1456,15 @@ h1,h2,h3,h4,h5 { font-family: 'Syne', sans-serif; }
           $pid      = (int)$p['id'];
           $init     = strtoupper(substr($p['full_name'] ?? '', 0, 1)) ?: '?';
           $hasImg   = !empty($p['profile_image']);
-          $mlScore  = (float)($p['ml_score'] ?? 0);
-          $mlRaw    = (float)($p['ml_raw_score'] ?? 0);
-          $mlConf   = $p['ml_confidence'] ?? 'n/a';
-          $pBoost   = (float)($p['personal_boost'] ?? 0);
-          $isTopPick= $mlScore >= 0.6;
-          $isFav    = in_array($pid, $favIds);
-          $isBooked = isset($bookedProfessions[$p['profession']]);
+          $mlScore    = (float)($p['ml_score'] ?? 0);
+          $mlRaw      = (float)($p['ml_raw_score'] ?? 0);
+          $mlConf     = $p['ml_confidence'] ?? 'n/a';
+          $pBoost     = (float)($p['personal_boost'] ?? 0);
+          $finalScore = round((float)($p['final_score'] ?? ($mlScore * 100)), 1);
+          $displayScore = $finalScore;
+          $isTopPick  = $displayScore >= 60;
+          $isFav      = in_array($pid, $favIds);
+          $isBooked   = isset($bookedProfessions[$p['profession']]);
           $isNearby = ($p['provider_location'] ?? '') === $clientLocation && $clientLocation !== '';
           $isViewed = in_array($pid, $recentlyViewedIds);
           $avStatus = $p['availability'] ?? 'available';
@@ -1057,10 +1474,10 @@ h1,h2,h3,h4,h5 { font-family: 'Syne', sans-serif; }
           $avgPrice = (float)($p['avg_price'] ?? 0);
           $jobs     = (int)($p['completed_jobs'] ?? 0);
 
-          // Dot color for ML score badge
-          $dotClass = $mlScore >= 0.6 ? 'dot-green' : ($mlScore >= 0.35 ? 'dot-blue' : 'dot-gray');
+          // Dot color for Smart score badge
+          $dotClass = $displayScore >= 60 ? 'dot-green' : ($displayScore >= 35 ? 'dot-blue' : 'dot-gray');
           // Bar fill class
-          $fillClass = $mlScore >= 0.6 ? 'ml-fill-high' : ($mlScore >= 0.35 ? 'ml-fill-medium' : 'ml-fill-low');
+          $fillClass = $displayScore >= 60 ? 'ml-fill-high' : ($displayScore >= 35 ? 'ml-fill-medium' : 'ml-fill-low');
         ?>
         <div class="prov-card <?php echo $isTopPick ? 'top-pick' : ''; ?>"
              id="pcard-<?php echo $pid; ?>">
@@ -1079,7 +1496,7 @@ h1,h2,h3,h4,h5 { font-family: 'Syne', sans-serif; }
               <?php if ($sort === 'ml'): ?>
               <div class="ml-score-badge">
                 <span class="dot <?php echo $dotClass; ?>"></span>
-                <?php echo round($mlScore * 100); ?>% match
+                <?php echo round($displayScore); ?>% match
               </div>
               <?php endif; ?>
               <span class="avail-badge <?php echo $avStatus; ?>">
@@ -1114,16 +1531,16 @@ h1,h2,h3,h4,h5 { font-family: 'Syne', sans-serif; }
             <div class="prov-price">~RWF <?php echo number_format($avgPrice, 0); ?> <span>/ service</span></div>
             <?php endif; ?>
 
-            <!-- ML probability bar (only when ML sort active) -->
-            <?php if ($sort === 'ml' && $mlScore > 0): ?>
+            <!-- Smart score bar (only when Smart sort active) -->
+            <?php if ($sort === 'ml' && $displayScore > 0): ?>
             <div class="ml-bar-wrap">
               <div class="ml-bar-label">
-                <span><i class="fas fa-robot" style="font-size:.6rem;margin-right:2px;"></i>Hire probability</span>
-                <span><?php echo round($mlScore * 100); ?>%</span>
+                <span><i class="fas fa-robot" style="font-size:.6rem;margin-right:2px;"></i>Smart score</span>
+                <span><?php echo round($displayScore); ?>%</span>
               </div>
               <div class="ml-bar-track">
                 <div class="ml-bar-fill <?php echo $fillClass; ?>"
-                     style="width:<?php echo round($mlScore * 100); ?>%"></div>
+                     style="width:<?php echo round($displayScore); ?>%"></div>
               </div>
             </div>
             <?php endif; ?>
@@ -1165,7 +1582,7 @@ h1,h2,h3,h4,h5 { font-family: 'Syne', sans-serif; }
 
     <!-- ── PAGINATION ─────────────────────────────── -->
     <?php if ($totalPages > 1): ?>
-    <div class="pagination-wrap">
+    <div class="pagination-wrap" id="paginationWrap">
       <?php if ($page > 1): ?>
         <a class="page-btn" href="?<?php echo http_build_query(array_merge($_GET, ['page'=>$page-1])); ?>">
           <i class="fas fa-chevron-left"></i> Prev
@@ -1241,14 +1658,95 @@ function showToast(msg, type='success') {
   setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(()=>t.remove(),300); }, 3200);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  // Animate ML bars
-  document.querySelectorAll('.ml-bar-fill').forEach(bar => {
-    const w = bar.style.width; bar.style.width = '0';
-    requestAnimationFrame(() => { setTimeout(() => bar.style.width = w, 80); });
+function updateResultsCount(html) {
+  const countEl = document.getElementById('resultsCountText');
+  if (countEl && html) {
+    countEl.innerHTML = html;
+  }
+}
+
+function updateMlStatus(html) {
+  const existing = document.getElementById('mlStatusPill');
+  if (!html) {
+    existing?.remove();
+    return;
+  }
+  if (existing) {
+    existing.outerHTML = html;
+    return;
+  }
+  const header = document.querySelector('.results-header > div');
+  if (header) {
+    header.insertAdjacentHTML('beforeend', html);
+  }
+}
+
+function updateFilterControlsFromUrl(url) {
+  try {
+    const params = new URL(url, window.location.origin).searchParams;
+    const form = document.getElementById('searchForm');
+    if (!form) return;
+    form.querySelector('input[name="search"]').value = params.get('search') || '';
+    form.querySelector('select[name="location"]').value = params.get('location') || '';
+    form.querySelector('select[name="avail"]').value = params.get('avail') || '';
+    form.querySelector('input[name="category"]').value = params.get('category') || '';
+    form.querySelector('input[name="sort"]').value = params.get('sort') || 'ml';
+    form.querySelector('input[name="min_rating"]').value = params.get('min_rating') || '';
+    const verifiedInput = form.querySelector('input[name="verified"]');
+    if (verifiedInput) {
+      verifiedInput.remove();
+    }
+    if (params.get('verified')) {
+      const hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = 'verified';
+      hidden.value = '1';
+      form.appendChild(hidden);
+    }
+  } catch (e) {
+    console.warn('Unable to update filters from URL', e);
+  }
+}
+
+function updateActiveControlsFromUrl(url) {
+  try {
+    const params = new URL(url, window.location.origin).searchParams;
+    document.querySelectorAll('.cat-chip').forEach(link => {
+      const linkParams = new URL(link.href, window.location.origin).searchParams;
+      const currentCategory = params.get('category') || '';
+      const linkCategory = linkParams.get('category') || '';
+      if (currentCategory === linkCategory) {
+        link.classList.add('active');
+      } else {
+        link.classList.remove('active');
+      }
+    });
+    document.querySelectorAll('.sort-chip').forEach(link => {
+      const linkParams = new URL(link.href, window.location.origin).searchParams;
+      if (linkParams.get('sort') === params.get('sort')) {
+        link.classList.add('active');
+      } else {
+        link.classList.remove('active');
+      }
+    });
+    document.querySelectorAll('.rating-pill').forEach(link => {
+      const linkParams = new URL(link.href, window.location.origin).searchParams;
+      if (linkParams.get('min_rating') === params.get('min_rating')) {
+        link.classList.add('active');
+      } else {
+        link.classList.remove('active');
+      }
+    });
+  } catch (e) {
+    console.warn('Unable to update active controls from URL', e);
+  }
+}
+
+function bindDynamicEvents() {
+  document.querySelectorAll('.btn-fav').forEach(btn => {
+    btn.replaceWith(btn.cloneNode(true));
   });
 
-  // Favourite buttons
   document.querySelectorAll('.btn-fav').forEach(btn => {
     btn.addEventListener('click', e => {
       e.preventDefault(); e.stopPropagation();
@@ -1280,16 +1778,111 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Live search with debounce
-  let searchDebounce;
+  document.querySelectorAll('.cat-chip, .sort-chip, .page-btn, .rating-pill, .btn-reset').forEach(link => {
+    if (!(link instanceof HTMLAnchorElement)) return;
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      loadProviders(link.href);
+    });
+  });
+
+  const searchForm = document.getElementById('searchForm');
+  if (searchForm) {
+    searchForm.addEventListener('submit', e => {
+      e.preventDefault();
+      const url = new URL(searchForm.action, window.location.origin);
+      new FormData(searchForm).forEach((value, key) => {
+        if (value !== '' && value !== null) {
+          url.searchParams.set(key, value);
+        } else {
+          url.searchParams.delete(key);
+        }
+      });
+      if (url.searchParams.has('ajax')) {
+        url.searchParams.delete('ajax');
+      }
+      loadProviders(url.href);
+    });
+  }
+
+  const filterForm = document.getElementById('filterForm');
+  if (filterForm) {
+    filterForm.addEventListener('submit', e => {
+      e.preventDefault();
+      const url = new URL(filterForm.action, window.location.origin);
+      new FormData(filterForm).forEach((value, key) => {
+        if (value !== '' && value !== null) {
+          url.searchParams.set(key, value);
+        } else {
+          url.searchParams.delete(key);
+        }
+      });
+      if (url.searchParams.has('ajax')) {
+        url.searchParams.delete('ajax');
+      }
+      loadProviders(url.href);
+    });
+  }
+
   document.querySelector('.search-input')?.addEventListener('input', e => {
-    clearTimeout(searchDebounce);
-    searchDebounce = setTimeout(() => {
-      if (e.target.value.length === 0 || e.target.value.length >= 2) {
-        document.getElementById('searchForm')?.submit();
+    clearTimeout(window.__providersSearchDebounce);
+    window.__providersSearchDebounce = setTimeout(() => {
+      const value = e.target.value;
+      if (value.length === 0 || value.length >= 2) {
+        searchForm?.dispatchEvent(new Event('submit', { cancelable: true }));
       }
     }, 600);
   });
+}
+
+let isProvidersLoading = false;
+function loadProviders(url, push=true) {
+  if (isProvidersLoading) return;
+  const requestUrl = url.includes('ajax=1') ? url : url + (url.includes('?') ? '&ajax=1' : '?ajax=1');
+  const historyUrl = requestUrl.replace(/([?&])ajax=1(&|$)/, '$1').replace(/([?&])$/, '');
+  isProvidersLoading = true;
+  fetch(requestUrl, { credentials: 'same-origin' })
+    .then(res => res.json())
+    .then(data => {
+      const grid = document.getElementById('providersGrid');
+      if (grid) grid.innerHTML = data.providers_html;
+      updateResultsCount(data.results_count_html);
+      updateMlStatus(data.ml_status_html);
+      const pagination = document.getElementById('paginationWrap');
+      if (pagination) pagination.innerHTML = data.pagination_html;
+      if (push && historyUrl) {
+        window.history.pushState({}, '', historyUrl);
+      }
+      updateFilterControlsFromUrl(historyUrl);
+      updateActiveControlsFromUrl(historyUrl);
+      bindDynamicEvents();
+    })
+    .catch(() => {
+      showToast('Unable to load providers. Check your connection.', 'error');
+    })
+    .finally(() => {
+      isProvidersLoading = false;
+    });
+}
+
+window.addEventListener('popstate', () => {
+  loadProviders(window.location.href, false);
+});
+
+const providersRefreshInterval = 20000;
+setInterval(() => {
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+  loadProviders(window.location.href, false);
+}, providersRefreshInterval);
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Animate ML bars
+  document.querySelectorAll('.ml-bar-fill').forEach(bar => {
+    const w = bar.style.width; bar.style.width = '0';
+    requestAnimationFrame(() => { setTimeout(() => bar.style.width = w, 80); });
+  });
+
+  bindDynamicEvents();
 });
 </script>
 </body>

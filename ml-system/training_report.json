@@ -1,0 +1,69 @@
+{
+  "training_session": {
+    "timestamp": "2026-04-09T13:34:28.265413",
+    "base_directory": "C:\\xampp\\htdocs\\Bii_localFinder\\ml-system"
+  },
+  "data_export": {
+    "total_scripts": 6,
+    "successful_exports": 1,
+    "failed_exports": 5,
+    "details": {
+      "data/export_recommendation_data.py": {
+        "success": true,
+        "description": "Recommendation model data"
+      },
+      "data/export_search_ranking_data.py": {
+        "success": false,
+        "description": "Search ranking model data"
+      },
+      "data/export_personalization_data.py": {
+        "success": false,
+        "description": "Personalization model data"
+      },
+      "data/export_provider_performance_data.py": {
+        "success": false,
+        "description": "Provider performance model data"
+      },
+      "data/export_user_engagement_data.py": {
+        "success": false,
+        "description": "User engagement model data"
+      },
+      "data/export_user_segmentation_data.py": {
+        "success": false,
+        "description": "User segmentation model data"
+      }
+    }
+  },
+  "model_training": {
+    "total_models": 6,
+    "successful_training": 1,
+    "failed_training": 5,
+    "details": {
+      "models/recommendation/train_recommendation_model.py": {
+        "success": true,
+        "description": "Recommendation Model"
+      },
+      "models/search_ranking/train_search_ranking_model.py": {
+        "success": false,
+        "description": "Search Ranking Model"
+      },
+      "models/personalization/train_personalization_model.py": {
+        "success": false,
+        "description": "Personalization Model"
+      },
+      "models/provider_performance/train_provider_performance_model.py": {
+        "success": false,
+        "description": "Provider Performance Model"
+      },
+      "models/user_engagement/train_user_engagement_model.py": {
+        "success": false,
+        "description": "User Engagement Model"
+      },
+      "models/user_segmentation/train_user_segmentation_model.py": {
+        "success": false,
+        "description": "User Segmentation Model"
+      }
+    }
+  },
+  "overall_status": "FAILED"
+}

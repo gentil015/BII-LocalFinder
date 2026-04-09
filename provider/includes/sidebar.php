@@ -67,7 +67,6 @@ function getNotificationCounts($db, $provider_id) {
 
 $notificationCounts = getNotificationCounts($db, $provider_id);
 $current = basename($_SERVER['PHP_SELF']);
-$sidebar_width = ($current === 'messages.php' || $current === 'settings.php') ? '60px' : '260px';
 
 // determine current settings subsection for label
 $settings_section = isset($_GET['section']) ? sanitize($_GET['section']) : 'identity';
@@ -90,11 +89,10 @@ $settings_labels = [
 ];
 
 // Show both icon and text on all pages; disable submenu entirely
-$iconOnly = false;
+$iconOnly = true; // Changed to true for default icon-only
 $hasSub = false;
 ?>
-<style>:root { --sb-width: <?php echo $sidebar_width; ?>; }</style>
-<aside class="sidebar <?php echo ($current === 'messages.php' || $current === 'settings.php') ? 'icon-only' : ''; ?>" id="providerSidebar">
+<aside class="sidebar" id="providerSidebar">
 
     <!-- Brand Header -->
     <div class="sidebar-brand">
@@ -241,7 +239,7 @@ $hasSub = false;
 
 /* ── SIDEBAR SHELL ── */
 .sidebar {
-    width: var(--sb-width);
+    width: 60px; /* Default to icon-only */
     background: var(--sb-surface);
     border-right: 1px solid var(--sb-border);
     position: fixed;
@@ -253,6 +251,11 @@ $hasSub = false;
     overflow: hidden;
     transition: var(--sb-transition);
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Hover to expand */
+.sidebar:hover {
+    width: 260px;
 }
 
 /* ── BRAND HEADER ── */
@@ -324,18 +327,27 @@ $hasSub = false;
     color: var(--sb-accent);
 }
 
-.sidebar.icon-only .sidebar-toggle {
-    margin-left: auto;
-}
+/* Default icon-only styles */
+.sidebar .sidebar-toggle { display: none; } /* Hide toggle for hover behavior */
+.sidebar .sidebar-brand-text { display: none; }
+.sidebar .sidebar-brand { justify-content: center; padding: 1rem 0.5rem; }
+.sidebar .nav-label { display: none; }
+.sidebar .sidebar-menu a { justify-content: center; padding: 0.6rem; }
+.sidebar .sidebar-footer { padding: 0.625rem 0.5rem; }
+.sidebar .footer-profile,
+.sidebar .footer-logout { justify-content: center; padding: 0.6rem; }
+.sidebar .nav-badge { position: absolute; top: -5px; right: -5px; font-size: 0.6rem; min-width: 16px; height: 16px; }
 
-.sidebar.icon-only .sidebar-brand-text { display: none; }
-.sidebar.icon-only .sidebar-brand { justify-content: center; padding: 1rem 0.5rem; }
-.sidebar.icon-only .nav-label { display: none; }
-.sidebar.icon-only .sidebar-menu a { justify-content: center; padding: 0.6rem; }
-.sidebar.icon-only .sidebar-footer { padding: 0.625rem 0.5rem; }
-.sidebar.icon-only .footer-profile,
-.sidebar.icon-only .footer-logout { justify-content: center; padding: 0.6rem; }
-.sidebar.icon-only .nav-badge { position: absolute; top: -5px; right: -5px; font-size: 0.6rem; min-width: 16px; height: 16px; }
+/* Expanded on hover styles */
+.sidebar:hover .sidebar-toggle { display: block; margin-left: auto; }
+.sidebar:hover .sidebar-brand-text { display: flex; }
+.sidebar:hover .sidebar-brand { justify-content: flex-start; padding: 1.25rem 1.25rem 1rem; }
+.sidebar:hover .nav-label { display: block; }
+.sidebar:hover .sidebar-menu a { justify-content: flex-start; padding: 0.625rem 0.875rem; }
+.sidebar:hover .sidebar-footer { padding: 0.625rem 0.75rem; }
+.sidebar:hover .footer-profile,
+.sidebar:hover .footer-logout { justify-content: flex-start; padding: 0.6rem 0.875rem; }
+.sidebar:hover .nav-badge { position: static; top: auto; right: auto; font-size: 0.65rem; min-width: 18px; height: 18px; }
 /* ── NAVIGATION ── */
 .sidebar-nav {
     flex: 1;
@@ -489,7 +501,7 @@ $hasSub = false;
 
 /* ── MAIN CONTENT OFFSET ── */
 .main-content {
-    margin-left: var(--sb-width) !important;
+    margin-left: 70px;
     transition: margin-left 0.18s cubic-bezier(0.4,0,0.2,1);
 }
 
@@ -524,46 +536,39 @@ $hasSub = false;
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const sidebar = document.getElementById('providerSidebar');
-        const toggle = document.getElementById('sidebarToggle');
-        const isIconOnlyPage = <?php echo ($current === 'messages.php' || $current === 'settings.php') ? 'true' : 'false'; ?>;
-
-        function updateSidebarWidth() {
-            const width = sidebar.classList.contains('icon-only') ? '60px' : '260px';
-            document.documentElement.style.setProperty('--sb-width', width);
-        }
+        const mainContent = document.querySelector('.main-content');
 
         function updateTooltips() {
-            const isCollapsed = sidebar.classList.contains('icon-only');
             const links = sidebar.querySelectorAll('.sidebar-menu a, .footer-profile, .footer-logout');
             links.forEach(link => {
                 const label = link.querySelector('.nav-label');
-                if (isCollapsed && label) {
+                if (label) {
                     link.title = label.textContent.trim();
-                } else {
-                    link.removeAttribute('title');
                 }
             });
         }
 
-        if (isIconOnlyPage) {
-            sidebar.classList.add('icon-only');
-            toggle.style.display = 'none';
-            updateSidebarWidth();
-            updateTooltips();
-        } else {
-            const collapsed = localStorage.getItem('providerSidebarCollapsed') === 'true';
-            if (collapsed) {
-                sidebar.classList.add('icon-only');
-            }
-            updateSidebarWidth();
-            updateTooltips();
-
-            toggle.addEventListener('click', function() {
-                sidebar.classList.toggle('icon-only');
-                updateSidebarWidth();
-                updateTooltips();
-                localStorage.setItem('providerSidebarCollapsed', sidebar.classList.contains('icon-only'));
+        // Handle sidebar hover to adjust main content margin
+        if (mainContent) {
+            sidebar.addEventListener('mouseenter', function() {
+                mainContent.style.transition = 'none';
+                mainContent.style.marginLeft = '280px';
+                mainContent.offsetHeight; // force reflow
+                mainContent.style.transition = 'margin-left 0.18s cubic-bezier(0.4,0,0.2,1)';
             });
+
+            sidebar.addEventListener('mouseleave', function() {
+                mainContent.style.transition = 'none';
+                mainContent.style.marginLeft = '70px';
+                mainContent.offsetHeight; // force reflow
+                mainContent.style.transition = 'margin-left 0.18s cubic-bezier(0.4,0,0.2,1)';
+            });
+
+            // Set default margin for icon-only
+            mainContent.style.marginLeft = '70px';
         }
+
+        // Always show tooltips since sidebar is icon-only by default
+        updateTooltips();
     });
 </script>

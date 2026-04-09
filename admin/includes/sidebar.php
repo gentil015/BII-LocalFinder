@@ -89,6 +89,13 @@ try {
         </li>
         
         <li>
+            <a href="ml_dashboard.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'ml_dashboard.php' ? 'active' : ''; ?>">
+                <i class="fas fa-robot"></i>
+                <span>ML Dashboard</span>
+            </a>
+        </li>
+        
+        <li>
             <a href="settings.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'settings.php' ? 'active' : ''; ?>">
                 <i class="fas fa-cog"></i>
                 <span>Settings</span>

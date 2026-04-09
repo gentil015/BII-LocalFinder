@@ -143,6 +143,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Auto-mark payment as completed when booking is completed
             if ($new_status === 'completed') {
                 $db->prepare("UPDATE bookings SET payment_status = 'completed' WHERE id = ?")->execute([$id]);
+
+                $bookingDetails = $db->prepare("SELECT client_id, provider_id FROM bookings WHERE id = ?");
+                $bookingDetails->execute([$id]);
+                $bookingRow = $bookingDetails->fetch(PDO::FETCH_ASSOC);
+                if ($bookingRow) {
+                    updateMlPredictionOutcome($db, (int) $bookingRow['client_id'], (int) $bookingRow['provider_id'], 1);
+                }
             }
             
             // Log status change

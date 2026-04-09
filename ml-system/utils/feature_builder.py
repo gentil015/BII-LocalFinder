@@ -126,14 +126,28 @@ class FeatureBuilder:
                 COALESCE((SELECT AVG(TIMESTAMPDIFF(HOUR, b.created_at, b.responded_at)) FROM bookings b WHERE b.provider_id = sp.id AND b.responded_at IS NOT NULL), 24.0) AS avg_response_time,
 
                 /* user behavior features */
-                COALESCE(up.user_avg_price, 0.0) AS user_avg_price,
-                COALESCE(up.user_avg_response_time, 24.0) AS user_avg_response_time,
-                COALESCE(up.user_total_bookings, 0) AS user_total_bookings
+                COALESCE(
+                    up.user_avg_price,
+                    (SELECT AVG(amount) FROM bookings b3 WHERE b3.client_id = %s AND b3.amount IS NOT NULL),
+                    0.0
+                ) AS user_avg_price,
+                COALESCE(
+                    up.user_avg_response_time,
+                    (SELECT AVG(TIMESTAMPDIFF(HOUR, b3.created_at, b3.responded_at))
+                     FROM bookings b3
+                     WHERE b3.client_id = %s AND b3.responded_at IS NOT NULL),
+                    24.0
+                ) AS user_avg_response_time,
+                COALESCE(
+                    up.user_total_bookings,
+                    (SELECT COUNT(*) FROM bookings b3 WHERE b3.client_id = %s),
+                    0
+                ) AS user_total_bookings
 
             FROM service_providers sp
             LEFT JOIN user_profiles up ON up.user_id = %s
             WHERE sp.id = %s
-        """, (user_id, provider_id))
+        """, (user_id, user_id, user_id, user_id, provider_id))
 
         row = cursor.fetchone()
         cursor.close()
@@ -225,14 +239,28 @@ class FeatureBuilder:
                 COALESCE((SELECT AVG(TIMESTAMPDIFF(HOUR, b.created_at, b.responded_at)) FROM bookings b WHERE b.provider_id = sp.id AND b.responded_at IS NOT NULL), 24.0) AS avg_response_time,
 
                 /* user behavior features (same for all providers) */
-                COALESCE(up.user_avg_price, 0.0) AS user_avg_price,
-                COALESCE(up.user_avg_response_time, 24.0) AS user_avg_response_time,
-                COALESCE(up.user_total_bookings, 0) AS user_total_bookings
+                COALESCE(
+                    up.user_avg_price,
+                    (SELECT AVG(amount) FROM bookings b3 WHERE b3.client_id = %s AND b3.amount IS NOT NULL),
+                    0.0
+                ) AS user_avg_price,
+                COALESCE(
+                    up.user_avg_response_time,
+                    (SELECT AVG(TIMESTAMPDIFF(HOUR, b3.created_at, b3.responded_at))
+                     FROM bookings b3
+                     WHERE b3.client_id = %s AND b3.responded_at IS NOT NULL),
+                    24.0
+                ) AS user_avg_response_time,
+                COALESCE(
+                    up.user_total_bookings,
+                    (SELECT COUNT(*) FROM bookings b3 WHERE b3.client_id = %s),
+                    0
+                ) AS user_total_bookings
 
             FROM service_providers sp
             LEFT JOIN user_profiles up ON up.user_id = %s
             WHERE sp.is_active = 1 AND sp.is_banned = 0
-        """, (user_id,))
+        """, (user_id, user_id, user_id, user_id))
 
         rows = cursor.fetchall()
         cursor.close()
