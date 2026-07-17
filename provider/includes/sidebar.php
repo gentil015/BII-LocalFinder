@@ -237,6 +237,38 @@ $hasSub = false;
     --sb-transition:   all 0.18s cubic-bezier(0.4,0,0.2,1);
 }
 
+/* Dark Mode Variables for Sidebar */
+[data-theme="dark"] {
+    --sb-accent:       #3b82f6;
+    --sb-accent-dark:  #2563eb;
+    --sb-accent-light: rgba(59,130,246,0.12);
+    --sb-surface:      #0f172a;
+    --sb-border:       #334155;
+    --sb-text:         #f1f5f9;
+    --sb-text-muted:   #94a3b8;
+    --sb-hover-bg:     #1e293b;
+    --sb-active-bg:    rgba(59,130,246,0.08);
+}
+
+/* Dark Mode Logout Button Overrides */
+[data-theme="dark"] .footer-logout {
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .footer-logout:hover {
+    background: rgba(220,38,38,0.15);
+    color: #ef4444;
+}
+
+[data-theme="dark"] .footer-logout .nav-icon {
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .footer-logout:hover .nav-icon {
+    background: rgba(220,38,38,0.15);
+    color: #ef4444;
+}
+
 /* ── SIDEBAR SHELL ── */
 .sidebar {
     width: 60px; /* Default to icon-only */
@@ -488,15 +520,15 @@ $hasSub = false;
 .footer-profile.active .nav-icon { background: var(--sb-accent-light); color: var(--sb-accent); }
 
 .footer-logout {
-    color: #6b7280;
+    color: var(--sb-text-muted);
 }
 
 .footer-logout:hover {
-    background: #fef2f2;
+    background: rgba(220,38,38,0.1);
     color: #dc2626;
 }
 
-.footer-logout .nav-icon { color: #9ca3af; }
+.footer-logout .nav-icon { color: var(--sb-text-muted); }
 .footer-logout:hover .nav-icon { background: rgba(220,38,38,0.1); color: #dc2626; }
 
 /* ── MAIN CONTENT OFFSET ── */
@@ -570,5 +602,9 @@ $hasSub = false;
 
         // Always show tooltips since sidebar is icon-only by default
         updateTooltips();
+
+        // Dark Mode Initialization for all provider pages
+        const savedTheme = localStorage.getItem('provider_theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
     });
 </script>

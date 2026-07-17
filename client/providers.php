@@ -298,17 +298,22 @@ if ($sort === 'ml' && !empty($rawProviders)) {
     }
 
     // Call FastAPI
-    $ch = curl_init('http://localhost:8000' . $predictEndpoint);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS     => json_encode($batchPayload),
-        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-        CURLOPT_TIMEOUT        => 3,
-        CURLOPT_CONNECTTIMEOUT => 2,
-    ]);
-    $mlRaw   = curl_exec($ch);
-    $mlErrno = curl_errno($ch);
-    curl_close($ch);
+    if (extension_loaded('curl')) {
+        $ch = curl_init('http://localhost:8000' . $predictEndpoint);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS     => json_encode($batchPayload),
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+            CURLOPT_TIMEOUT        => 3,
+            CURLOPT_CONNECTTIMEOUT => 2,
+        ]);
+        $mlRaw   = curl_exec($ch);
+        $mlErrno = curl_errno($ch);
+        curl_close($ch);
+    } else {
+        $mlRaw = null;
+        $mlErrno = 1;
+    }
 
     if (!$mlErrno && $mlRaw) {
         $mlResults = json_decode($mlRaw, true);

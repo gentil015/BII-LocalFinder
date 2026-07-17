@@ -1300,10 +1300,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_booking'])) {
                                 </p>
 
                                 <div class="booking-actions">
+                                    <a href="booking-details.php?id=<?php echo $booking['id']; ?>" class="btn-sm btn-view" style="background-color: #2563eb; color: white;" onclick="event.stopPropagation();">
+                                        <i class="fas fa-eye me-1"></i> View Details
+                                    </a>
+
                                     <a href="../client/provider-profile.php?id=<?php echo $booking['provider_id']; ?>" class="btn-sm btn-view" onclick="event.stopPropagation();">
                                         <i class="fas fa-user me-1"></i> View Provider
                                     </a>
-                                    
+
+                                    <?php
+                                    // Check for pending payment
+                                    require_once '../payments/PaymentManager.php';
+                                    $paymentManager = new PaymentManager();
+                                    $payment = $paymentManager->getPaymentForBooking($booking['id']);
+                                    if ($payment && $payment['status'] === 'pending' && $paymentManager->isPaymentsEnabled()): ?>
+                                        <button class="btn-sm btn-payment" onclick="event.stopPropagation(); processPayment(<?php echo $payment['id']; ?>, this);">
+                                            <i class="fas fa-credit-card me-1"></i> Pay Now
+                                        </button>
+                                    <?php endif; ?>
+
                                     <?php if ($system_settings['allow_booking_editing'] && in_array($booking['status'], ['pending', 'confirmed'])): ?>
                                         <a href="edit-booking.php?id=<?php echo $booking['id']; ?>" class="btn-sm btn-view" onclick="event.stopPropagation();">
                                             <i class="fas fa-edit me-1"></i> Edit
@@ -1675,6 +1690,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_booking'])) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        // Payment processing function
+        async function processPayment(paymentId, buttonElement) {
+            if (!confirm('Are you sure you want to proceed with the payment?')) {
+                return;
+            }
+
+            // Disable button and show loading state
+            const originalText = buttonElement.innerHTML;
+            buttonElement.disabled = true;
+            buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Processing...';
+
+            try {
+                const response = await fetch('../payments/process_payment.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        payment_id: paymentId
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // Show success message
+                    alert('Payment successful! Your booking has been confirmed.');
+                    // Reload the page to update the booking status
+                    window.location.reload();
+                } else {
+                    // Show error message
+                    alert('Payment failed: ' + (result.message || 'Unknown error'));
+                    // Re-enable button
+                    buttonElement.disabled = false;
+                    buttonElement.innerHTML = originalText;
+                }
+            } catch (error) {
+                console.error('Payment error:', error);
+                alert('An error occurred while processing the payment. Please try again.');
+                // Re-enable button
+                buttonElement.disabled = false;
+                buttonElement.innerHTML = originalText;
+            }
         }
 
         document.addEventListener('DOMContentLoaded', function() {

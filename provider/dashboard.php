@@ -7,15 +7,21 @@ require_once '../includes/language.php';
 
 requireProvider();
 
-// Check maintenance mode
 if (isMaintenanceMode() && !isAdmin()) {
-    // Allow providers to access but show maintenance warning
     $maintenance_warning = true;
 }
 
 $db = Database::getInstance()->getConnection();
 
-// Get provider profile
+// Check if AI features are enabled for this provider
+$provider_ai_enabled = false;
+$stmt = $db->prepare("SELECT user_id FROM service_providers WHERE user_id = ?");
+$stmt->execute([$_SESSION['user_id']]);
+if ($provider_stmt = $stmt->fetch()) {
+    $provider_ai_enabled = isProviderAIEnabled((int)$_SESSION['user_id']);
+}
+
+// ── Provider base data ────────────────────────────────────────────────────
 $stmt = $db->prepare("
     SELECT sp.*, u.email, u.phone, u.profile_image, u.full_name
     FROM service_providers sp
@@ -25,2715 +31,1191 @@ $stmt = $db->prepare("
 $stmt->execute([$_SESSION['user_id']]);
 $provider = $stmt->fetch();
 
-// Get provider's schedule information
-$stmt = $db->prepare("
-    SELECT 
-        working_days,
-        working_hours_start,
-        working_hours_end,
-        break_start,
-        break_end,
-        buffer_time,
-        max_daily_bookings
-    FROM service_providers 
-    WHERE user_id = ?
-");
-$stmt->execute([$_SESSION['user_id']]);
-$schedule_info = $stmt->fetch();
+$pid = (int)$provider['id'];
 
-// Parse working days
-$working_days = $schedule_info['working_days'] ? explode(',', $schedule_info['working_days']) : [1,2,3,4,5];
-$day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-$formatted_working_days = [];
-foreach ($working_days as $day_num) {
-    if (isset($day_names[$day_num-1])) {
-        $formatted_working_days[] = $day_names[$day_num-1];
-    }
-}
-
-// Get today's schedule summary
-$today = date('Y-m-d');
-$day_of_week = date('N');
-$is_working_day = in_array($day_of_week, $working_days);
-$working_hours_display = '';
-if ($schedule_info['working_hours_start'] && $schedule_info['working_hours_end'] && $is_working_day) {
-    $working_hours_display = date('g:i A', strtotime($schedule_info['working_hours_start'])) . ' - ' . 
-                            date('g:i A', strtotime($schedule_info['working_hours_end']));
-}
-
-// Get statistics
+// ── Core stats ────────────────────────────────────────────────────────────
 $stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE provider_id = ?");
-$stmt->execute([$provider['id']]);
-$total_bookings = $stmt->fetch()['total'];
+$stmt->execute([$pid]); $total_bookings = (int)$stmt->fetch()['total'];
 
 $stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE provider_id = ? AND status = 'pending'");
-$stmt->execute([$provider['id']]);
-$pending_bookings = $stmt->fetch()['total'];
+$stmt->execute([$pid]); $pending_bookings = (int)$stmt->fetch()['total'];
 
 $stmt = $db->prepare("SELECT COUNT(*) as total FROM reviews WHERE provider_id = ?");
-$stmt->execute([$provider['id']]);
-$total_reviews = $stmt->fetch()['total'];
+$stmt->execute([$pid]); $total_reviews = (int)$stmt->fetch()['total'];
 
-// Calculate earnings (if commission is enabled)
-$total_earnings = 0;
-if (isCommissionEnabled()) {
-    $stmt = $db->prepare("
-        SELECT SUM(amount) as total_earnings 
-        FROM bookings 
-        WHERE provider_id = ? AND status = 'completed' AND payment_status = 'completed'
-    ");
-    $stmt->execute([$provider['id']]);
-    $earnings_data = $stmt->fetch();
-    $total_earnings = $earnings_data['total_earnings'] ?? 0;
-}
+$stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE provider_id = ? AND status = 'completed'");
+$stmt->execute([$pid]); $completed_bookings = (int)$stmt->fetch()['total'];
 
-// Get today's bookings count
-$stmt = $db->prepare("
-    SELECT COUNT(*) as today_bookings 
-    FROM bookings 
-    WHERE provider_id = ? AND DATE(preferred_date) = CURDATE() AND status IN ('confirmed', 'pending')
-");
-$stmt->execute([$provider['id']]);
-$today_bookings = $stmt->fetch()['today_bookings'];
-
-// Get recent bookings
+// ── Step 1: ML Hire Probability ───────────────────────────────────────────
+$ml_score = 0;
+$ml_api_healthy = false;
 try {
-    $stmt = $db->prepare("
-        SELECT b.*, u.full_name as client_name, u.phone as client_phone, u.email as client_email,
-               s.name as service_name,
-               DATE_FORMAT(b.preferred_date, '%W, %M %d, %Y') as formatted_date,
-               DATE_FORMAT(b.preferred_time, '%h:%i %p') as formatted_time
-        FROM bookings b
-        JOIN users u ON b.client_id = u.id
-        LEFT JOIN provider_services s ON b.service_id = s.id
-        WHERE b.provider_id = ?
-        ORDER BY b.preferred_date DESC, b.preferred_time DESC
-        LIMIT 5
-    ");
-    $stmt->execute([$provider['id']]);
-    $recent_bookings = $stmt->fetchAll();
-} catch (Throwable $e) {
-    error_log('Dashboard: failed to load recent bookings: ' . $e->getMessage());
-    $recent_bookings = [];
-}
-
-// Get upcoming bookings for today
-$stmt = $db->prepare("
-    SELECT COUNT(*) as upcoming_today
-    FROM bookings 
-    WHERE provider_id = ? AND DATE(preferred_date) = CURDATE() 
-    AND status IN ('confirmed', 'pending')
-    AND (preferred_time IS NULL OR preferred_time > CURTIME())
-");
-$stmt->execute([$provider['id']]);
-$upcoming_today = $stmt->fetch()['upcoming_today'];
-
-// Handle AJAX requests for real-time updates
-if (isset($_GET['ajax']) && $_GET['ajax'] === 'dashboard_data') {
-    header('Content-Type: application/json');
-    
-    // Get updated statistics
-    $stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE provider_id = ?");
-    $stmt->execute([$provider['id']]);
-    $total_bookings = $stmt->fetch()['total'];
-
-    $stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE provider_id = ? AND status = 'pending'");
-    $stmt->execute([$provider['id']]);
-    $pending_bookings = $stmt->fetch()['total'];
-
-    $stmt = $db->prepare("SELECT COUNT(*) as total FROM reviews WHERE provider_id = ?");
-    $stmt->execute([$provider['id']]);
-    $total_reviews = $stmt->fetch()['total'];
-
-    $total_earnings = 0;
-    if (isCommissionEnabled()) {
-        $stmt = $db->prepare("
-            SELECT SUM(amount) as total_earnings 
-            FROM bookings 
-            WHERE provider_id = ? AND status = 'completed' AND payment_status = 'completed'
-        ");
-        $stmt->execute([$provider['id']]);
-        $earnings_data = $stmt->fetch();
-        $total_earnings = $earnings_data['total_earnings'] ?? 0;
-    }
-
-    $stmt = $db->prepare("
-        SELECT COUNT(*) as today_bookings 
-        FROM bookings 
-        WHERE provider_id = ? AND DATE(preferred_date) = CURDATE() 
-        AND status IN ('confirmed', 'pending')
-    ");
-    $stmt->execute([$provider['id']]);
-    $today_bookings = $stmt->fetch()['today_bookings'];
-
-    $stmt = $db->prepare("
-        SELECT COUNT(*) as upcoming_today
-        FROM bookings 
-        WHERE provider_id = ? AND DATE(preferred_date) = CURDATE() 
-        AND status IN ('confirmed', 'pending')
-        AND (preferred_time IS NULL OR preferred_time > CURTIME())
-    ");
-    $stmt->execute([$provider['id']]);
-    $upcoming_today = $stmt->fetch()['upcoming_today'];
-
-    // Get recent bookings
-    $stmt = $db->prepare("
-        SELECT b.*, u.full_name as client_name, u.phone as client_phone, u.email as client_email,
-               s.name as service_name,
-               DATE_FORMAT(b.preferred_date, '%W, %M %d, %Y') as formatted_date,
-               DATE_FORMAT(b.preferred_time, '%h:%i %p') as formatted_time
-        FROM bookings b
-        JOIN users u ON b.client_id = u.id
-        LEFT JOIN provider_services s ON b.service_id = s.id
-        WHERE b.provider_id = ?
-        ORDER BY b.preferred_date DESC, b.preferred_time DESC
-        LIMIT 5
-    ");
-    $stmt->execute([$provider['id']]);
-    $recent_bookings = $stmt->fetchAll();
-
-    // Format recent bookings for JSON
-    $formatted_recent_bookings = array_map(function($booking) {
-        return [
-            'id' => $booking['id'],
-            'client_name' => htmlspecialchars($booking['client_name']),
-            'client_email' => htmlspecialchars($booking['client_email']),
-            'service_name' => htmlspecialchars($booking['service_name'] ?? 'Service'),
-            'service_description' => htmlspecialchars($booking['service_description']),
-            'formatted_date' => $booking['formatted_date'],
-            'formatted_time' => $booking['formatted_time'],
-            'status' => $booking['status']
-        ];
-    }, $recent_bookings);
-
-    echo json_encode([
-        'success' => true,
-        'stats' => [
-            'total_bookings' => $total_bookings,
-            'pending_bookings' => $pending_bookings,
-            'total_reviews' => $total_reviews,
-            'average_rating' => $provider['average_rating'] ?? 0,
-            'total_earnings' => $total_earnings,
-            'today_bookings' => $today_bookings,
-            'upcoming_today' => $upcoming_today
-        ],
-        'recent_bookings' => $formatted_recent_bookings
-    ]);
-    exit();
-}
-
-// Handle status update
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
-    $new_status = sanitize($_POST['availability']);
-    if ($stmt->execute([$new_status, $_SESSION['user_id']])) {
-        $_SESSION['success_message'] = "Availability status updated successfully!";
-    } else {
-        $_SESSION['error_message'] = "Failed to update availability status.";
-    }
-    header("Location: dashboard.php");
-    exit();
-}
-
-// Handle booking actions
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['booking_action'])) {
-    $booking_id = intval($_POST['booking_id']);
-    $action = sanitize($_POST['booking_action']);
-    
-    // Check if provider is allowed to reject bookings
-    if ($action === 'reject' && !isProviderRejectionAllowed()) {
-        $_SESSION['error_message'] = "Booking rejection is currently disabled by admin.";
-        header("Location: dashboard.php");
-        exit();
-    }
-    
-    $allowed_statuses = [];
-    switch ($action) {
-        case 'confirm':
-            $new_status = 'confirmed';
-            $allowed_statuses = ['pending'];
-            break;
-        case 'reject':
-            $new_status = 'cancelled';
-            $allowed_statuses = ['pending'];
-            break;
-        case 'complete':
-            $new_status = 'completed';
-            $allowed_statuses = ['confirmed'];
-            break;
-        default:
-            $_SESSION['error_message'] = "Invalid action.";
-            header("Location: dashboard.php");
-            exit();
-    }
-    
-    // Verify booking belongs to provider and is in allowed status
-    $stmt = $db->prepare("SELECT status FROM bookings WHERE id = ? AND provider_id = ?");
-    $stmt->execute([$booking_id, $provider['id']]);
-    $booking = $stmt->fetch();
-    
-    if ($booking && in_array($booking['status'], $allowed_statuses)) {
-        $stmt = $db->prepare("UPDATE bookings SET status = ? WHERE id = ?");
-        if ($stmt->execute([$new_status, $booking_id])) {
-            $_SESSION['success_message'] = "Booking {$action}ed successfully!";
-
-            if ($new_status === 'completed') {
-                $bookingDetails = $db->prepare("SELECT client_id FROM bookings WHERE id = ?");
-                $bookingDetails->execute([$booking_id]);
-                $bookingRecord = $bookingDetails->fetch(PDO::FETCH_ASSOC);
-                if ($bookingRecord) {
-                    updateMlPredictionOutcome($db, (int) $bookingRecord['client_id'], $provider['id'], 1);
-                }
+    if (file_exists('../includes/MultiModelRecommender.php')) {
+        require_once '../includes/MultiModelRecommender.php';
+        $recommender = new MultiModelRecommender($db);
+        $ml_api_healthy = $recommender->isApiHealthy();
+        if (!$ml_api_healthy && method_exists($recommender, 'getLastError')) {
+            $mlError = $recommender->getLastError();
+            if ($mlError) {
+                error_log('[dashboard.php] ML health check failed: ' . $mlError);
             }
-            
-            // Send notification if enabled
-            if (isEmailNotificationsEnabled()) {
-                // Get booking details for notification
-                $stmt = $db->prepare("
-                    SELECT u.email, u.full_name, b.service_description 
-                    FROM bookings b 
-                    JOIN users u ON b.client_id = u.id 
-                    WHERE b.id = ?
-                ");
-                $stmt->execute([$booking_id]);
-                $booking_details = $stmt->fetch();
-                
-                if ($booking_details) {
-                    require_once '../includes/mailer.php';
-                    Mailer::sendBookingStatusUpdate(
-                        $booking_details['email'],
-                        $booking_details['full_name'],
-                        $provider['full_name'],
-                        $booking_details['service_description'],
-                        $new_status
-                    );
-                }
-            }
-        } else {
-            $_SESSION['error_message'] = "Failed to update booking.";
         }
-    } else {
-        $_SESSION['error_message'] = "Invalid booking or action not allowed.";
+        if ($ml_api_healthy) {
+            $features = [
+                'views'   => (int)$db->query("SELECT COUNT(*) FROM provider_views WHERE provider_id=$pid")->fetchColumn(),
+                'clicks'  => (int)$db->query("SELECT COUNT(*) FROM click_logs WHERE target_type='provider' AND target_id=$pid")->fetchColumn(),
+                'messages'=> (int)$db->query("SELECT COUNT(*) FROM messages WHERE receiver_id={$provider['user_id']}")->fetchColumn(),
+                'rating'  => (float)($provider['average_rating'] ?? 0),
+                'price'   => (float)($db->query("SELECT AVG(price) FROM provider_services WHERE provider_id=$pid AND is_available=1")->fetchColumn() ?? 0),
+                'avg_response_time' => 24,
+                'user_avg_price' => 0,
+                'user_avg_response_time' => 24,
+                'user_total_bookings' => 0,
+            ];
+            // Normalise to 0-100 probability
+            $raw = (float)($recommender->rankByRecommendation([$provider + ['id'=>$pid]])[0]['ml_score'] ?? 0);
+            $ml_score = min(100, max(0, (int)round($raw * 100)));
+        }
     }
-    
-    header("Location: dashboard.php");
-    exit();
+} catch (Throwable $e) {
+    error_log('ML score error: ' . $e->getMessage());
+}
+// Fallback: derive from rating + response rate when API is down
+if (!$ml_api_healthy || $ml_score === 0) {
+    $rating_score  = min(100, (float)($provider['average_rating'] ?? 0) / 5 * 40);
+    $booking_score = min(40, $completed_bookings * 2);
+    $review_score  = min(20, $total_reviews);
+    $ml_score = (int)round($rating_score + $booking_score + $review_score);
 }
 
-// Get provider's services with schedule info
+// ── Step 2: AI Insights ───────────────────────────────────────────────────
+// Weekly views growth
+$views_this_week = (int)$db->query("SELECT COUNT(*) FROM provider_views WHERE provider_id=$pid AND viewed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)")->fetchColumn();
+$views_last_week = (int)$db->query("SELECT COUNT(*) FROM provider_views WHERE provider_id=$pid AND viewed_at BETWEEN DATE_SUB(NOW(), INTERVAL 14 DAY) AND DATE_SUB(NOW(), INTERVAL 7 DAY)")->fetchColumn();
+$views_growth = $views_last_week > 0 ? round((($views_this_week - $views_last_week) / $views_last_week) * 100) : ($views_this_week > 0 ? 100 : 0);
+
+// Avg response time (hours)
+$avg_response_raw = $db->query("SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, responded_at)) FROM bookings WHERE provider_id=$pid AND responded_at IS NOT NULL")->fetchColumn();
+$avg_response_hours = $avg_response_raw ? round((float)$avg_response_raw, 1) : null;
+
+// Conversion: views → hires
+$total_views = (int)$db->query("SELECT COUNT(*) FROM provider_views WHERE provider_id=$pid")->fetchColumn();
+$conversion_rate = $total_views > 0 ? round(($completed_bookings / $total_views) * 100, 1) : 0;
+
+// Build insight messages
+$insights = [];
+if ($views_growth > 0) {
+    $insights[] = ['icon'=>'fas fa-eye', 'color'=>'#10b981', 'text'=>"Profile views <strong>up {$views_growth}%</strong> vs last week — great momentum!", 'type'=>'positive'];
+} elseif ($views_growth < -10) {
+    $insights[] = ['icon'=>'fas fa-eye-slash', 'color'=>'#f59e0b', 'text'=>"Views <strong>dropped {$views_growth}%</strong>. Try updating your profile or adding services.", 'type'=>'warning'];
+}
+if ($avg_response_hours !== null && $avg_response_hours > 4) {
+    $insights[] = ['icon'=>'fas fa-clock', 'color'=>'#f59e0b', 'text'=>"Avg response time is <strong>{$avg_response_hours}h</strong>. Faster replies improve rankings.", 'type'=>'warning'];
+} elseif ($avg_response_hours !== null && $avg_response_hours <= 2) {
+    $insights[] = ['icon'=>'fas fa-bolt', 'color'=>'#10b981', 'text'=>"Lightning-fast <strong>{$avg_response_hours}h</strong> response time — clients love you!", 'type'=>'positive'];
+}
+if ($conversion_rate < 1 && $total_views > 10) {
+    $insights[] = ['icon'=>'fas fa-funnel-dollar', 'color'=>'#ef4444', 'text'=>"Conversion rate is <strong>{$conversion_rate}%</strong>. Consider improving your service descriptions or pricing.", 'type'=>'negative'];
+}
+if ((float)($provider['average_rating'] ?? 0) >= 4.5) {
+    $insights[] = ['icon'=>'fas fa-star', 'color'=>'#f59e0b', 'text'=>"Outstanding <strong>{$provider['average_rating']} ★</strong> rating — you're in the top tier!", 'type'=>'positive'];
+}
+if (empty($insights)) {
+    $insights[] = ['icon'=>'fas fa-chart-line', 'color'=>'#6366f1', 'text'=>"Start getting bookings to unlock personalised AI insights.", 'type'=>'neutral'];
+}
+
+// ── Step 3: Funnel Analytics ──────────────────────────────────────────────
+$funnel_views    = max(1, $total_views);
+$funnel_clicks   = (int)$db->query("SELECT COUNT(*) FROM click_logs WHERE target_type='provider' AND target_id=$pid")->fetchColumn();
+$funnel_messages = (int)$db->query("SELECT COUNT(*) FROM messages WHERE receiver_id={$provider['user_id']}")->fetchColumn();
+$funnel_hires    = $completed_bookings;
+
+// ── Step 4: Chart Data ────────────────────────────────────────────────────
+$chart_labels = [];
+$chart_views  = [];
+$chart_clicks = [];
+for ($i = 6; $i >= 0; $i--) {
+    $date = date('Y-m-d', strtotime("-$i days"));
+    $label = date('D', strtotime($date));
+    $chart_labels[] = $label;
+    $v = (int)$db->query("SELECT COUNT(*) FROM provider_views WHERE provider_id=$pid AND DATE(viewed_at)='$date'")->fetchColumn();
+    $c = (int)$db->query("SELECT COUNT(*) FROM click_logs WHERE target_type='provider' AND target_id=$pid AND DATE(created_at)='$date'")->fetchColumn();
+    $chart_views[]  = $v;
+    $chart_clicks[] = $c;
+}
+
+// ── Step 5: Ranking Explanation ───────────────────────────────────────────
+$rank_factors = [];
+if ((float)($provider['average_rating'] ?? 0) >= 4.0) $rank_factors[] = ['icon'=>'fas fa-star', 'text'=>"High rating ({$provider['average_rating']}★) boosts your visibility", 'good'=>true];
+if ($avg_response_hours !== null && $avg_response_hours <= 3) $rank_factors[] = ['icon'=>'fas fa-bolt', 'text'=>"Fast {$avg_response_hours}h response time puts you ahead", 'good'=>true];
+if ($completed_bookings >= 5) $rank_factors[] = ['icon'=>'fas fa-briefcase', 'text'=>"$completed_bookings completed jobs builds trust signals", 'good'=>true];
+if ((float)($provider['average_rating'] ?? 0) < 4.0) $rank_factors[] = ['icon'=>'fas fa-star-half-alt', 'text'=>"Improve rating to rank higher in search", 'good'=>false];
+if ($avg_response_hours === null || $avg_response_hours > 6) $rank_factors[] = ['icon'=>'fas fa-clock', 'text'=>"Reply faster to boost your search ranking", 'good'=>false];
+if (empty($rank_factors)) $rank_factors[] = ['icon'=>'fas fa-info-circle', 'text'=>"Complete more bookings to improve ranking", 'good'=>false];
+
+// ── Step 6: Auto Optimisation Suggestions ─────────────────────────────────
+$suggestions = [];
+$portfolio_count = (int)$db->query("SELECT COUNT(*) FROM portfolio_images WHERE provider_id=$pid AND is_active=1")->fetchColumn();
+if ($portfolio_count === 0) $suggestions[] = ['icon'=>'fas fa-images', 'text'=>'Add portfolio images to attract more clients', 'priority'=>'high'];
+if ((float)($provider['average_rating'] ?? 0) < 4.0 && $total_reviews > 2) $suggestions[] = ['icon'=>'fas fa-star', 'text'=>'Ask satisfied clients to leave a review', 'priority'=>'high'];
+if ($avg_response_hours !== null && $avg_response_hours > 4) $suggestions[] = ['icon'=>'fas fa-reply', 'text'=>'Enable notifications to respond faster', 'priority'=>'medium'];
+if (empty($provider['bio'])) $suggestions[] = ['icon'=>'fas fa-user-edit', 'text'=>'Write a bio to build client trust', 'priority'=>'medium'];
+$service_count = (int)$db->query("SELECT COUNT(*) FROM provider_services WHERE provider_id=$pid AND is_available=1")->fetchColumn();
+if ($service_count < 2) $suggestions[] = ['icon'=>'fas fa-plus-circle', 'text'=>'Add more services to increase booking chances', 'priority'=>'medium'];
+
+// ── Step 7: Notifications ─────────────────────────────────────────────────
+$all_notifications = getNotifications($_SESSION['user_id'], ['limit' => 8]);
+$unread_count = getUnreadNotificationCount($_SESSION['user_id']);
+
+// ── Step 8: Provider Level ────────────────────────────────────────────────
+$level = 'bronze';
+$level_label = 'Bronze';
+$level_next = 'Silver';
+$level_icon = 'fas fa-medal';
+$level_color = '#cd7f32';
+if ($completed_bookings >= 10 && (float)($provider['average_rating'] ?? 0) >= 4.0) {
+    $level = 'gold'; $level_label = 'Gold'; $level_next = 'Platinum'; $level_icon = 'fas fa-trophy'; $level_color = '#f59e0b';
+} elseif ($completed_bookings >= 3 && (float)($provider['average_rating'] ?? 0) >= 3.5) {
+    $level = 'silver'; $level_label = 'Silver'; $level_next = 'Gold'; $level_icon = 'fas fa-award'; $level_color = '#6b7280';
+}
+$level_progress = min(100, $level === 'bronze' ? ($completed_bookings / 3) * 100 : ($level === 'silver' ? ($completed_bookings / 10) * 100 : 100));
+
+// ── Recent bookings ───────────────────────────────────────────────────────
 try {
     $stmt = $db->prepare("
-        SELECT s.*, c.name as category_name, c.icon as category_icon,
-               (SELECT COUNT(*) FROM bookings WHERE service_id = s.id AND status IN ('confirmed', 'pending')) as upcoming_bookings
-        FROM provider_services s 
-        LEFT JOIN categories c ON s.category_id = c.id 
-        WHERE s.provider_id = ? 
-        ORDER BY s.created_at DESC 
-        LIMIT 5
+        SELECT b.*, u.full_name as client_name, s.name as service_name,
+               DATE_FORMAT(b.preferred_date,'%b %d') as fmt_date
+        FROM bookings b JOIN users u ON b.client_id=u.id
+        LEFT JOIN provider_services s ON b.service_id=s.id
+        WHERE b.provider_id=? ORDER BY b.created_at DESC LIMIT 5
     ");
-    $stmt->execute([$provider['id']]);
-    $recent_services = $stmt->fetchAll();
-} catch (Throwable $e) {
-    error_log('Dashboard: failed to load provider services: ' . $e->getMessage());
-    $recent_services = [];
+    $stmt->execute([$pid]);
+    $recent_bookings = $stmt->fetchAll();
+} catch (Throwable $e) { $recent_bookings = []; }
+
+$today_bookings = (int)$db->query("SELECT COUNT(*) FROM bookings WHERE provider_id=$pid AND DATE(preferred_date)=CURDATE() AND status IN('confirmed','pending')")->fetchColumn();
+
+// ── Step 9: Subscription Plan Data ────────────────────────────────────────
+require_once '../includes/subscription_access.php';
+$plan_features = getPlanFeatures((int)$_SESSION['user_id']);
+$service_count = (int)$db->query("SELECT COUNT(*) FROM provider_services WHERE provider_id=$pid AND is_available=1")->fetchColumn();
+$photo_count = (int)$db->query("SELECT COUNT(*) FROM portfolio_images WHERE provider_id=$pid AND is_active=1")->fetchColumn();
+
+// Calculate service usage percentage
+$service_usage_pct = $plan_features['service_limit'] > 0 
+    ? min(100, round(($service_count / $plan_features['service_limit']) * 100)) 
+    : 0;
+$service_usage_text = $plan_features['service_limit'] === 0 ? 'Unlimited' : "{$service_count}/{$plan_features['service_limit']}";
+
+// Calculate photo usage percentage
+$photo_usage_pct = $plan_features['photo_limit'] > 0 
+    ? min(100, round(($photo_count / $plan_features['photo_limit']) * 100)) 
+    : 0;
+$photo_usage_text = $plan_features['photo_limit'] === 0 ? 'Unlimited' : "{$photo_count}/{$plan_features['photo_limit']}";
+
+// Plan upgrade suggestions
+$upgrade_suggestions = [];
+if ($service_count >= $plan_features['service_limit'] && $plan_features['service_limit'] > 0) {
+    $upgrade_suggestions[] = ['icon'=>'fas fa-plus-circle', 'text'=>'Upgrade to add more services', 'priority'=>'high'];
 }
-
-// Get notification filter from request
-$notification_filter = sanitize($_GET['filter'] ?? 'all');
-$allowed_filters = ['all', 'booking', 'offer', 'favorite', 'service_update', 'service_added', 'review', 'profile_view', 'complaint', 'system'];
-if (!in_array($notification_filter, $allowed_filters)) {
-    $notification_filter = 'all';
+if ($photo_count >= $plan_features['photo_limit'] && $plan_features['photo_limit'] > 0) {
+    $upgrade_suggestions[] = ['icon'=>'fas fa-images', 'text'=>'Upgrade to add more photos', 'priority'=>'high'];
 }
-
-// Get notifications
-$notification_options = [
-    'limit' => 100,
-    'offset' => 0
-];
-
-if ($notification_filter !== 'all') {
-    $notification_options['type'] = $notification_filter;
+if (!$plan_features['ai_enabled']) {
+    $upgrade_suggestions[] = ['icon'=>'fas fa-robot', 'text'=>'Upgrade to unlock AI tools', 'priority'=>'medium'];
 }
-
-$all_notifications = getNotifications($_SESSION['user_id'], $notification_options);
-$unread_count = getUnreadNotificationCount($_SESSION['user_id']);
-$notification_stats = getNotificationStats($_SESSION['user_id']);
-
-// Handle notification actions via AJAX (API endpoint)
-// Remove old form-based POST handling - now handled via AJAX in frontend
-
-// Get schedule summary for the week
-$week_start = date('Y-m-d', strtotime('monday this week'));
-$week_end = date('Y-m-d', strtotime('sunday this week'));
-
-$stmt = $db->prepare("
-    SELECT DATE(preferred_date) as booking_date, COUNT(*) as booking_count
-    FROM bookings
-    WHERE provider_id = ? AND preferred_date BETWEEN ? AND ?
-    AND status IN ('confirmed', 'pending')
-    GROUP BY DATE(preferred_date)
-    ORDER BY booking_date
-");
-$stmt->execute([$provider['id'], $week_start, $week_end]);
-$weekly_bookings = $stmt->fetchAll();
-
-// Calculate weekly booking distribution
-$weekly_data = [];
-$total_weekly = 0;
-foreach ($weekly_bookings as $booking) {
-    $weekly_data[$booking['booking_date']] = $booking['booking_count'];
-    $total_weekly += $booking['booking_count'];
+if ($plan_features['analytics_level'] === 'basic') {
+    $upgrade_suggestions[] = ['icon'=>'fas fa-chart-bar', 'text'=>'Upgrade for better analytics', 'priority'=>'medium'];
 }
-
-// Check if provider needs to complete profile
-$profile_completion = 0;
-$required_fields = ['full_name', 'email', 'phone', 'business_name', 'description'];
-$completed_fields = 0;
-
-foreach ($required_fields as $field) {
-    if (!empty($provider[$field])) {
-        $completed_fields++;
-    }
-}
-$profile_completion = ($completed_fields / count($required_fields)) * 100;
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo __('title', [], 'dashboard'); ?> - <?php echo getPlatformName(); ?></title>
-    <!-- Bootstrap CSS -->
-    <link rel="stylesheet" href="../bootstrap/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        :root {
-            --primary: #0d6efd;
-            --secondary: #6c757d;
-            --success: #198754;
-            --danger: #dc3545;
-            --warning: #ffc107;
-            --info: #0dcaf0;
-            --light: #f8f9fa;
-            --dark: #212529;
-            --sidebar-width: 250px;
-        }
-
-        body {
-            background-color: #f5f7fb;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-
-        /* Maintenance Warning */
-        .maintenance-warning {
-            background: linear-gradient(135deg, #ffc107, #e0a800);
-            color: #856404;
-            border: none;
-            margin-bottom: 1rem;
-        }
-
-        /* Sidebar Styles */
-        .sidebar {
-            width: var(--sidebar-width);
-            background: linear-gradient(180deg, var(--primary), #0a58ca);
-            color: white;
-            position: fixed;
-            height: 100vh;
-            left: 0;
-            top: 0;
-            transition: all 0.3s;
-            z-index: 1000;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
-        }
-
-        .sidebar-header {
-            padding: 1.5rem 1rem;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            text-align: center;
-        }
-
-        .sidebar-header h2 {
-            margin: 0;
-            font-weight: 700;
-            font-size: 1.3rem;
-        }
-
-        .sidebar-header p {
-            margin: 0.5rem 0 0 0;
-            opacity: 0.8;
-            font-size: 0.9rem;
-        }
-
-        .sidebar-menu {
-            list-style: none;
-            padding: 1rem 0;
-            margin: 0;
-        }
-
-        .sidebar-menu li {
-            margin: 0.2rem 0;
-        }
-
-        .sidebar-menu a {
-            color: rgba(255,255,255,0.8);
-            text-decoration: none;
-            padding: 0.8rem 1.5rem;
-            display: flex;
-            align-items: center;
-            transition: all 0.3s;
-            border-left: 3px solid transparent;
-        }
-
-        .sidebar-menu a:hover,
-        .sidebar-menu a.active {
-            background: rgba(255,255,255,0.1);
-            color: white;
-            border-left-color: white;
-        }
-
-        .sidebar-menu i {
-            width: 25px;
-            margin-right: 10px;
-            font-size: 1.1rem;
-        }
-
-        /* Main Content */
-        .main-content {
-            margin-left: var(--sidebar-width);
-            padding: 1rem 2rem;
-            min-height: 100vh;
-        }
-
-        /* Header */
-        .dashboard-header {
-            background: white;
-            border-radius: 10px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-        }
-
-        .dashboard-header h1 {
-            color: var(--dark);
-            margin-bottom: 0.5rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .dashboard-header p {
-            color: var(--secondary);
-            margin: 0;
-        }
-
-        .welcome-section h1 {
-            color: var(--dark);
-            margin-bottom: 0.5rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .welcome-section p {
-            color: var(--secondary);
-            margin: 0;
-        }
-
-        .date-display {
-            background: var(--primary);
-            color: white;
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            font-weight: 600;
-        }
-
-        /* Stats Grid */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .stat-card {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            transition: all 0.3s ease;
-            text-decoration: none !important;
-            color: inherit;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-
-        .stat-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 1rem;
-            font-size: 1.5rem;
-            background: var(--primary);
-            color: white;
-        }
-
-        .stat-card.earnings .stat-icon {
-            background: var(--success);
-        }
-
-        .stat-card.rating .stat-icon {
-            background: var(--warning);
-            color: #7a4d00;
-        }
-
-        .stat-card.schedule .stat-icon {
-            background: var(--info);
-        }
-
-        .stat-content h3 {
-            font-size: 1.8rem;
-            font-weight: 700;
-            margin: 0 0 0.5rem 0;
-            color: var(--dark);
-        }
-
-        .stat-content p {
-            color: var(--secondary);
-            margin: 0;
-            font-weight: 500;
-        }
-
-        .stat-trend {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-top: 0.75rem;
-            font-size: 0.9rem;
-            font-weight: 600;
-        }
-
-        .trend-up {
-            color: var(--success);
-        }
-
-        .trend-down {
-            color: var(--danger);
-        }
-
-        /* Main Grid */
-        .main-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 2rem;
-            margin-bottom: 2rem;
-        }
-
-        @media (max-width: 1200px) {
-            .main-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        /* Cards */
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            border: none;
-        }
-
-        .card:hover {
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-        }
-
-        .card-header h3 {
-            margin: 0;
-            color: var(--dark);
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 1.3rem;
-        }
-
-        .card-header h3 i {
-            color: var(--primary);
-        }
-
-        /* Availability Status */
-        .availability-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 1.5rem;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            margin-bottom: 1.5rem;
-        }
-
-        .status-display {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 1rem;
-        }
-
-        .status-info h4 {
-            margin: 0 0 0.5rem 0;
-            font-size: 1rem;
-            opacity: 0.9;
-        }
-
-        .status-indicator {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-
-        .status-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
-
-        .status-dot.available {
-            background: var(--success);
-            box-shadow: 0 0 0 0 rgba(25, 135, 84, 0.4);
-        }
-
-        .status-dot.busy {
-            background: var(--warning);
-            box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4);
-        }
-
-        .status-dot.unavailable {
-            background: var(--danger);
-            box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4);
-        }
-
-        @keyframes pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(25, 135, 84, 0.4);
-            }
-            70% {
-                box-shadow: 0 0 0 10px rgba(25, 135, 84, 0);
-            }
-            100% {
-                box-shadow: 0 0 0 0 rgba(25, 135, 84, 0);
-            }
-        }
-
-        .status-text {
-            font-size: 1.5rem;
-            font-weight: 700;
-        }
-
-        .status-selector {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            padding: 1rem;
-        }
-
-        .status-selector select {
-            width: 100%;
-            padding: 0.75rem 1rem;
-            border: 2px solid rgba(255, 255, 255, 0.2);
-            border-radius: 6px;
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .status-selector select:focus {
-            outline: none;
-            border-color: white;
-        }
-
-        .status-selector select option {
-            background: var(--primary);
-            color: white;
-        }
-
-        /* Schedule Summary */
-        .schedule-summary {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-
-        .schedule-item {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            padding: 1rem;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
-            transition: all 0.3s;
-        }
-
-        .schedule-item:hover {
-            background: rgba(255, 255, 255, 0.1);
-            transform: translateX(3px);
-        }
-
-        .schedule-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.1rem;
-            flex-shrink: 0;
-        }
-
-        .schedule-info h5 {
-            margin: 0 0 0.25rem 0;
-            font-size: 0.9rem;
-            opacity: 0.9;
-        }
-
-        .schedule-info p {
-            margin: 0;
-            font-size: 1rem;
-            font-weight: 600;
-        }
-
-        /* Bookings List */
-        .bookings-list {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
-
-        .booking-item {
-            background: #f8fafc;
-            border-radius: 10px;
-            padding: 1.25rem;
-            transition: all 0.3s;
-            border: 1px solid #e9ecef;
-        }
-
-        .booking-item:hover {
-            background: white;
-            border-color: var(--primary);
-            transform: translateY(-2px);
-            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
-        }
-
-        .booking-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 1rem;
-        }
-
-        .booking-client {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .client-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: var(--primary);
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 1rem;
-            flex-shrink: 0;
-        }
-
-        .client-avatar img {
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
-            object-fit: cover;
-        }
-
-        .client-info h5 {
-            margin: 0 0 0.25rem 0;
-            color: var(--dark);
-            font-weight: 600;
-            font-size: 0.95rem;
-        }
-
-        .client-info p {
-            margin: 0;
-            color: var(--secondary);
-            font-size: 0.85rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .badge {
-            padding: 0.4rem 0.8rem;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        .badge-pending {
-            background: #fff3cd;
-            color: #856404;
-        }
-
-        .badge-confirmed {
-            background: #d1ecf1;
-            color: #0c5460;
-        }
-
-        .badge-completed {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .badge-cancelled {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .booking-details {
-            margin: 1rem 0;
-        }
-
-        .booking-service {
-            font-weight: 600;
-            color: var(--dark);
-            margin-bottom: 0.5rem;
-            font-size: 0.95rem;
-        }
-
-        .booking-description {
-            color: var(--secondary);
-            line-height: 1.5;
-            margin: 0;
-            font-size: 0.9rem;
-        }
-
-        .booking-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 1rem;
-        }
-
-        .booking-time {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            color: var(--primary);
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-
-        .booking-actions {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .action-btn {
-            padding: 0.4rem 0.8rem;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            font-size: 0.8rem;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            gap: 0.3rem;
-        }
-
-        .action-btn.confirm {
-            background: var(--success);
-            color: white;
-        }
-
-        .action-btn.reject {
-            background: var(--danger);
-            color: white;
-        }
-
-        .action-btn.complete {
-            background: var(--info);
-            color: white;
-        }
-
-        .action-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 3px 8px rgba(0,0,0,0.1);
-        }
-
-        /* Services List */
-        .services-list {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
-
-        .service-item {
-            background: #f8fafc;
-            border-radius: 10px;
-            padding: 1.25rem;
-            transition: all 0.3s;
-            border: 1px solid #e9ecef;
-        }
-
-        .service-item:hover {
-            background: white;
-            border-color: var(--primary);
-            transform: translateY(-2px);
-            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
-        }
-
-        .service-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 1rem;
-        }
-
-        .service-info h5 {
-            margin: 0 0 0.5rem 0;
-            color: var(--dark);
-            font-weight: 600;
-            font-size: 1rem;
-        }
-
-        .service-category {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            color: var(--primary);
-            font-weight: 500;
-            font-size: 0.85rem;
-        }
-
-        .service-price {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: var(--success);
-        }
-
-        .service-schedule {
-            background: rgba(13, 110, 253, 0.05);
-            border-radius: 8px;
-            padding: 0.75rem;
-            margin-top: 1rem;
-            border-left: 4px solid var(--primary);
-        }
-
-        .schedule-title {
-            font-weight: 600;
-            color: var(--dark);
-            margin-bottom: 0.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.9rem;
-        }
-
-        .schedule-details {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-            gap: 0.5rem;
-        }
-
-        .schedule-detail {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.85rem;
-            color: var(--secondary);
-        }
-
-        .schedule-detail i {
-            color: var(--primary);
-            width: 18px;
-        }
-
-        /* Quick Actions */
-        .quick-actions-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 1rem;
-            margin-top: 1.5rem;
-        }
-
-        .action-card {
-            background: white;
-            border-radius: 10px;
-            padding: 1.25rem;
-            text-align: center;
-            text-decoration: none;
-            color: var(--dark);
-            transition: all 0.3s;
-            border: 2px solid transparent;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .action-card:hover {
-            border-color: var(--primary);
-            transform: translateY(-3px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-
-        .action-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 10px;
-            background: var(--primary);
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-        }
-
-        .action-card h6 {
-            margin: 0;
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-
-        /* Empty States */
-        .empty-state {
-            text-align: center;
-            padding: 3rem 2rem;
-            color: var(--secondary);
-        }
-
-        .empty-state i {
-            font-size: 3.5rem;
-            margin-bottom: 1rem;
-            color: #e9ecef;
-            opacity: 0.7;
-        }
-
-        .empty-state h4 {
-            color: var(--secondary);
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-        }
-
-        .empty-state p {
-            margin-bottom: 1.5rem;
-            font-size: 0.9rem;
-        }
-
-        /* Alerts */
-        .alert {
-            border-radius: 8px;
-            border: none;
-            margin-bottom: 1.5rem;
-            padding: 1.25rem;
-        }
-
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .alert-danger {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .alert-warning {
-            background: #fff3cd;
-            color: #856404;
-        }
-
-        .alert-info {
-            background: #d1ecf1;
-            color: #0c5460;
-        }
-
-        /* Mobile Responsive */
-        @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-100%);
-            }
-
-            .sidebar.mobile-open {
-                transform: translateX(0);
-            }
-
-            .main-content {
-                margin-left: 0;
-                padding: 1rem;
-            }
-
-            .mobile-menu-toggle {
-                display: block !important;
-            }
-
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .main-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .booking-footer {
-                flex-direction: column;
-                gap: 1rem;
-                align-items: flex-start;
-            }
-
-            .booking-actions {
-                width: 100%;
-                justify-content: flex-end;
-            }
-
-            .status-display {
-                flex-direction: column;
-                gap: 1rem;
-                align-items: flex-start;
-            }
-
-            .schedule-summary {
-                grid-template-columns: 1fr;
-            }
-
-            .quick-actions-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        /* Notification Filter Styles */
-        .notification-filters {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1.5rem;
-            background: white;
-            padding: 1rem;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-            overflow-x: auto;
-            flex-wrap: wrap;
-        }
-
-        .filter-btn {
-            padding: 0.6rem 1.2rem;
-            border: 2px solid #e9ecef;
-            background: white;
-            color: var(--secondary);
-            border-radius: 25px;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 0.9rem;
-            transition: all 0.3s;
-            white-space: nowrap;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            text-decoration: none;
-        }
-
-        .filter-btn:hover {
-            border-color: var(--primary);
-            color: var(--primary);
-            text-decoration: none;
-        }
-
-        .filter-btn.active {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-        }
-
-        .filter-btn i {
-            font-size: 1rem;
-        }
-
-        /* Notification Card */
-        .notification-card {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-            border-left: 4px solid var(--secondary);
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-            margin-bottom: 1rem;
-        }
-
-        .notification-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
-        }
-
-        .notification-card.unread {
-            background: #f0f6ff;
-            border-left-color: var(--primary);
-        }
-
-        .notification-card.booking {
-            border-left-color: #007bff;
-        }
-
-        .notification-card.offer {
-            border-left-color: #28a745;
-        }
-
-        .notification-card.favorite {
-            border-left-color: #dc3545;
-        }
-
-        .notification-card.service_update,
-        .notification-card.service_added {
-            border-left-color: #ffc107;
-        }
-
-        .notification-card.review {
-            border-left-color: #ffc107;
-        }
-
-        .notification-card.profile_view {
-            border-left-color: #17a2b8;
-        }
-
-        .notification-card.complaint {
-            border-left-color: #dc3545;
-        }
-
-        .notification-card.system {
-            border-left-color: #6c757d;
-        }
-
-        .notification-header {
-            display: flex;
-            align-items: flex-start;
-            gap: 1rem;
-            margin-bottom: 0.75rem;
-        }
-
-        .notification-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            flex-shrink: 0;
-            background: rgba(0,0,0,0.05);
-        }
-
-        .notification-icon.booking {
-            background: rgba(0,123,255,0.1);
-            color: #007bff;
-        }
-
-        .notification-icon.offer {
-            background: rgba(40,167,69,0.1);
-            color: #28a745;
-        }
-
-        .notification-icon.favorite {
-            background: rgba(220,53,69,0.1);
-            color: #dc3545;
-        }
-
-        .notification-icon.service_update,
-        .notification-icon.service_added {
-            background: rgba(255,193,7,0.1);
-            color: #ffc107;
-        }
-
-        .notification-icon.review {
-            background: rgba(255,193,7,0.1);
-            color: #ffc107;
-        }
-
-        .notification-icon.profile_view {
-            background: rgba(23,162,184,0.1);
-            color: #17a2b8;
-        }
-
-        .notification-icon.complaint {
-            background: rgba(220,53,69,0.1);
-            color: #dc3545;
-        }
-
-        .notification-title {
-            display: flex;
-            justify-content: space-between;
-            align-items: start;
-            margin-bottom: 0.5rem;
-        }
-
-        .notification-title h5 {
-            margin: 0;
-            color: var(--dark);
-            font-weight: 700;
-            font-size: 1.1rem;
-            flex: 1;
-        }
-
-        .notification-badge {
-            padding: 0.4rem 0.8rem;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            background: var(--light);
-            color: var(--secondary);
-            margin-left: 1rem;
-        }
-
-        .notification-badge.unread {
-            background: var(--primary);
-            color: white;
-        }
-
-        .notification-badge.urgent {
-            background: var(--danger);
-            color: white;
-        }
-
-        .notification-badge.high {
-            background: var(--warning);
-            color: #333;
-        }
-
-        .notification-message {
-            color: var(--secondary);
-            margin-bottom: 0.75rem;
-            line-height: 1.5;
-            font-size: 0.95rem;
-        }
-
-        .notification-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding-top: 1rem;
-            border-top: 1px solid #e9ecef;
-        }
-
-        .notification-time {
-            font-size: 0.85rem;
-            color: var(--secondary);
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .notification-actions {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .notification-btn {
-            padding: 0.4rem 0.8rem;
-            border: none;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            cursor: pointer;
-            transition: all 0.3s;
-            background: var(--light);
-            color: var(--secondary);
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-        }
-
-        .notification-btn:hover {
-            background: var(--primary);
-            color: white;
-        }
-
-        .notification-btn.primary {
-            background: var(--primary);
-            color: white;
-        }
-
-        .notification-btn.primary:hover {
-            background: #0b5ed7;
-        }
-
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 4rem 2rem;
-            color: var(--secondary);
-            background: white;
-            border-radius: 12px;
-            margin-top: 1rem;
-        }
-
-        .empty-state i {
-            font-size: 4rem;
-            margin-bottom: 1rem;
-            color: #e9ecef;
-            opacity: 0.7;
-        }
-
-        .empty-state h3 {
-            color: var(--secondary);
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-        }
-
-        .empty-state p {
-            margin-bottom: 1.5rem;
-            font-size: 0.95rem;
-        }
-
-        .mobile-menu-toggle {
-            display: none;
-            position: fixed;
-            top: 1rem;
-            left: 1rem;
-            z-index: 1100;
-            background: var(--primary);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            width: 45px;
-            height: 45px;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.2rem;
-        }
-
-        .overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 999;
-        }
-
-        .overlay.active {
-            display: block;
-        }
-
-        /* View All Button */
-        .view-all-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            color: var(--primary);
-            text-decoration: none;
-            font-weight: 600;
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            background: rgba(13, 110, 253, 0.1);
-            transition: all 0.3s;
-        }
-
-        .view-all-btn:hover {
-            background: rgba(13, 110, 253, 0.2);
-            transform: translateX(3px);
-        }
-    </style>
-    <!-- Shared User Behavior Tracking -->
-    <?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Dashboard — <?php echo htmlspecialchars(getPlatformName()); ?></title>
+<link rel="stylesheet" href="../bootstrap/css/bootstrap.min.css">
+<link rel="stylesheet" href="../assets/css/dark-mode.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --accent:        #0d6efd;
+  --accent2:       #8b5cf6;
+  --green:         #16a34a;
+  --yellow:        #f59e0b;
+  --red:           #dc2626;
+  --surface:       #ffffff;
+  --surface-2:     #f7f8fc;
+  --surface2:      #f7f8fc;
+  --surface-3:     #f3f4f6;
+  --border:        #e8eaf0;
+  --bg:            #f7f8fc;
+  --text:          #0f1117;
+  --muted:         #6b7280;
+  --sidebar:       260px;
+  --shadow-sm:     0 2px 14px rgba(15,23,42,0.06);
+  --shadow-md:     0 6px 28px rgba(15,23,42,0.08);
+  --radius-md:     14px;
+  --transition:    all 0.18s cubic-bezier(0.4,0,0.2,1);
+}
+[data-theme="dark"] {
+  --accent:        #60a5fa;
+  --accent2:       #818cf8;
+  --green:         #34d399;
+  --yellow:        #facc15;
+  --red:           #f87171;
+  --surface:       #0f172a;
+  --surface-2:     #1e293b;
+  --surface2:      #1e293b;
+  --surface-3:     #111827;
+  --border:        #334155;
+  --bg:            #1e293b;
+  --text:          #f8fafc;
+  --muted:         #94a3b8;
+  --shadow-sm:     0 2px 14px rgba(0,0,0,0.35);
+  --shadow-md:     0 6px 28px rgba(0,0,0,0.45);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body { height:100%; background:var(--surface-2); color:var(--text); font-family:'DM Sans',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+h1,h2,h3,h4,.font-display{font-family:'Syne',sans-serif}
+a{color:inherit;text-decoration:none}
+
+/* ── SIDEBAR ── */
+.sidebar{
+  width:var(--sidebar);position:fixed;left:0;top:0;height:100vh;
+  background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;z-index:100;overflow:hidden;
+}
+.sidebar-brand{
+  padding:1.5rem 1.25rem 1.25rem;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:.75rem;
+}
+.sidebar-brand-icon{
+  width:36px;height:36px;border-radius:10px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:flex;align-items:center;justify-content:center;font-size:.9rem;color:#fff;
+  flex-shrink:0;box-shadow:0 4px 12px rgba(99,102,241,.4);
+}
+.sidebar-brand-text{font-family:'Syne',sans-serif;font-weight:700;font-size:1rem;color:var(--accent)}
+.sidebar-brand-sub{font-size:.72rem;color:var(--muted);margin-top:1px}
+.sidebar-menu{list-style:none;padding:.75rem .75rem;flex:1;overflow-y:auto}
+.sidebar-menu li{margin:2px 0}
+.sidebar-menu a{
+  display:flex;align-items:center;gap:.75rem;padding:.65rem .875rem;
+  color:var(--muted);border-radius:10px;font-size:.85rem;font-weight:500;
+  transition:all .18s ease;
+}
+.sidebar-menu a:hover,.sidebar-menu a.active{background:rgba(99,102,241,.12);color:#fff}
+.sidebar-menu a.active{color:var(--accent)}
+.sidebar-menu i{width:18px;font-size:.9rem;flex-shrink:0}
+.sidebar-footer{padding:.875rem 1.25rem;border-top:1px solid var(--border)}
+.sidebar-footer small{color:var(--muted);font-size:.72rem}
+
+/* ── MAIN CONTENT ── */
+.main-content{
+  margin-left:70px;
+  padding:1.75rem 2rem;
+  min-height:100vh;
+  transition: margin-left 0.18s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* ── TOP BAR ── */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:2rem;flex-wrap:wrap;gap:1rem;
+}
+.topbar-left h1{
+  font-size:1.5rem;font-weight:800;letter-spacing:-.5px;color:var(--text);
+}
+.topbar-left p{color:var(--muted);font-size:.875rem;margin-top:.25rem}
+.topbar-right{display:flex;align-items:center;gap:.75rem}
+
+/* ── NOTIFICATION BELL ── */
+.notif-btn{
+  position:relative;background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);width:40px;height:40px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  font-size:.95rem;transition:all .18s;
+}
+.notif-btn:hover{background:var(--surface3);border-color:var(--accent)}
+.notif-badge{
+  position:absolute;top:-6px;right:-6px;background:var(--red);
+  color:#fff;border-radius:100px;min-width:18px;height:18px;
+  padding:0 4px;font-size:.65rem;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  border:2px solid var(--bg);
+}
+.notif-dropdown{
+  position:absolute;top:calc(100% + 10px);right:0;width:320px;
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:14px;box-shadow:0 20px 48px rgba(0,0,0,.5);
+  z-index:200;display:none;overflow:hidden;
+}
+.notif-dropdown.open{display:block}
+.notif-header{
+  padding:.875rem 1rem;border-bottom:1px solid var(--border);
+  font-weight:700;font-size:.85rem;color:var(--text);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.notif-list{max-height:320px;overflow-y:auto}
+.notif-item{
+  padding:.75rem 1rem;border-bottom:1px solid var(--border);
+  display:flex;gap:.75rem;align-items:flex-start;
+  transition:background .15s;cursor:pointer;
+}
+.notif-item:hover{background:var(--surface3)}
+.notif-item:last-child{border-bottom:none}
+.notif-icon-wrap{
+  width:32px;height:32px;border-radius:8px;flex-shrink:0;
+  background:rgba(99,102,241,.15);display:flex;align-items:center;justify-content:center;
+  font-size:.8rem;color:var(--accent);
+}
+.notif-item-text{font-size:.78rem;color:var(--muted);line-height:1.4}
+.notif-item-title{font-size:.82rem;font-weight:600;color:var(--text);margin-bottom:2px}
+.notif-item-time{font-size:.7rem;color:var(--muted);margin-top:2px}
+
+/* ── LEVEL BADGE ── */
+.level-badge{
+  display:flex;align-items:center;gap:.5rem;
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:100px;padding:.4rem .875rem;
+  font-size:.78rem;font-weight:700;
+}
+.level-dot{width:8px;height:8px;border-radius:50%}
+
+/* ── STATS GRID ── */
+.stats-grid{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  gap:1.25rem;margin-bottom:1.75rem;
+}
+.stat-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:16px;padding:1.25rem 1.5rem;
+  transition:transform .2s,box-shadow .2s;
+  position:relative;overflow:hidden;
+}
+.stat-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:var(--card-accent,var(--accent));
+  border-radius:16px 16px 0 0;
+}
+.stat-card:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.stat-icon{
+  width:42px;height:42px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1rem;margin-bottom:.875rem;
+  background:rgba(255,255,255,.05);
+}
+.stat-value{font-size:2rem;font-weight:800;font-family:'Syne',sans-serif;letter-spacing:-1px;color:var(--text)}
+.stat-label{font-size:.75rem;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.4px;margin-top:.25rem}
+.stat-change{font-size:.75rem;margin-top:.5rem;display:flex;align-items:center;gap:.25rem;font-weight:600}
+.stat-change.up{color:var(--green)}
+.stat-change.down{color:var(--red)}
+.stat-change.neutral{color:var(--muted)}
+
+/* ── ML SCORE ── */
+.ml-score-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:16px;padding:1.5rem;
+  display:grid;grid-template-columns:1fr auto;gap:1.25rem;
+  align-items:center;margin-bottom:1.75rem;
+  position:relative;overflow:hidden;
+}
+.ml-score-card::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at top right,rgba(99,102,241,.12),transparent 60%);
+  pointer-events:none;
+}
+.ml-score-label{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin-bottom:.5rem}
+.ml-score-title{font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:800;color:var(--text);margin-bottom:.375rem}
+.ml-score-desc{font-size:.82rem;color:var(--muted);line-height:1.5}
+.ml-score-factors{margin-top:.875rem;display:flex;flex-direction:column;gap:.375rem}
+.ml-factor{font-size:.78rem;display:flex;align-items:center;gap:.5rem}
+.ml-factor i{width:14px;font-size:.75rem}
+.ml-factor.good{color:var(--green)}
+.ml-factor.bad{color:var(--yellow)}
+
+.ml-gauge{
+  width:120px;height:120px;position:relative;flex-shrink:0;
+}
+.ml-gauge svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ml-gauge-track{fill:none;stroke:rgba(255,255,255,.06);stroke-width:10;stroke-linecap:round}
+.ml-gauge-fill{fill:none;stroke-width:10;stroke-linecap:round;transition:stroke-dashoffset .8s cubic-bezier(.4,0,.2,1)}
+.ml-gauge-text{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+}
+.ml-gauge-pct{font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:800;letter-spacing:-1px;color:var(--text)}
+.ml-gauge-tag{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-top:-2px}
+.ml-api-badge{
+  display:inline-flex;align-items:center;gap:.35rem;
+  font-size:.7rem;font-weight:700;padding:.25rem .625rem;border-radius:100px;
+  background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.2);
+  margin-top:.75rem;
+}
+.ml-api-badge.offline{
+  background:rgba(239,68,68,.12);color:var(--red);border-color:rgba(239,68,68,.2);
+}
+.ml-api-dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── CONTENT GRID ── */
+.content-grid{
+  display:grid;grid-template-columns:1fr 360px;
+  gap:1.25rem;margin-bottom:1.75rem;
+}
+.content-grid-3{
+  display:grid;grid-template-columns:1fr 1fr 1fr;
+  gap:1.25rem;margin-bottom:1.75rem;
+}
+
+/* ── CARDS ── */
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:16px;overflow:hidden;
+}
+.card-header{
+  padding:1.125rem 1.5rem;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.card-header-title{
+  font-family:'Syne',sans-serif;font-size:.9rem;font-weight:700;
+  color:var(--text);display:flex;align-items:center;gap:.5rem;
+}
+.card-header-title i{color:var(--accent);font-size:.85rem}
+.card-body{padding:1.25rem 1.5rem}
+.card-badge{
+  font-size:.7rem;font-weight:700;padding:.25rem .625rem;
+  border-radius:100px;background:rgba(99,102,241,.15);color:var(--accent);
+}
+
+/* ── INSIGHTS ── */
+.insight-item{
+  display:flex;gap:.875rem;align-items:flex-start;
+  padding:.875rem 0;border-bottom:1px solid var(--border);
+}
+.insight-item:last-child{border-bottom:none;padding-bottom:0}
+.insight-icon{
+  width:36px;height:36px;border-radius:8px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:.875rem;
+  background:rgba(255,255,255,.05);
+}
+.insight-text{font-size:.83rem;color:var(--muted);line-height:1.55}
+.insight-text strong{color:var(--text)}
+
+/* ── FUNNEL ── */
+.funnel-step{
+  display:flex;align-items:center;gap:1rem;padding:.625rem 0;
+}
+.funnel-label{font-size:.78rem;font-weight:600;color:var(--muted);width:70px;flex-shrink:0}
+.funnel-bar-wrap{flex:1;height:28px;background:rgba(255,255,255,.04);border-radius:6px;overflow:hidden;position:relative}
+.funnel-bar{
+  height:100%;border-radius:6px;
+  display:flex;align-items:center;padding-left:.75rem;
+  font-size:.75rem;font-weight:700;color:#fff;
+  transition:width .8s cubic-bezier(.4,0,.2,1);
+  min-width:40px;
+}
+.funnel-val{font-size:.78rem;font-weight:700;color:#fff;width:40px;text-align:right;flex-shrink:0}
+
+/* ── SUGGESTIONS ── */
+.suggestion-item{
+  display:flex;align-items:center;gap:.875rem;
+  padding:.75rem 1rem;border-radius:10px;
+  background:var(--surface2);margin-bottom:.5rem;
+  border-left:3px solid;transition:background .15s;
+}
+.suggestion-item:last-child{margin-bottom:0}
+.suggestion-item:hover{background:var(--surface3)}
+.suggestion-item.high{border-color:var(--red)}
+.suggestion-item.medium{border-color:var(--yellow)}
+.suggestion-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.85rem;flex-shrink:0;background:rgba(255,255,255,.06)}
+.suggestion-text{font-size:.82rem;color:var(--muted);flex:1;line-height:1.4}
+.suggestion-priority{
+  font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+  padding:.2rem .5rem;border-radius:100px;flex-shrink:0;
+}
+.suggestion-priority.high{background:rgba(239,68,68,.12);color:var(--red)}
+.suggestion-priority.medium{background:rgba(245,158,11,.12);color:var(--yellow)}
+
+/* ── BOOKINGS TABLE ── */
+.booking-row{
+  display:flex;align-items:center;gap:1rem;padding:.875rem 1.5rem;
+  border-bottom:1px solid var(--border);transition:background .15s;
+}
+.booking-row:last-child{border-bottom:none}
+.booking-row:hover{background:var(--surface2)}
+.booking-avatar{
+  width:36px;height:36px;border-radius:50%;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:flex;align-items:center;justify-content:center;
+  font-size:.85rem;font-weight:700;color:#fff;flex-shrink:0;
+}
+.booking-info{flex:1;min-width:0}
+.booking-name{font-size:.85rem;font-weight:600;color:var(--text)}
+.booking-service{font-size:.75rem;color:var(--muted);margin-top:1px}
+.booking-date{font-size:.75rem;color:var(--muted);white-space:nowrap}
+.status-pill{
+  font-size:.68rem;font-weight:700;padding:.2rem .6rem;border-radius:100px;white-space:nowrap;
+}
+.status-pending{background:rgba(245,158,11,.12);color:var(--yellow)}
+.status-confirmed{background:rgba(99,102,241,.12);color:#818cf8}
+.status-completed{background:rgba(16,185,129,.12);color:var(--green)}
+.status-cancelled{background:rgba(239,68,68,.12);color:var(--red)}
+
+/* ── CHARTS ── */
+.chart-wrap{position:relative;padding:1.25rem 1.5rem 1.5rem}
+
+/* ── LEVEL PROGRESS ── */
+.level-card{
+  display:flex;align-items:center;gap:1.25rem;
+  padding:1.25rem 1.5rem;background:var(--surface2);border-radius:12px;
+  margin-bottom:1rem;
+}
+.level-icon{
+  width:52px;height:52px;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.5rem;flex-shrink:0;
+}
+.level-info{flex:1}
+.level-name{font-family:'Syne',sans-serif;font-size:1rem;font-weight:800;color:var(--text)}
+.level-sub{font-size:.75rem;color:var(--muted);margin-top:2px}
+.progress-wrap{margin-top:.5rem}
+.progress-bar-bg{background:rgba(255,255,255,.06);border-radius:100px;height:6px;overflow:hidden}
+.progress-bar-fill{height:100%;border-radius:100px;transition:width .8s ease}
+
+/* ── RESPONSIVE ── */
+@media(max-width:1200px){.stats-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:900px){
+  .content-grid,.content-grid-3{grid-template-columns:1fr}
+  .main-content{margin-left:0;padding:1rem}
+  .sidebar{transform:translateX(-100%);transition:transform .3s}
+  .sidebar.open{transform:translateX(0)}
+  .stats-grid{grid-template-columns:1fr 1fr}
+  .ml-score-card{grid-template-columns:1fr}
+}
+@media(max-width:480px){.stats-grid{grid-template-columns:1fr}}
+
+.mobile-toggle{
+  display:none;position:fixed;top:1rem;left:1rem;z-index:200;
+  background:var(--accent);color:#fff;border:none;border-radius:10px;
+  width:42px;height:42px;align-items:center;justify-content:center;cursor:pointer;
+  box-shadow:0 4px 14px rgba(99,102,241,.4);font-size:1rem;
+}
+@media(max-width:900px){.mobile-toggle{display:flex}}
+
+.overlay{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99;
+  backdrop-filter:blur(2px);
+}
+.overlay.active{display:block}
+
+/* Number animation */
+@keyframes countUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.stat-value,.ml-gauge-pct{animation:countUp .5s ease both}
+
+/* ── SUBSCRIPTION PLAN CARD ── */
+.subscription-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:16px;overflow:hidden;position:relative;
+}
+.sub-plan-badge{
+  display:flex;align-items:center;gap:.5rem;padding:.875rem 1.5rem;
+  color:#fff;font-weight:700;font-size:.85rem;
+  background:linear-gradient(135deg,#6366f1,#8b5cf6);
+}
+.sub-plan-badge i{font-size:.9rem}
+.sub-days{
+  margin-left:auto;background:rgba(255,255,255,.2);
+  padding:.2rem .6rem;border-radius:100px;font-size:.7rem;
+}
+.sub-features-grid{
+  display:grid;grid-template-columns:repeat(6,1fr);gap:1rem;padding:1.25rem 1.5rem;
+}
+.sub-feature-item{
+  display:flex;align-items:flex-start;gap:.75rem;
+}
+.sub-feature-icon{
+  width:36px;height:36px;border-radius:10px;
+  background:rgba(99,102,241,.1);color:var(--accent);
+  display:flex;align-items:center;justify-content:center;font-size:.9rem;
+  flex-shrink:0;
+}
+.sub-feature-item.locked .sub-feature-icon{background:rgba(107,114,128,.1);color:var(--muted)}
+.sub-feature-item.active .sub-feature-icon{background:rgba(16,185,129,.1);color:var(--green)}
+.sub-feature-info{flex:1;min-width:0}
+.sub-feature-label{font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;font-weight:600;margin-bottom:.2rem}
+.sub-feature-value{font-size:.85rem;font-weight:700;color:var(--text)}
+.sub-feature-item.locked .sub-feature-value{color:var(--muted)}
+.sub-feature-item.active .sub-feature-value{color:var(--green)}
+.sub-feature-bar{
+  margin-top:.4rem;height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden
+}
+.sub-feature-fill{height:100%;border-radius:2px;transition:width .5s ease}
+.sub-upgrade-hint{
+  display:flex;align-items:center;gap:.75rem;padding:.875rem 1.5rem;
+  background:var(--surface2);border-top:1px solid var(--border);
+  flex-wrap:wrap;
+}
+.sub-upgrade-hint i{color:var(--yellow)}
+.sub-upgrade-tag{
+  font-size:.72rem;padding:.25rem .5rem;border-radius:6px;background:rgba(245,158,11,.1);color:var(--yellow);
+}
+.sub-upgrade-tag.high{background:rgba(239,68,68,.1);color:var(--red)}
+.sub-upgrade-btn{
+  margin-left:auto;font-size:.8rem;font-weight:700;color:var(--accent);
+  text-decoration:none;transition:opacity .2s;
+}
+.sub-upgrade-btn:hover{opacity:.8}
+
+@media(max-width:1100px){
+  .sub-features-grid{grid-template-columns:repeat(3,1fr)}
+}
+@media(max-width:600px){
+  .sub-features-grid{grid-template-columns:repeat(2,1fr)}
+  .sub-upgrade-hint{flex-direction:column;align-items:flex-start}
+  .sub-upgrade-btn{margin-left:0;margin-top:.5rem}
+}
+</style>
 </head>
 <body>
-    <!-- Mobile Menu Toggle -->
-    <button class="mobile-menu-toggle" id="mobileToggle">
-        <i class="fas fa-bars"></i>
-    </button>
+<script>
+    (function() {
+        const theme = localStorage.getItem('provider_theme') || 'light';
+        document.documentElement.setAttribute('data-theme', theme);
+    })();
+</script>
+<button class="mobile-toggle" id="mobToggle"><i class="fas fa-bars"></i></button>
+<div class="overlay" id="overlay"></div>
 
-    <!-- Mobile Overlay -->
-    <div class="overlay" id="overlay"></div>
+<!-- ── SIDEBAR ── -->
+<?php include __DIR__ . '/includes/sidebar.php'; ?>
 
-    <!-- Sidebar -->
-    <?php include __DIR__ . '/includes/sidebar.php'; ?>
+<!-- ── MAIN ── -->
+<div class="main-content">
 
-    <!-- Main Content -->
-    <div class="main-content">
-        <!-- Maintenance Warning -->
-        <?php if (isset($maintenance_warning)): ?>
-            <div class="alert alert-warning alert-dismissible fade show" role="alert">
-                <div class="d-flex align-items-center">
-                    <i class="fas fa-tools fa-2x me-3"></i>
-                    <div>
-                        <h4 class="mb-1">Maintenance Mode Active</h4>
-                        <p class="mb-0">The platform is currently under maintenance. Some features may be limited.</p>
-                    </div>
-                </div>
-            </div>
-        <?php endif; ?>
+  <!-- Top Bar -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1>Dashboard</h1>
+      <p><?php echo date('l, F j, Y'); ?> · <?php echo htmlspecialchars($provider['full_name']); ?></p>
+    </div>
+    <div class="topbar-right" style="position:relative">
+      <!-- Level Badge -->
+      <div class="level-badge" style="--lc:<?php echo $level_color; ?>">
+        <span class="level-dot" style="background:<?php echo $level_color; ?>"></span>
+        <i class="<?php echo $level_icon; ?>" style="color:<?php echo $level_color; ?>;font-size:.8rem"></i>
+        <span style="color:<?php echo $level_color; ?>"><?php echo $level_label; ?> Provider</span>
+      </div>
 
-        <!-- Profile Completion Alert -->
-        <?php if ($profile_completion < 100): ?>
-            <div class="alert alert-info">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div class="d-flex align-items-center">
-                        <i class="fas fa-user-check fa-2x me-3"></i>
-                        <div>
-                            <h4 class="mb-1">Complete Your Profile</h4>
-                            <p class="mb-0">Your profile is <?php echo round($profile_completion); ?>% complete.</p>
-                        </div>
-                    </div>
-                    <div class="d-flex align-items-center gap-3">
-                        <div style="width: 100px;">
-                            <div class="progress" style="height: 8px;">
-                                <div class="progress-bar" style="width: <?php echo $profile_completion; ?>%"></div>
-                            </div>
-                        </div>
-                        <a href="profile.php" class="btn btn-light btn-sm px-3">
-                            <i class="fas fa-edit me-2"></i>Complete
-                        </a>
-                    </div>
-                </div>
-            </div>
-        <?php endif; ?>
+      <!-- ML API Status -->
+      <div class="ml-api-badge <?php echo $ml_api_healthy ? '' : 'offline'; ?>" style="display:inline-flex">
+        <span class="ml-api-dot"></span>
+        ML <?php echo $ml_api_healthy ? 'Online ✅' : 'Offline ❌'; ?>
+      </div>
 
-        <!-- Success/Error Messages -->
-        <?php if (isset($_SESSION['success_message'])): ?>
-            <div class="alert alert-success alert-dismissible fade show">
-                <div class="d-flex align-items-center">
-                    <i class="fas fa-check-circle fa-2x me-3"></i>
-                    <div class="flex-grow-1">
-                        <?php echo $_SESSION['success_message']; ?>
-                    </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" style="filter: brightness(0) invert(1);"></button>
-                </div>
-            </div>
-            <?php unset($_SESSION['success_message']); ?>
-        <?php endif; ?>
-
-        <?php if (isset($_SESSION['error_message'])): ?>
-            <div class="alert alert-danger alert-dismissible fade show">
-                <div class="d-flex align-items-center">
-                    <i class="fas fa-exclamation-circle fa-2x me-3"></i>
-                    <div class="flex-grow-1">
-                        <?php echo $_SESSION['error_message']; ?>
-                    </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" style="filter: brightness(0) invert(1);"></button>
-                </div>
-            </div>
-            <?php unset($_SESSION['error_message']); ?>
-        <?php endif; ?>
-
-        <!-- Header -->
-        <div class="dashboard-header">
-            <div class="welcome-section">
-                <h1>Welcome back, <?php echo htmlspecialchars($provider['full_name']); ?>.</h1>
-                <p><?php echo __('welcome.subtitle', [], 'dashboard'); ?></p>
-            </div>
-            <div class="date-display">
-                <i class="fas fa-calendar-alt me-2"></i>
-                <?php echo date('l, F j, Y'); ?>
-            </div>
+      <!-- Notification Bell -->
+      <div style="position:relative">
+        <div class="notif-btn" id="notifBtn">
+          <i class="fas fa-bell"></i>
+          <?php if ($unread_count > 0): ?>
+            <span class="notif-badge"><?php echo min(99,$unread_count); ?></span>
+          <?php endif; ?>
         </div>
-
-        <!-- Statistics -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon">
-                    <i class="fas fa-calendar-check"></i>
-                </div>
-                <div class="stat-content">
-                    <h3><?php echo $total_bookings; ?></h3>
-                    <p><?php echo __('statistics.total_bookings', [], 'dashboard'); ?></p>
-                    <?php if ($today_bookings > 0): ?>
-                        <div class="stat-trend trend-up">
-                            <i class="fas fa-arrow-up"></i>
-                            <span><?php echo $today_bookings; ?> <?php echo __('today', [], 'dashboard'); ?></span>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-            
-            <div class="stat-card">
-                <div class="stat-icon">
-                    <i class="fas fa-clock"></i>
-                </div>
-                <div class="stat-content">
-                    <h3><?php echo $pending_bookings; ?></h3>
-                    <p><?php echo __('statistics.pending_bookings', [], 'dashboard'); ?></p>
-                    <?php if ($pending_bookings > 0): ?>
-                        <div class="stat-trend trend-up">
-                            <i class="fas fa-exclamation-circle"></i>
-                            <span><?php echo __('bookings.action_success', [], 'dashboard'); ?></span>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-            
-            <div class="stat-card rating">
-                <div class="stat-icon">
-                    <i class="fas fa-star"></i>
-                </div>
-                <div class="stat-content">
-                    <h3><?php echo number_format($provider['average_rating'] ?? 0, 1); ?></h3>
-                    <p><?php echo __('statistics.average_rating', [], 'dashboard'); ?></p>
-                    <div class="stat-trend">
-                        <i class="fas fa-star text-warning"></i>
-                        <span><?php echo $total_reviews; ?> <?php echo __('notifications.review', [], 'dashboard'); ?></span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="stat-card schedule">
-                <div class="stat-icon">
-                    <i class="fas fa-calendar-alt"></i>
-                </div>
-                <div class="stat-content">
-                    <h3><?php echo $upcoming_today; ?></h3>
-                    <p><?php echo __('statistics.today_bookings', [], 'dashboard'); ?></p>
-                    <?php if ($is_working_day && $working_hours_display): ?>
-                        <div class="stat-trend">
-                            <i class="fas fa-clock"></i>
-                            <span><?php echo $working_hours_display; ?></span>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-            
-            <?php if (isCommissionEnabled()): ?>
-            <div class="stat-card earnings">
-                <div class="stat-icon">
-                    <i class="fas fa-money-bill-wave"></i>
-                </div>
-                <div class="stat-content">
-                    <h3>RWF <?php echo number_format($total_earnings, 0); ?></h3>
-                    <p><?php echo __('statistics.total_earnings', [], 'dashboard'); ?></p>
-                    <?php if ($total_earnings > 0): ?>
-                        <div class="stat-trend trend-up">
-                            <i class="fas fa-chart-line"></i>
-                            <span>Keep it up!</span>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </div>
+        <div class="notif-dropdown" id="notifDropdown">
+          <div class="notif-header">
+            <span>Notifications</span>
+            <?php if ($unread_count > 0): ?>
+              <span style="font-size:.7rem;color:var(--accent);cursor:pointer" id="markAllRead">Mark all read</span>
             <?php endif; ?>
+          </div>
+          <div class="notif-list">
+            <?php if (empty($all_notifications)): ?>
+              <div style="padding:1.5rem;text-align:center;color:var(--muted);font-size:.82rem">No notifications yet</div>
+            <?php else: foreach ($all_notifications as $notif): ?>
+              <div class="notif-item" <?php echo !$notif['is_read'] ? 'style="background:rgba(99,102,241,.05)"' : ''; ?>>
+                <div class="notif-icon-wrap"><i class="<?php echo htmlspecialchars($notif['icon'] ?? 'fas fa-bell'); ?>"></i></div>
+                <div>
+                  <div class="notif-item-title"><?php echo htmlspecialchars($notif['title']); ?></div>
+                  <div class="notif-item-text"><?php echo htmlspecialchars(substr($notif['message'],0,70)); ?>…</div>
+                  <div class="notif-item-time"><?php echo date('M d, g:i A', strtotime($notif['created_at'])); ?></div>
+                </div>
+              </div>
+            <?php endforeach; endif; ?>
+          </div>
         </div>
+      </div>
+    </div>
+  </div>
 
-        <!-- Availability Card -->
-        <div class="availability-card">
-            <form method="POST">
-                <div class="status-display">
-                    <div class="status-info">
-                        <h4><?php echo __('availability.title', [], 'dashboard'); ?></h4>
-                        <div class="status-indicator">
-                            <div class="status-dot <?php echo $provider['availability'] ?? 'available'; ?>"></div>
-                            <div class="status-text"><?php echo ucfirst($provider['availability'] ?? 'available'); ?></div>
-                        </div>
-                    </div>
-                    <div class="status-selector" style="min-width: 250px;">
-                        <select name="availability" class="form-select" onchange="this.form.submit()">
-                            <option value="available" <?php echo ($provider['availability'] ?? 'available') === 'available' ? 'selected' : ''; ?>><?php echo __('availability.available', [], 'dashboard'); ?> - <?php echo __('bookings.confirmed', [], 'dashboard'); ?></option>
-                            <option value="busy" <?php echo ($provider['availability'] ?? 'available') === 'busy' ? 'selected' : ''; ?>><?php echo __('availability.busy', [], 'dashboard'); ?> - <?php echo __('availability.working_hours', [], 'dashboard'); ?></option>
-                            <option value="unavailable" <?php echo ($provider['availability'] ?? 'available') === 'unavailable' ? 'selected' : ''; ?>><?php echo __('availability.unavailable', [], 'dashboard'); ?> - <?php echo __('bookings.no_bookings', [], 'dashboard'); ?></option>
-                        </select>
-                        <input type="hidden" name="update_status" value="1">
-                    </div>
-                </div>
-                
-                <?php if ($schedule_info && $is_working_day): ?>
-                <div class="schedule-summary">
-                    <div class="schedule-item">
-                        <div class="schedule-icon">
-                            <i class="fas fa-clock"></i>
-                        </div>
-                        <div class="schedule-info">
-                            <h5><?php echo __('schedule.today_summary', [], 'dashboard'); ?></h5>
-                            <p><?php echo $working_hours_display; ?></p>
-                        </div>
-                    </div>
-                    
-                    <div class="schedule-item">
-                        <div class="schedule-icon">
-                            <i class="fas fa-calendar-day"></i>
-                        </div>
-                        <div class="schedule-info">
-                            <h5><?php echo __('schedule.working_days', [], 'dashboard'); ?></h5>
-                            <p><?php echo implode(', ', array_slice($formatted_working_days, 0, 3)); if (count($formatted_working_days) > 3) echo '...'; ?></p>
-                        </div>
-                    </div>
-                    
-                    <?php if ($schedule_info['buffer_time']): ?>
-                    <div class="schedule-item">
-                        <div class="schedule-icon">
-                            <i class="fas fa-hourglass-half"></i>
-                        </div>
-                        <div class="schedule-info">
-                            <h5><?php echo __('schedule.buffer_time', [], 'dashboard'); ?></h5>
-                            <p><?php echo $schedule_info['buffer_time']; ?> <?php echo __('settings.availability.buffer_time', [], 'settings'); ?></p>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-                    
-                    <?php if ($schedule_info['max_daily_bookings']): ?>
-                    <div class="schedule-item">
-                        <div class="schedule-icon">
-                            <i class="fas fa-users"></i>
-                        </div>
-                        <div class="schedule-info">
-                            <h5><?php echo __('schedule.max_daily', [], 'dashboard'); ?></h5>
-                            <p><?php echo $schedule_info['max_daily_bookings']; ?> <?php echo __('bookings.bookings', [], 'dashboard'); ?></p>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-                </div>
-                <?php endif; ?>
-            </form>
-        </div>
+  <!-- ── Step 1: ML Hire Probability Card ── -->
+  <div class="ml-score-card">
+    <div>
+      <div class="ml-score-label">AI-Powered Score</div>
+      <div class="ml-score-title">Hire Probability</div>
+      <div class="ml-score-desc">Based on your profile activity, ratings, response speed, and booking history</div>
 
-        <!-- Main Grid -->
-        <div class="main-grid">
-            <!-- Notifications Center -->
-            <div class="card" style="grid-column: 1 / -1;">
-                <div class="card-header">
-                    <h3><i class="fas fa-bell"></i> <?php echo __('notifications.title', [], 'dashboard'); ?></h3>
-                    <?php if ($unread_count > 0): ?>
-                        <button id="markAllReadBtn" class="btn btn-sm btn-outline-primary">
-                            <i class="fas fa-check-double me-1"></i> <?php echo __('notifications.mark_all_read', [], 'dashboard'); ?>
-                        </button>
-                    <?php endif; ?>
-                </div>
+      <div class="ml-score-factors">
+        <?php foreach ($rank_factors as $rf): ?>
+          <div class="ml-factor <?php echo $rf['good'] ? 'good' : 'bad'; ?>">
+            <i class="<?php echo $rf['icon']; ?>"></i>
+            <?php echo htmlspecialchars($rf['text']); ?>
+          </div>
+        <?php endforeach; ?>
+      </div>
 
-                <!-- Filter Tabs -->
-                <div class="notification-filters">
-                    <a href="javascript:void(0)" class="filter-btn <?php echo $notification_filter === 'all' ? 'active' : ''; ?>" data-filter="all">
-                        <i class="fas fa-inbox"></i> <?php echo __('notifications.all', [], 'dashboard'); ?>
-                    </a>
-                    <a href="javascript:void(0)" class="filter-btn <?php echo $notification_filter === 'booking' ? 'active' : ''; ?>" data-filter="booking">
-                        <i class="fas fa-calendar-check"></i> <?php echo __('notifications.booking', [], 'dashboard'); ?> (<span class="count"><?php echo $notification_stats['booking'] ?? 0; ?></span>)
-                    </a>
-                    <a href="javascript:void(0)" class="filter-btn <?php echo $notification_filter === 'offer' ? 'active' : ''; ?>" data-filter="offer">
-                        <i class="fas fa-handshake"></i> <?php echo __('notifications.offer', [], 'dashboard'); ?> (<span class="count"><?php echo $notification_stats['offer'] ?? 0; ?></span>)
-                    </a>
-                    <a href="javascript:void(0)" class="filter-btn <?php echo $notification_filter === 'favorite' ? 'active' : ''; ?>" data-filter="favorite">
-                        <i class="fas fa-heart"></i> <?php echo __('notifications.favorite', [], 'dashboard'); ?> (<span class="count"><?php echo $notification_stats['favorite'] ?? 0; ?></span>)
-                    </a>
-                    <a href="javascript:void(0)" class="filter-btn <?php echo $notification_filter === 'service_update' ? 'active' : ''; ?>" data-filter="service_update">
-                        <i class="fas fa-sync"></i> <?php echo __('notifications.service_update', [], 'dashboard'); ?> (<span class="count"><?php echo ($notification_stats['service_update'] ?? 0) + ($notification_stats['service_added'] ?? 0); ?></span>)
-                    </a>
-                    <a href="javascript:void(0)" class="filter-btn <?php echo $notification_filter === 'review' ? 'active' : ''; ?>" data-filter="review">
-                        <i class="fas fa-star"></i> <?php echo __('notifications.review', [], 'dashboard'); ?> (<span class="count"><?php echo $notification_stats['review'] ?? 0; ?></span>)
-                    </a>
-                    <a href="javascript:void(0)" class="filter-btn <?php echo $notification_filter === 'profile_view' ? 'active' : ''; ?>" data-filter="profile_view">
-                        <i class="fas fa-eye"></i> <?php echo __('notifications.profile_view', [], 'dashboard'); ?> (<span class="count"><?php echo $notification_stats['profile_view'] ?? 0; ?></span>)
-                    </a>
-                    <a href="javascript:void(0)" class="filter-btn <?php echo $notification_filter === 'complaint' ? 'active' : ''; ?>" data-filter="complaint">
-                        <i class="fas fa-exclamation-triangle"></i> <?php echo __('notifications.complaint', [], 'dashboard'); ?> (<span class="count"><?php echo $notification_stats['complaint'] ?? 0; ?></span>)
-                    </a>
-                </div>
-
-                <!-- Notifications List -->
-                <?php if (empty($all_notifications)): ?>
-                    <div class="empty-state">
-                        <i class="fas fa-bell-slash"></i>
-                        <h3><?php echo __('notifications.no_notifications', [], 'dashboard'); ?></h3>
-                        <p><?php echo __('messages.loading', [], 'dashboard'); ?></p>
-                    </div>
-                <?php else: ?>
-                    <div id="notificationsList" style="display: grid; grid-template-columns: 1fr; gap: 1rem;">
-                        <?php foreach ($all_notifications as $notification): ?>
-                            <div class="notification-card <?php echo $notification['is_read'] ? '' : 'unread'; ?> <?php echo $notification['notification_type']; ?>" data-notification-id="<?php echo $notification['id']; ?>">
-                                <div class="notification-header">
-                                    <div class="notification-icon <?php echo $notification['notification_type']; ?>">
-                                        <i class="fas <?php echo $notification['icon']; ?>"></i>
-                                    </div>
-                                    <div style="flex: 1;">
-                                        <div class="notification-title">
-                                            <h5><?php echo htmlspecialchars($notification['title']); ?></h5>
-                                            <span class="notification-badge <?php echo $notification['is_read'] ? '' : 'unread'; ?> <?php echo $notification['priority']; ?>">
-                                                <?php echo ucfirst($notification['priority']); ?>
-                                            </span>
-                                        </div>
-                                        <p class="notification-message"><?php echo htmlspecialchars($notification['message']); ?></p>
-                                    </div>
-                                </div>
-
-                                <div class="notification-footer">
-                                    <div class="notification-time">
-                                        <i class="fas fa-clock"></i>
-                                        <span class="time-ago"><?php echo timeAgo($notification['created_at']); ?></span>
-                                    </div>
-                                    <div class="notification-actions">
-                                        <?php if (!$notification['is_read']): ?>
-                                            <button class="notification-btn primary mark-read-btn" data-notification-id="<?php echo $notification['id']; ?>">
-                                                <i class="fas fa-check"></i> Mark Read
-                                            </button>
-                                        <?php endif; ?>
-                                        <button class="notification-btn delete-btn" data-notification-id="<?php echo $notification['id']; ?>">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                <?php endif; ?>
-            </div>
-
-            <!-- Recent Bookings -->
-            <div class="card">
-                <div class="card-header">
-                    <h3><i class="fas fa-history"></i> <?php echo __('bookings.title', [], 'dashboard'); ?></h3>
-                    <a href="bookings.php" class="view-all-btn">
-                        <?php echo __('bookings.view_all', [], 'dashboard'); ?> <i class="fas fa-arrow-right"></i>
-                    </a>
-                </div>
-                
-                <?php if (empty($recent_bookings)): ?>
-                    <div class="empty-state">
-                        <i class="fas fa-calendar-times"></i>
-                        <h4><?php echo __('bookings.no_bookings', [], 'dashboard'); ?></h4>
-                        <p><?php echo __('welcome.subtitle', [], 'dashboard'); ?></p>
-                        <a href="services.php" class="btn btn-primary mt-2">
-                            <i class="fas fa-plus me-2"></i> <?php echo __('services.add_service', [], 'dashboard'); ?>
-                        </a>
-                    </div>
-                <?php else: ?>
-                    <div class="bookings-list">
-                        <?php foreach ($recent_bookings as $booking): ?>
-                            <div class="booking-item">
-                                <div class="booking-header">
-                                    <div class="booking-client">
-                                        <div class="client-avatar">
-                                            <?php echo strtoupper(substr($booking['client_name'], 0, 1)); ?>
-                                        </div>
-                                        <div class="client-info">
-                                            <h5><?php echo htmlspecialchars($booking['client_name']); ?></h5>
-                                            <p>
-                                                <i class="fas fa-envelope"></i> <?php echo htmlspecialchars($booking['client_email']); ?>
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <span class="badge badge-<?php echo $booking['status']; ?>">
-                                        <?php echo __('bookings.' . $booking['status'], [], 'dashboard'); ?>
-                                    </span>
-                                </div>
-                                
-                                <div class="booking-details">
-                                    <?php if (!empty($booking['service_name'])): ?>
-                                        <div class="booking-service">
-                                            <i class="fas fa-concierge-bell me-2"></i><?php echo htmlspecialchars($booking['service_name']); ?>
-                                        </div>
-                                    <?php endif; ?>
-                                    <p class="booking-description">
-                                        <?php echo htmlspecialchars($booking['service_description']); ?>
-                                    </p>
-                                </div>
-                                
-                                <div class="booking-footer">
-                                    <div class="booking-time">
-                                        <i class="fas fa-calendar-alt"></i>
-                                        <span><?php echo $booking['formatted_date']; ?></span>
-                                        <?php if ($booking['formatted_time']): ?>
-                                            <i class="fas fa-clock ms-2"></i>
-                                            <span><?php echo $booking['formatted_time']; ?></span>
-                                        <?php endif; ?>
-                                    </div>
-                                    
-                                    <?php if ($booking['status'] === 'pending' || $booking['status'] === 'confirmed'): ?>
-                                        <div class="booking-actions">
-                                            <?php if ($booking['status'] === 'pending'): ?>
-                                                <form method="POST" style="display: inline;">
-                                                    <input type="hidden" name="booking_id" value="<?php echo $booking['id']; ?>">
-                                                    <input type="hidden" name="booking_action" value="confirm">
-                                                    <button type="submit" class="action-btn confirm">
-                                                        <i class="fas fa-check me-1"></i> <?php echo __('bookings.confirm', [], 'dashboard'); ?>
-                                                    </button>
-                                                </form>
-                                                <?php if (isProviderRejectionAllowed()): ?>
-                                                <form method="POST" style="display: inline;">
-                                                    <input type="hidden" name="booking_id" value="<?php echo $booking['id']; ?>">
-                                                    <input type="hidden" name="booking_action" value="reject">
-                                                    <button type="submit" class="action-btn reject">
-                                                        <i class="fas fa-times me-1"></i> <?php echo __('bookings.reject', [], 'dashboard'); ?>
-                                                    </button>
-                                                </form>
-                                                <?php endif; ?>
-                                            <?php elseif ($booking['status'] === 'confirmed'): ?>
-                                                <form method="POST" style="display: inline;">
-                                                    <input type="hidden" name="booking_id" value="<?php echo $booking['id']; ?>">
-                                                    <input type="hidden" name="booking_action" value="complete">
-                                                    <button type="submit" class="action-btn complete">
-                                                        <i class="fas fa-check-double me-1"></i> <?php echo __('bookings.complete', [], 'dashboard'); ?>
-                                                    </button>
-                                                </form>
-                                            <?php endif; ?>
-                                        </div>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                <?php endif; ?>
-            </div>
-
-            <!-- My Services with Schedule -->
-            <div class="card">
-                <div class="card-header">
-                    <h3><i class="fas fa-concierge-bell"></i> <?php echo __('services.title', [], 'dashboard'); ?></h3>
-                    <a href="services.php" class="view-all-btn">
-                        <?php echo __('settings.common.update', [], 'settings'); ?> <i class="fas fa-arrow-right"></i>
-                    </a>
-                </div>
-                
-                <?php if (empty($recent_services)): ?>
-                    <div class="empty-state">
-                        <i class="fas fa-concierge-bell"></i>
-                        <h4><?php echo __('services.no_services', [], 'dashboard'); ?></h4>
-                        <p><?php echo __('welcome.subtitle', [], 'dashboard'); ?></p>
-                        <a href="services.php?action=add" class="btn btn-primary mt-2">
-                            <i class="fas fa-plus me-2"></i> <?php echo __('services.add_service', [], 'dashboard'); ?>
-                        </a>
-                    </div>
-                <?php else: ?>
-                    <div class="services-list">
-                        <?php foreach ($recent_services as $service): ?>
-                            <div class="service-item">
-                                <div class="service-header">
-                                    <div class="service-info">
-                                        <h5><?php echo htmlspecialchars($service['name']); ?></h5>
-                                        <div class="service-category">
-                                            <?php if ($service['category_icon']): ?>
-                                                <i class="fas <?php echo $service['category_icon']; ?>"></i>
-                                            <?php endif; ?>
-                                            <span><?php echo htmlspecialchars($service['category_name'] ?? 'Uncategorized'); ?></span>
-                                        </div>
-                                    </div>
-                                    <div class="service-price">
-                                        RWF <?php echo number_format($service['price'], 0); ?>
-                                    </div>
-                                </div>
-                                
-                                <!-- Service Schedule Information -->
-                                <div class="service-schedule">
-                                    <div class="schedule-title">
-                                        <i class="fas fa-calendar-alt"></i>
-                                        <?php echo __('settings.availability.section_title', [], 'settings'); ?>
-                                    </div>
-                                    <div class="schedule-details">
-                                        <div class="schedule-detail">
-                                            <i class="fas fa-clock"></i>
-                                            <span><?php echo __('schedule.working_hours', [], 'dashboard'); ?>: <?php echo $service['duration']; ?> mins</span>
-                                        </div>
-                                        
-                                        <?php if ($service['upcoming_bookings'] > 0): ?>
-                                        <div class="schedule-detail">
-                                            <i class="fas fa-calendar-check"></i>
-                                            <span><?php echo $service['upcoming_bookings']; ?> upcoming bookings</span>
-                                        </div>
-                                        <?php endif; ?>
-                                        
-                                        <?php if ($schedule_info['working_hours_start'] && $schedule_info['working_hours_end']): ?>
-                                        <div class="schedule-detail">
-                                            <i class="fas fa-business-time"></i>
-                                            <span>Hours: <?php echo date('g:i A', strtotime($schedule_info['working_hours_start'])); ?> - <?php echo date('g:i A', strtotime($schedule_info['working_hours_end'])); ?></span>
-                                        </div>
-                                        <?php endif; ?>
-                                        
-                                        <?php if ($schedule_info['buffer_time']): ?>
-                                        <div class="schedule-detail">
-                                            <i class="fas fa-hourglass-half"></i>
-                                            <span>Buffer: <?php echo $schedule_info['buffer_time']; ?> mins</span>
-                                        </div>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                    
-                    <!-- Service Schedule Summary -->
-                    <div class="service-schedule mt-3">
-                        <div class="schedule-title">
-                            <i class="fas fa-calendar-week"></i>
-                            Weekly Schedule Overview
-                        </div>
-                        <div class="schedule-details">
-                            <div class="schedule-detail">
-                                <i class="fas fa-calendar-day"></i>
-                                <span><strong>Working Days:</strong> <?php echo implode(', ', $formatted_working_days); ?></span>
-                            </div>
-                            
-                            <?php if ($total_weekly > 0): ?>
-                            <div class="schedule-detail">
-                                <i class="fas fa-chart-line"></i>
-                                <span><strong>This Week:</strong> <?php echo $total_weekly; ?> bookings</span>
-                            </div>
-                            <?php endif; ?>
-                            
-                            <?php if ($schedule_info['max_daily_bookings']): ?>
-                            <div class="schedule-detail">
-                                <i class="fas fa-user-check"></i>
-                                <span><strong>Daily Limit:</strong> <?php echo $schedule_info['max_daily_bookings']; ?> bookings/day</span>
-                            </div>
-                            <?php endif; ?>
-                            
-                            <div class="schedule-detail">
-                                <i class="fas fa-info-circle"></i>
-                                <span><a href="schedule-management.php" class="text-primary">Manage schedule settings</a></span>
-                            </div>
-                        </div>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <!-- Quick Actions -->
-        <div class="card">
-            <div class="card-header">
-                <h3><i class="fas fa-bolt"></i> Quick Actions</h3>
-            </div>
-            <div class="quick-actions-grid">
-                <a href="profile.php" class="action-card">
-                    <div class="action-icon">
-                        <i class="fas fa-edit"></i>
-                    </div>
-                    <h6>Update Profile</h6>
-                </a>
-                
-                <a href="bookings.php" class="action-card">
-                    <div class="action-icon">
-                        <i class="fas fa-calendar-plus"></i>
-                    </div>
-                    <h6>Manage Bookings</h6>
-                </a>
-                
-                <a href="services.php" class="action-card">
-                    <div class="action-icon">
-                        <i class="fas fa-concierge-bell"></i>
-                    </div>
-                    <h6>My Services</h6>
-                </a>
-                
-                <a href="schedule-management.php" class="action-card">
-                    <div class="action-icon">
-                        <i class="fas fa-calendar-alt"></i>
-                    </div>
-                    <h6>Schedule Settings</h6>
-                </a>
-                
-                <a href="reviews.php" class="action-card">
-                    <div class="action-icon">
-                        <i class="fas fa-star-half-alt"></i>
-                    </div>
-                    <h6>View Reviews</h6>
-                </a>
-                
-                <a href="../index.php" class="action-card">
-                    <div class="action-icon">
-                        <i class="fas fa-external-link-alt"></i>
-                    </div>
-                    <h6>View Profile</h6>
-                </a>
-            </div>
-        </div>
+      <div class="ml-api-badge <?php echo $ml_api_healthy ? '' : 'offline'; ?>">
+        <span class="ml-api-dot"></span>
+        ML System: <?php echo $ml_api_healthy ? 'Online ✅' : 'Offline — using estimated score ❌'; ?>
+      </div>
     </div>
 
-    <!-- Bootstrap JS -->
-    <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // ===== REAL-TIME NOTIFICATIONS SYSTEM =====
-        
-        // Current filter state
-        let currentFilter = '<?php echo $notification_filter; ?>';
-        let unreadCount = <?php echo $unread_count; ?>;
-        
-        // API Endpoint
-        const API_URL = './api/notifications.php';
-        
-        // Initialize notification handlers
-        document.addEventListener('DOMContentLoaded', function() {
-            setupFilterButtons();
-            setupNotificationActions();
-            setupMarkAllRead();
-            setupAutoRefresh();
-        });
-        
-        // ===== FILTER BUTTONS =====
-        function setupFilterButtons() {
-            document.querySelectorAll('.notification-filters .filter-btn').forEach(btn => {
-                btn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const filter = this.dataset.filter;
-                    filterNotifications(filter);
-                });
-            });
-        }
-        
-        function filterNotifications(filter) {
-            currentFilter = filter;
-            
-            // Update active button
-            document.querySelectorAll('.notification-filters .filter-btn').forEach(btn => {
-                btn.classList.remove('active');
-                if (btn.dataset.filter === filter) {
-                    btn.classList.add('active');
-                }
-            });
-            
-            // Load notifications via AJAX
-            loadNotifications(filter);
-        }
-        
-        // ===== LOAD NOTIFICATIONS =====
-        function loadNotifications(filter = 'all') {
-            const params = new URLSearchParams();
-            params.append('action', 'get_notifications');
-            if (filter !== 'all') {
-                params.append('type', filter);
-            }
-            params.append('limit', 100);
-            
-            fetch(API_URL + '?' + params, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    renderNotifications(data.notifications);
-                    updateUnreadCount();
-                } else {
-                    showError('Failed to load notifications');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showError('Error loading notifications');
-            });
-        }
-        
-        // ===== RENDER NOTIFICATIONS =====
-        function renderNotifications(notifications) {
-            const container = document.getElementById('notificationsList');
-            if (!container) return;
-            
-            if (notifications.length === 0) {
-                container.parentElement.innerHTML = `
-                    <div class="empty-state">
-                        <i class="fas fa-bell-slash"></i>
-                        <h3>No notifications</h3>
-                        <p>You're all caught up! No new notifications at this time.</p>
-                    </div>
-                `;
-                return;
-            }
-            
-            container.innerHTML = notifications.map(notif => `
-                <div class="notification-card ${notif.is_read ? '' : 'unread'} ${notif.notification_type}" data-notification-id="${notif.id}">
-                    <div class="notification-header">
-                        <div class="notification-icon ${notif.notification_type}">
-                            <i class="fas ${notif.icon}"></i>
-                        </div>
-                        <div style="flex: 1;">
-                            <div class="notification-title">
-                                <h5>${escapeHtml(notif.title)}</h5>
-                                <span class="notification-badge ${notif.is_read ? '' : 'unread'} ${notif.priority}">
-                                    ${notif.priority.charAt(0).toUpperCase() + notif.priority.slice(1)}
-                                </span>
-                            </div>
-                            <p class="notification-message">${escapeHtml(notif.message)}</p>
-                        </div>
-                    </div>
-                    <div class="notification-footer">
-                        <div class="notification-time">
-                            <i class="fas fa-clock"></i>
-                            <span class="time-ago">${notif.time_ago}</span>
-                        </div>
-                        <div class="notification-actions">
-                            ${!notif.is_read ? `
-                                <button class="notification-btn primary mark-read-btn" data-notification-id="${notif.id}">
-                                    <i class="fas fa-check"></i> Mark Read
-                                </button>
-                            ` : ''}
-                            <button class="notification-btn delete-btn" data-notification-id="${notif.id}">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-            
-            setupNotificationActions();
-        }
-        
-        // ===== NOTIFICATION ACTIONS =====
-        function setupNotificationActions() {
-            // Mark as read buttons
-            document.querySelectorAll('.mark-read-btn').forEach(btn => {
-                btn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const notificationId = this.dataset.notificationId;
-                    markNotificationAsRead(notificationId);
-                });
-            });
-            
-            // Delete buttons
-            document.querySelectorAll('.delete-btn').forEach(btn => {
-                btn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const notificationId = this.dataset.notificationId;
-                    deleteNotification(notificationId);
-                });
-            });
-        }
-        
-        // Mark notification as read
-        function markNotificationAsRead(notificationId) {
-            const formData = new FormData();
-            formData.append('action', 'mark_as_read');
-            formData.append('notification_id', notificationId);
-            
-            fetch(API_URL, {
-                method: 'POST',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Update card immediately
-                    const card = document.querySelector(`[data-notification-id="${notificationId}"]`);
-                    if (card) {
-                        card.classList.remove('unread');
-                        const markBtn = card.querySelector('.mark-read-btn');
-                        if (markBtn) markBtn.remove();
-                    }
-                    updateUnreadCount();
-                    showSuccess('Notification marked as read');
-                } else {
-                    showError('Failed to mark notification as read');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showError('Error updating notification');
-            });
-        }
-        
-        // Delete notification
-        function deleteNotification(notificationId) {
-            const formData = new FormData();
-            formData.append('action', 'delete');
-            formData.append('notification_id', notificationId);
-            
-            fetch(API_URL, {
-                method: 'POST',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Remove card with animation
-                    const card = document.querySelector(`[data-notification-id="${notificationId}"]`);
-                    if (card) {
-                        card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-                        card.style.opacity = '0';
-                        card.style.transform = 'translateX(100%)';
-                        setTimeout(() => card.remove(), 300);
-                    }
-                    updateUnreadCount();
-                    showSuccess('Notification deleted');
-                } else {
-                    showError('Failed to delete notification');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showError('Error deleting notification');
-            });
-        }
-        
-        // ===== MARK ALL READ =====
-        function setupMarkAllRead() {
-            const btn = document.getElementById('markAllReadBtn');
-            if (btn) {
-                btn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    markAllAsRead();
-                });
-            }
-        }
-        
-        function markAllAsRead() {
-            const formData = new FormData();
-            formData.append('action', 'mark_all_read');
-            
-            fetch(API_URL, {
-                method: 'POST',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    document.querySelectorAll('.notification-card.unread').forEach(card => {
-                        card.classList.remove('unread');
-                        const markBtn = card.querySelector('.mark-read-btn');
-                        if (markBtn) markBtn.remove();
-                    });
-                    updateUnreadCount();
-                    showSuccess('All notifications marked as read');
-                    
-                    // Hide mark all read button
-                    const btn = document.getElementById('markAllReadBtn');
-                    if (btn) btn.style.display = 'none';
-                } else {
-                    showError('Failed to mark all as read');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showError('Error updating notifications');
-            });
-        }
-        
-        // ===== UPDATE UNREAD COUNT =====
-        function updateUnreadCount() {
-            fetch(API_URL + '?action=get_unread_count', {
-                method: 'GET',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    unreadCount = data.unread_count;
-                    updateBadge(unreadCount);
-                    
-                    // Hide mark all read if no unread
-                    if (unreadCount === 0) {
-                        const btn = document.getElementById('markAllReadBtn');
-                        if (btn) btn.style.display = 'none';
-                    }
-                }
-            })
-            .catch(error => console.error('Error:', error));
-        }
-        
-        function updateBadge(count) {
-            // Update sidebar badge
-            const badges = document.querySelectorAll('.sidebar-menu .notification-badge');
-            if (badges.length > 0 && count > 0) {
-                badges.forEach(badge => {
-                    badge.textContent = count;
-                    badge.style.display = 'inline-block';
-                });
-            } else if (badges.length > 0) {
-                badges.forEach(badge => badge.style.display = 'none');
-            }
-        }
-        
-        // ===== AUTO REFRESH =====
-        function setupAutoRefresh() {
-            // Refresh notification count every 30 seconds
-            setInterval(() => {
-                updateUnreadCount();
-            }, 30000);
-        }
-        
-        // ===== TOAST NOTIFICATIONS =====
-        function showSuccess(message) {
-            showToast(message, 'success');
-        }
-        
-        function showError(message) {
-            showToast(message, 'danger');
-        }
-        
-        function showToast(message, type = 'info') {
-            const alertClass = `alert-${type}`;
-            const alert = document.createElement('div');
-            alert.className = `alert ${alertClass} alert-dismissible fade show`;
-            alert.role = 'alert';
-            alert.style.position = 'fixed';
-            alert.style.top = '20px';
-            alert.style.right = '20px';
-            alert.style.zIndex = '9999';
-            alert.style.minWidth = '300px';
-            alert.innerHTML = `
-                <div class="d-flex align-items-center">
-                    <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'} me-2"></i>
-                    <span>${escapeHtml(message)}</span>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            `;
-            document.body.appendChild(alert);
-            
-            const bsAlert = new bootstrap.Alert(alert);
-            setTimeout(() => bsAlert.close(), 4000);
-        }
-        
-        // ===== UTILITY FUNCTIONS =====
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        
-        // Mobile sidebar toggle (existing code)
-        const mobileToggle = document.getElementById('mobileToggle');
-        const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('overlay');
-        
-        if (mobileToggle) {
-            mobileToggle.addEventListener('click', () => {
-                sidebar.classList.toggle('mobile-open');
-                overlay.classList.toggle('active');
-                document.body.style.overflow = sidebar.classList.contains('mobile-open') ? 'hidden' : '';
-            });
-            
-            overlay.addEventListener('click', () => {
-                sidebar.classList.remove('mobile-open');
-                overlay.classList.remove('active');
-                document.body.style.overflow = '';
-            });
-        }
-        
-        // Close sidebar when clicking on menu items on mobile
-        document.querySelectorAll('.sidebar-menu a').forEach(link => {
-            link.addEventListener('click', () => {
-                if (window.innerWidth <= 992) {
-                    sidebar.classList.remove('mobile-open');
-                    overlay.classList.remove('active');
-                    document.body.style.overflow = '';
-                }
-            });
-        });
-        
-        // Auto-dismiss alerts after 5 seconds
-        setTimeout(() => {
-            const alerts = document.querySelectorAll('.alert:not([style*="position"])');
-            alerts.forEach(alert => {
-                const bsAlert = new bootstrap.Alert(alert);
-                bsAlert.close();
-            });
-        }, 5000);
-        
-        // Confirm booking actions
-        document.querySelectorAll('form[method="POST"] button[type="submit"]').forEach(button => {
-            if (button.textContent.includes('Reject') || button.textContent.includes('Complete')) {
-                button.addEventListener('click', function(e) {
-                    const action = this.textContent.includes('Reject') ? 'reject' : 'complete';
-                    const message = action === 'reject' 
-                        ? 'Are you sure you want to reject this booking?' 
-                        : 'Mark this booking as completed?';
-                    
-                    if (!confirm(message)) {
-                        e.preventDefault();
-                    }
-                });
-            }
-        });
-        
-        // Animate stat cards on scroll
-        const observerOptions = {
-            threshold: 0.1,
-            rootMargin: '0px 0px -50px 0px'
-        };
-        
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.style.opacity = '1';
-                    entry.target.style.transform = 'translateY(0)';
-                }
-            });
-        }, observerOptions);
-        
-        // Apply animation to stat cards
-        document.querySelectorAll('.stat-card').forEach(card => {
-            card.style.opacity = '0';
-            card.style.transform = 'translateY(20px)';
-            card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-            observer.observe(card);
-        });
-        
-        // Update time every minute
-        function updateTime() {
-            const now = new Date();
-            const options = { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            };
-            const dateStr = now.toLocaleDateString('en-US', options);
-            const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-            
-            const dateElement = document.querySelector('.date-display');
-            if (dateElement) {
-                dateElement.innerHTML = `<i class="fas fa-calendar-alt me-2"></i>${dateStr} | ${timeStr}`;
-            }
-        }
-        
-        // Initial update and set interval
-        updateTime();
-        setInterval(updateTime, 60000);
-        
-        // Add hover effect to cards
-        document.querySelectorAll('.card, .stat-card').forEach(card => {
-            card.addEventListener('mouseenter', function() {
-                this.style.zIndex = '10';
-            });
-            
-            card.addEventListener('mouseleave', function() {
-                this.style.zIndex = '';
-            });
-        });
-        
-        // Handle window resize
-        function handleResize() {
-            if (window.innerWidth > 992) {
-                sidebar.classList.remove('mobile-open');
-                overlay.classList.remove('active');
-                document.body.style.overflow = '';
-            }
-        }
-        
-        window.addEventListener('resize', handleResize);
+    <!-- Gauge -->
+    <div class="ml-gauge">
+      <?php
+        $r = 52; $circ = 2*M_PI*$r; $ml_frac = $ml_score/100;
+        $dash = $circ; $offset = $circ*(1-$ml_frac);
+        $gauge_color = $ml_score >= 70 ? '#10b981' : ($ml_score >= 40 ? '#f59e0b' : '#ef4444');
+      ?>
+      <svg viewBox="0 0 120 120">
+        <circle class="ml-gauge-track" cx="60" cy="60" r="<?php echo $r; ?>"/>
+        <circle class="ml-gauge-fill"
+          cx="60" cy="60" r="<?php echo $r; ?>"
+          stroke="<?php echo $gauge_color; ?>"
+          stroke-dasharray="<?php echo $circ; ?>"
+          stroke-dashoffset="<?php echo $offset; ?>"
+          data-offset="<?php echo $offset; ?>"
+          data-dash="<?php echo $circ; ?>"
+        />
+      </svg>
+      <div class="ml-gauge-text">
+        <span class="ml-gauge-pct" style="color:<?php echo $gauge_color; ?>"><?php echo $ml_score; ?>%</span>
+        <span class="ml-gauge-tag"><?php echo $ml_score>=70?'High':($ml_score>=40?'Medium':'Low'); ?></span>
+      </div>
+    </div>
+  </div>
 
-        // ===== REAL-TIME DASHBOARD UPDATES =====
-        let lastUpdate = Date.now();
-        const UPDATE_INTERVAL = 30000; // 30 seconds
+  <!-- ── Subscription Plan Card ── -->
+  <?php 
+    $plan_colors = [
+      'Free' => ['#6b7280', '#9ca3af'],
+      'Standard' => ['#0d6efd', '#60a5fa'],
+      'Pro' => ['#10b981', '#34d399']
+    ];
+    $pc = $plan_colors[$plan_features['plan_name']] ?? $plan_colors['Free'];
+  ?>
+  <div class="subscription-card" style="margin-bottom:1.75rem">
+    <div class="sub-plan-badge" style="background:linear-gradient(135deg,<?php echo $pc[0]; ?>,<?php echo $pc[1]; ?>)">
+      <i class="<?php echo $plan_features['is_paid'] ? 'fas fa-crown' : 'fas fa-tag'; ?>"></i>
+      <span><?php echo htmlspecialchars($plan_features['plan_name']); ?> Plan</span>
+      <?php if ($plan_features['is_paid']): ?>
+        <span class="sub-days"><?php echo $plan_features['days_remaining']; ?> days left</span>
+      <?php endif; ?>
+    </div>
+    <div class="sub-features-grid">
+      <div class="sub-feature-item">
+        <div class="sub-feature-icon"><i class="fas fa-concierge-bell"></i></div>
+        <div class="sub-feature-info">
+          <div class="sub-feature-label">Services</div>
+          <div class="sub-feature-value"><?php echo $service_usage_text; ?></div>
+          <div class="sub-feature-bar"><div class="sub-feature-fill" style="width:<?php echo $service_usage_pct; ?>%;background:<?php echo $pc[0]; ?>"></div></div>
+        </div>
+      </div>
+      <div class="sub-feature-item">
+        <div class="sub-feature-icon"><i class="fas fa-images"></i></div>
+        <div class="sub-feature-info">
+          <div class="sub-feature-label">Photos</div>
+          <div class="sub-feature-value"><?php echo $photo_usage_text; ?></div>
+          <div class="sub-feature-bar"><div class="sub-feature-fill" style="width:<?php echo $photo_usage_pct; ?>%;background:<?php echo $pc[0]; ?>"></div></div>
+        </div>
+      </div>
+      <div class="sub-feature-item">
+        <div class="sub-feature-icon"><i class="fas fa-chart-pie"></i></div>
+        <div class="sub-feature-info">
+          <div class="sub-feature-label">Analytics</div>
+          <div class="sub-feature-value"><?php echo ucfirst($plan_features['analytics_level']); ?></div>
+        </div>
+      </div>
+      <div class="sub-feature-item">
+        <div class="sub-feature-icon"><i class="fas fa-rocket"></i></div>
+        <div class="sub-feature-info">
+          <div class="sub-feature-label">Boost</div>
+          <div class="sub-feature-value"><?php echo $plan_features['ranking_boost_days']; ?> days</div>
+        </div>
+      </div>
+      <div class="sub-feature-item <?php echo $plan_features['ai_enabled'] ? 'active' : 'locked'; ?>">
+        <div class="sub-feature-icon"><i class="fas fa-robot"></i></div>
+        <div class="sub-feature-info">
+          <div class="sub-feature-label">AI Tools</div>
+          <div class="sub-feature-value"><?php echo $plan_features['ai_enabled'] ? 'Enabled' : 'Upgrade'; ?></div>
+        </div>
+      </div>
+      <div class="sub-feature-item <?php echo $plan_features['priority_ranking'] ? 'active' : 'locked'; ?>">
+        <div class="sub-feature-icon"><i class="fas fa-arrow-up"></i></div>
+        <div class="sub-feature-info">
+          <div class="sub-feature-label">Priority Ranking</div>
+          <div class="sub-feature-value"><?php echo $plan_features['priority_ranking'] ? 'Active' : 'Standard'; ?></div>
+        </div>
+      </div>
+    </div>
+    <?php if (!empty($upgrade_suggestions)): ?>
+    <div class="sub-upgrade-hint">
+      <i class="fas fa-lightbulb"></i>
+      <?php foreach($upgrade_suggestions as $us): ?>
+        <span class="sub-upgrade-tag <?php echo $us['priority']; ?>"><?php echo htmlspecialchars($us['text']); ?></span>
+      <?php endforeach; ?>
+      <a href="select-plan.php" class="sub-upgrade-btn">Upgrade Now →</a>
+    </div>
+    <?php endif; ?>
+  </div>
 
-        function updateDashboardData() {
-            fetch('dashboard.php?ajax=dashboard_data', {
-                method: 'GET',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    updateStats(data.stats);
-                    updateRecentBookings(data.recent_bookings);
-                    lastUpdate = Date.now();
-                }
-            })
-            .catch(error => {
-                console.error('Error updating dashboard:', error);
-            });
+  <!-- ── Stats Grid ── -->
+  <div class="stats-grid">
+    <div class="stat-card" style="--card-accent:#6366f1">
+      <div class="stat-icon" style="color:#818cf8"><i class="fas fa-calendar-check"></i></div>
+      <div class="stat-value" data-target="<?php echo $total_bookings; ?>">0</div>
+      <div class="stat-label">Total Bookings</div>
+      <div class="stat-change <?php echo $pending_bookings>0?'up':'neutral'; ?>">
+        <i class="fas <?php echo $pending_bookings>0?'fa-arrow-up':'fa-minus'; ?>"></i>
+        <?php echo $pending_bookings; ?> pending
+      </div>
+    </div>
+    <div class="stat-card" style="--card-accent:#10b981">
+      <div class="stat-icon" style="color:#6ee7b7"><i class="fas fa-check-circle"></i></div>
+      <div class="stat-value" data-target="<?php echo $completed_bookings; ?>">0</div>
+      <div class="stat-label">Completed Jobs</div>
+      <div class="stat-change <?php echo $completed_bookings>0?'up':'neutral'; ?>">
+        <i class="fas fa-briefcase"></i> all time
+      </div>
+    </div>
+    <div class="stat-card" style="--card-accent:#f59e0b">
+      <div class="stat-icon" style="color:#fcd34d"><i class="fas fa-star"></i></div>
+      <div class="stat-value" data-target="<?php echo round((float)($provider['average_rating']??0)*10); ?>" data-divisor="10"><?php echo number_format((float)($provider['average_rating']??0),1); ?></div>
+      <div class="stat-label">Avg Rating</div>
+      <div class="stat-change neutral"><i class="fas fa-comments"></i> <?php echo $total_reviews; ?> reviews</div>
+    </div>
+    <div class="stat-card" style="--card-accent:#06b6d4">
+      <div class="stat-icon" style="color:#67e8f9"><i class="fas fa-eye"></i></div>
+      <div class="stat-value" data-target="<?php echo $total_views; ?>">0</div>
+      <div class="stat-label">Profile Views</div>
+      <div class="stat-change <?php echo $views_growth>0?'up':($views_growth<0?'down':'neutral'); ?>">
+        <i class="fas fa-arrow-<?php echo $views_growth>=0?'up':'down'; ?>"></i>
+        <?php echo abs($views_growth); ?>% this week
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Content Row 1 ── -->
+  <div class="content-grid">
+    <!-- Charts -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-title"><i class="fas fa-chart-line"></i> Views & Clicks (Last 7 Days)</div>
+        <span class="card-badge">Live</span>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="activityChart" height="160"></canvas>
+      </div>
+    </div>
+
+    <!-- Step 2: AI Insights -->
+    <?php if ($provider_ai_enabled): ?>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-title"><i class="fas fa-brain"></i> AI Insights</div>
+        <span class="card-badge"><?php echo count($insights); ?> active</span>
+      </div>
+      <div class="card-body" style="padding-top:.5rem">
+        <?php foreach ($insights as $ins): ?>
+          <div class="insight-item">
+            <div class="insight-icon" style="background:<?php echo $ins['color']; ?>18;color:<?php echo $ins['color']; ?>">
+              <i class="<?php echo $ins['icon']; ?>"></i>
+            </div>
+            <div class="insight-text"><?php echo $ins['text']; ?></div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <?php endif; ?>
+  </div>
+
+  <!-- ── Content Row 2 ── -->
+  <div class="content-grid-3">
+
+    <!-- Step 3: Funnel Analytics -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-title"><i class="fas fa-filter"></i> Funnel Analytics</div>
+      </div>
+      <div class="card-body">
+        <?php
+          $funnel_steps = [
+            ['Views', $funnel_views, '#6366f1'],
+            ['Clicks', $funnel_clicks, '#8b5cf6'],
+            ['Messages', $funnel_messages, '#f59e0b'],
+            ['Hires', $funnel_hires, '#10b981'],
+          ];
+          $max_f = max(1, $funnel_views);
+          foreach($funnel_steps as $fs):
+            $pct = min(100,round($fs[1]/$max_f*100));
+        ?>
+          <div class="funnel-step">
+            <div class="funnel-label"><?php echo $fs[0]; ?></div>
+            <div class="funnel-bar-wrap">
+              <div class="funnel-bar" style="width:<?php echo $pct; ?>%;background:<?php echo $fs[2]; ?>">
+                <?php if($pct>20): echo $fs[1]; endif; ?>
+              </div>
+            </div>
+            <div class="funnel-val"><?php echo $pct<=20?$fs[1]:''; ?></div>
+          </div>
+        <?php endforeach; ?>
+
+        <div style="margin-top:1rem;padding-top:.875rem;border-top:1px solid var(--border)">
+          <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;font-weight:700;margin-bottom:.5rem">Conversion Rate</div>
+          <div style="font-size:1.5rem;font-family:'Syne',sans-serif;font-weight:800;color:var(--text)"><?php echo $conversion_rate; ?>%</div>
+          <div style="font-size:.75rem;color:var(--muted)">Views → Completed Hires</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 6: Suggestions -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-title"><i class="fas fa-lightbulb"></i> Recommendations</div>
+        <span class="card-badge"><?php echo count($suggestions); ?> tips</span>
+      </div>
+      <div class="card-body">
+        <?php if (empty($suggestions)): ?>
+          <div style="text-align:center;padding:1rem 0;color:var(--muted);font-size:.85rem">
+            <i class="fas fa-check-circle" style="color:var(--green);font-size:1.5rem;display:block;margin-bottom:.5rem"></i>
+            Profile is fully optimised!
+          </div>
+        <?php else: foreach($suggestions as $s): ?>
+          <div class="suggestion-item <?php echo $s['priority']; ?>">
+            <div class="suggestion-icon" style="color:<?php echo $s['priority']==='high'?'var(--red)':'var(--yellow)'; ?>">
+              <i class="<?php echo $s['icon']; ?>"></i>
+            </div>
+            <div class="suggestion-text"><?php echo htmlspecialchars($s['text']); ?></div>
+            <span class="suggestion-priority <?php echo $s['priority']; ?>"><?php echo ucfirst($s['priority']); ?></span>
+          </div>
+        <?php endforeach; endif; ?>
+      </div>
+    </div>
+
+    <!-- Step 8: Level System -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-title"><i class="fas fa-layer-group"></i> Provider Level</div>
+      </div>
+      <div class="card-body">
+        <div class="level-card">
+          <div class="level-icon" style="background:<?php echo $level_color; ?>18;color:<?php echo $level_color; ?>">
+            <i class="<?php echo $level_icon; ?>"></i>
+          </div>
+          <div class="level-info">
+            <div class="level-name" style="color:<?php echo $level_color; ?>"><?php echo $level_label; ?></div>
+            <div class="level-sub">Next: <?php echo $level_next; ?></div>
+            <div class="progress-wrap">
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill" style="width:<?php echo $level_progress; ?>%;background:<?php echo $level_color; ?>"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem;margin-top:.25rem">
+          <?php
+            $tiers=[
+              ['Bronze','#cd7f32','fas fa-medal',3,3.0,'bronze'],
+              ['Silver','#9ca3af','fas fa-award',10,3.5,'silver'],
+              ['Gold','#f59e0b','fas fa-trophy',25,4.0,'gold'],
+            ];
+            foreach($tiers as $t):
+              $active = $level===$t[5];
+          ?>
+            <div style="
+              text-align:center;padding:.75rem .5rem;border-radius:10px;
+              background:<?php echo $active?'rgba(255,255,255,.06)':'rgba(255,255,255,.02)'; ?>;
+              border:1px solid <?php echo $active?$t[1].'44':'rgba(255,255,255,.05)'; ?>;
+            ">
+              <i class="<?php echo $t[2]; ?>" style="color:<?php echo $t[1]; ?>;font-size:1.25rem;display:block;margin-bottom:.375rem"></i>
+              <div style="font-size:.72rem;font-weight:700;color:<?php echo $t[1]; ?>"><?php echo $t[0]; ?></div>
+              <div style="font-size:.65rem;color:var(--muted);margin-top:2px"><?php echo $t[3]; ?> jobs / <?php echo $t[4]; ?>★</div>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Recent Bookings ── -->
+  <div class="card" style="margin-bottom:1.75rem">
+    <div class="card-header">
+      <div class="card-header-title"><i class="fas fa-calendar-alt"></i> Recent Bookings</div>
+      <a href="bookings.php" style="font-size:.78rem;color:var(--accent);font-weight:600">View all →</a>
+    </div>
+    <?php if (empty($recent_bookings)): ?>
+      <div style="padding:2rem;text-align:center;color:var(--muted);font-size:.85rem">
+        <i class="fas fa-calendar" style="font-size:2rem;display:block;margin-bottom:.5rem;opacity:.3"></i>
+        No bookings yet
+      </div>
+    <?php else: foreach ($recent_bookings as $b): ?>
+      <div class="booking-row">
+        <div class="booking-avatar"><?php echo strtoupper(substr($b['client_name'],0,1)); ?></div>
+        <div class="booking-info">
+          <div class="booking-name"><?php echo htmlspecialchars($b['client_name']); ?></div>
+          <div class="booking-service"><?php echo htmlspecialchars($b['service_name'] ?? 'General Service'); ?></div>
+        </div>
+        <div class="booking-date"><?php echo htmlspecialchars($b['fmt_date']); ?></div>
+        <span class="status-pill status-<?php echo htmlspecialchars($b['status']); ?>"><?php echo ucfirst($b['status']); ?></span>
+      </div>
+    <?php endforeach; endif; ?>
+  </div>
+
+</div><!-- /main-content -->
+
+<script>
+// ── Notification dropdown ──────────────────────────────────────────────────
+const notifBtn = document.getElementById('notifBtn');
+const notifDropdown = document.getElementById('notifDropdown');
+notifBtn?.addEventListener('click', e => {
+  e.stopPropagation();
+  notifDropdown.classList.toggle('open');
+});
+document.addEventListener('click', () => notifDropdown?.classList.remove('open'));
+
+document.getElementById('markAllRead')?.addEventListener('click', () => {
+  fetch('../api/notifications.php', {method:'POST',body:JSON.stringify({action:'mark_all_read'}),headers:{'Content-Type':'application/json'}})
+    .then(() => { document.querySelector('.notif-badge')?.remove(); });
+});
+
+// ── Mobile sidebar ────────────────────────────────────────────────────────
+const mobToggle = document.getElementById('mobToggle');
+const overlay = document.getElementById('overlay');
+const sidebar = document.querySelector('.sidebar');
+mobToggle?.addEventListener('click', () => { sidebar?.classList.toggle('open'); overlay?.classList.toggle('active'); });
+overlay?.addEventListener('click', () => { sidebar?.classList.remove('open'); overlay?.classList.remove('active'); });
+
+// ── Animated counters ─────────────────────────────────────────────────────
+function animateNumber(el, target, divisor = 1) {
+  const duration = 800;
+  const start = performance.now();
+  function tick(now) {
+    const t = Math.min(1, (now - start) / duration);
+    const ease = 1 - Math.pow(1 - t, 3);
+    const val = Math.round(target * ease) / divisor;
+    el.textContent = divisor === 1 ? Math.round(val) : val.toFixed(1);
+    if (t < 1) requestAnimationFrame(tick);
+    else el.textContent = divisor === 1 ? target : (target / divisor).toFixed(1);
+  }
+  requestAnimationFrame(tick);
+}
+document.querySelectorAll('[data-target]').forEach(el => {
+  const tgt = parseInt(el.dataset.target);
+  const div = parseFloat(el.dataset.divisor ?? 1);
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { animateNumber(el, tgt, div); io.disconnect(); } });
+  });
+  io.observe(el);
+});
+
+// ── Gauge animation ───────────────────────────────────────────────────────
+const gaugeFill = document.querySelector('.ml-gauge-fill');
+if (gaugeFill) {
+  const offset = parseFloat(gaugeFill.dataset.offset);
+  const dash = parseFloat(gaugeFill.dataset.dash);
+  gaugeFill.style.strokeDashoffset = dash; // start empty
+  requestAnimationFrame(() => {
+    gaugeFill.style.transition = 'stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1) .3s';
+    gaugeFill.style.strokeDashoffset = offset;
+  });
+}
+
+// ── Activity Chart (Step 4) ───────────────────────────────────────────────
+const ctx = document.getElementById('activityChart');
+if (ctx) {
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: <?php echo json_encode($chart_labels); ?>,
+      datasets: [
+        {
+          label: 'Profile Views',
+          data: <?php echo json_encode($chart_views); ?>,
+          borderColor: '#6366f1',
+          backgroundColor: 'rgba(99,102,241,.12)',
+          borderWidth: 2.5,
+          pointBackgroundColor: '#6366f1',
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          fill: true,
+          tension: .4,
+        },
+        {
+          label: 'Clicks',
+          data: <?php echo json_encode($chart_clicks); ?>,
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16,185,129,.08)',
+          borderWidth: 2.5,
+          pointBackgroundColor: '#10b981',
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          fill: true,
+          tension: .4,
         }
-
-        function updateStats(stats) {
-            // Update stat cards
-            document.querySelector('.stat-card .stat-content h3').textContent = stats.total_bookings;
-            document.querySelector('.stat-card .stat-content p').textContent = 'Total Bookings';
-
-            const pendingCard = document.querySelectorAll('.stat-card .stat-content')[1];
-            pendingCard.querySelector('h3').textContent = stats.pending_bookings;
-            pendingCard.querySelector('p').textContent = 'Pending Bookings';
-
-            const ratingCard = document.querySelectorAll('.stat-card .stat-content')[2];
-            ratingCard.querySelector('h3').textContent = parseFloat(stats.average_rating).toFixed(1);
-            ratingCard.querySelector('p').textContent = 'Average Rating';
-
-            const scheduleCard = document.querySelectorAll('.stat-card .stat-content')[3];
-            scheduleCard.querySelector('h3').textContent = stats.upcoming_today;
-            scheduleCard.querySelector('p').textContent = 'Today\'s Bookings';
-
-            // Update earnings if exists
-            const earningsCard = document.querySelector('.stat-card.earnings .stat-content h3');
-            if (earningsCard) {
-                earningsCard.textContent = 'RWF ' + parseInt(stats.total_earnings).toLocaleString();
-            }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: { color: '#7c82a3', font: { family: 'DM Sans', size: 11 }, boxWidth: 12 }
+        },
+        tooltip: {
+          backgroundColor: '#1e2130',
+          borderColor: 'rgba(255,255,255,.07)',
+          borderWidth: 1,
+          titleColor: '#fff',
+          bodyColor: '#7c82a3',
+          padding: 10,
+          cornerRadius: 8,
         }
-
-        function updateRecentBookings(bookings) {
-            const container = document.querySelector('.bookings-list');
-            if (!container || bookings.length === 0) return;
-
-            container.innerHTML = bookings.map(booking => `
-                <div class="booking-item">
-                    <div class="booking-header">
-                        <div class="booking-client">
-                            <div class="client-avatar">
-                                ${booking.client_name.charAt(0).toUpperCase()}
-                            </div>
-                            <div class="client-info">
-                                <h5>${booking.client_name}</h5>
-                                <p>
-                                    <i class="fas fa-envelope"></i> ${booking.client_email}
-                                </p>
-                            </div>
-                        </div>
-                        <span class="badge badge-${booking.status}">
-                            ${booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
-                        </span>
-                    </div>
-                    
-                    <div class="booking-details">
-                        ${booking.service_name ? `<div class="booking-service">
-                            <i class="fas fa-concierge-bell me-2"></i>${booking.service_name}
-                        </div>` : ''}
-                        <p class="booking-description">
-                            ${booking.service_description}
-                        </p>
-                    </div>
-                    
-                    <div class="booking-footer">
-                        <div class="booking-time">
-                            <i class="fas fa-calendar-alt"></i>
-                            <span>${booking.formatted_date}</span>
-                            ${booking.formatted_time ? `<i class="fas fa-clock ms-2"></i>
-                            <span>${booking.formatted_time}</span>` : ''}
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255,255,255,.04)', drawBorder: false },
+          ticks: { color: '#7c82a3', font: { family: 'DM Sans', size: 11 } }
+        },
+        y: {
+          grid: { color: 'rgba(255,255,255,.04)', drawBorder: false },
+          ticks: { color: '#7c82a3', font: { family: 'DM Sans', size: 11 }, stepSize: 1 },
+          beginAtZero: true
         }
+      }
+    }
+  });
+}
 
-        // Start periodic updates
-        setInterval(updateDashboardData, UPDATE_INTERVAL);
-
-        // Initial update after page load
-        setTimeout(updateDashboardData, 5000);
-    </script>
+// ── Auto-refresh stats every 60s ─────────────────────────────────────────
+function refreshStats() {
+  fetch('dashboard.php?ajax=dashboard_data')
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) return;
+      const s = data.stats;
+      // Update stat values silently (no animation on refresh)
+      const cards = document.querySelectorAll('.stat-value');
+      const vals = [s.total_bookings, s.completed ?? 0, s.average_rating, s.total_views ?? 0];
+    })
+    .catch(() => {});
+}
+setTimeout(refreshStats, 60000);
+setInterval(refreshStats, 60000);
+</script>
 </body>
 </html>

@@ -5,7 +5,7 @@ require_once '../includes/functions.php';
 
 // Check admin access
 if (!isLoggedIn() || !isAdmin()) {
-    redirect('../login.php');
+    redirect('login.php');
 }
 
 $db = Database::getInstance()->getConnection();
@@ -34,7 +34,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'platform_description' => $platform_description,
                 'copyright_text' => $copyright_text,
                 'timezone' => $timezone,
-                'maintenance_mode' => $maintenance_mode
+                'maintenance_mode' => $maintenance_mode,
+                'admin_theme' => isset($_POST['admin_theme']) ? 'dark' : 'light'
             ];
             
             foreach ($settings as $key => $value) {
@@ -199,14 +200,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $payment_settings = [
                 'enable_commission' => isset($_POST['enable_commission']) ? 1 : 0,
-                'commission_rate' => floatval($_POST['commission_rate']),
                 'enable_subscriptions' => isset($_POST['enable_subscriptions']) ? 1 : 0,
-                'basic_subscription_price' => floatval($_POST['basic_subscription_price']),
-                'premium_subscription_price' => floatval($_POST['premium_subscription_price']),
-                'featured_listing_price' => floatval($_POST['featured_listing_price']),
-                'verification_fee' => floatval($_POST['verification_fee']),
                 'enable_payouts' => isset($_POST['enable_payouts']) ? 1 : 0,
-                'payment_gateway' => sanitize($_POST['payment_gateway'])
+                'payment_gateway' => sanitize($_POST['payment_gateway']),
+                // New payment gateway settings
+                'payment_enabled' => isset($_POST['payment_enabled']) ? 1 : 0,
+                'default_gateway' => sanitize($_POST['default_gateway'] ?? 'fake'),
+                'mtn_api_key' => sanitize($_POST['mtn_api_key'] ?? ''),
+                'stripe_api_key' => sanitize($_POST['stripe_api_key'] ?? ''),
+                'visa_merchant_id' => sanitize($_POST['visa_merchant_id'] ?? '')
             ];
             
             foreach ($payment_settings as $key => $value) {
@@ -224,7 +226,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
     
-    // 🟤 7. Security & Privacy Settings
+    // � 6b. Subscription Plans Management
+    if (isset($_POST['add_plan'])) {
+        try {
+            $stmt = $db->prepare("
+                INSERT INTO plans (name, monthly_price, service_limit, photo_limit, analytics_level, ai_enabled) 
+                VALUES (?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->execute([
+                sanitize($_POST['plan_name']),
+                floatval($_POST['plan_price']),
+                intval($_POST['service_limit']),
+                intval($_POST['photo_limit']),
+                sanitize($_POST['analytics_level']),
+                isset($_POST['ai_enabled']) ? 1 : 0
+            ]);
+            $success = "Plan added successfully";
+        } catch (Exception $e) {
+            $errors[] = "Failed to add plan: " . $e->getMessage();
+        }
+    }
+    
+    if (isset($_POST['update_plan'])) {
+        try {
+            $stmt = $db->prepare("
+                UPDATE plans SET 
+                    name = ?, monthly_price = ?, service_limit = ?, 
+                    photo_limit = ?, analytics_level = ?, ai_enabled = ?
+                WHERE id = ?
+            ");
+            $stmt->execute([
+                sanitize($_POST['plan_name']),
+                floatval($_POST['plan_price']),
+                intval($_POST['service_limit']),
+                intval($_POST['photo_limit']),
+                sanitize($_POST['analytics_level']),
+                isset($_POST['ai_enabled']) ? 1 : 0,
+                intval($_POST['plan_id'])
+            ]);
+            $success = "Plan updated successfully";
+        } catch (Exception $e) {
+            $errors[] = "Failed to update plan: " . $e->getMessage();
+        }
+    }
+    
+    if (isset($_POST['delete_plan'])) {
+        try {
+            // Check if plan has active subscriptions
+            $stmt = $db->prepare("SELECT COUNT(*) FROM provider_subscriptions WHERE plan_id = ? AND status = 'active'");
+            $stmt->execute([intval($_POST['plan_id'])]);
+            $active_count = $stmt->fetchColumn();
+            
+            if ($active_count > 0) {
+                $errors[] = "Cannot delete plan with active subscriptions";
+            } else {
+                $stmt = $db->prepare("DELETE FROM plans WHERE id = ?");
+                $stmt->execute([intval($_POST['plan_id'])]);
+                $success = "Plan deleted successfully";
+            }
+        } catch (Exception $e) {
+            $errors[] = "Failed to delete plan: " . $e->getMessage();
+        }
+    }
+    
+    // �🟤 7. Security & Privacy Settings
     if (isset($_POST['update_security_settings'])) {
         try {
             $security_settings = [
@@ -359,6 +424,9 @@ function getSetting($db, $key, $default = '') {
 $categories = $db->query("SELECT * FROM categories ORDER BY name")->fetchAll();
 $districts = $db->query("SELECT * FROM districts ORDER BY name")->fetchAll();
 $blocked_ips = $db->query("SELECT ip_address FROM blocked_ips")->fetchAll(PDO::FETCH_COLUMN);
+
+// Load subscription plans
+$plans = $db->query("SELECT * FROM plans ORDER BY monthly_price ASC")->fetchAll();
 
 // System information
 $system_info = [
@@ -858,6 +926,12 @@ $system_info = [
                             <input class="form-check-input" type="checkbox" name="maintenance_mode" id="maintenance_mode" value="1" <?php echo getSetting($db, 'maintenance_mode') ? 'checked' : ''; ?>>
                             <label class="form-check-label" for="maintenance_mode">Enable Maintenance Mode</label>
                         </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" name="admin_theme" id="admin_theme" value="dark" <?php echo getSetting($db, 'admin_theme', 'light') === 'dark' ? 'checked' : ''; ?>>
+                            <label class="form-check-label" for="admin_theme">Admin Dark Mode</label>
+                            <div class="form-text">Enable dark mode for the admin interface across all admin pages.</div>
+                        </div>
                         
                         <button type="submit" name="update_general_settings" class="btn btn-primary">
                             <i class="fas fa-save me-2"></i> Save General Settings
@@ -1178,41 +1252,47 @@ $system_info = [
                             </div>
                         </div>
                         
-                        <h5 class="mb-3">Pricing Configuration</h5>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Commission Rate (%)</label>
-                                <input type="number" class="form-control" name="commission_rate" value="<?php echo getSetting($db, 'commission_rate', '10'); ?>" min="0" max="50" step="0.5">
-                            </div>
-                            
-                            <div class="col-md-6">
-                                <label class="form-label">Basic Subscription (RWF/month)</label>
-                                <input type="number" class="form-control" name="basic_subscription_price" value="<?php echo getSetting($db, 'basic_subscription_price', '5000'); ?>" min="0" step="1000">
+                        <h5 class="mb-3 mt-4">Payment Gateway Configuration</h5>
+                        <div class="checkbox-group mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="payment_enabled" id="payment_enabled" value="1" <?php echo getSetting($db, 'payment_enabled', '0') ? 'checked' : ''; ?>>
+                                <label class="form-check-label" for="payment_enabled">Enable Payment Processing</label>
                             </div>
                         </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Premium Subscription (RWF/month)</label>
-                                <input type="number" class="form-control" name="premium_subscription_price" value="<?php echo getSetting($db, 'premium_subscription_price', '15000'); ?>" min="0" step="1000">
-                            </div>
-                            
-                            <div class="col-md-6">
-                                <label class="form-label">Featured Listing (RWF/month)</label>
-                                <input type="number" class="form-control" name="featured_listing_price" value="<?php echo getSetting($db, 'featured_listing_price', '10000'); ?>" min="0" step="1000">
-                            </div>
-                        </div>
-                        
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Verification Fee (RWF)</label>
-                                <input type="number" class="form-control" name="verification_fee" value="<?php echo getSetting($db, 'verification_fee', '2000'); ?>" min="0" step="1000">
-                            </div>
-                        </div>
-                        
-                        <h5 class="mb-3 mt-4">Payment Gateway</h5>
+
                         <div class="mb-3">
-                            <label class="form-label">Primary Payment Gateway</label>
+                            <label class="form-label">Default Payment Gateway</label>
+                            <select class="form-select" name="default_gateway">
+                                <option value="fake" <?php echo getSetting($db, 'default_gateway', 'fake') === 'fake' ? 'selected' : ''; ?>>Fake Gateway (Testing)</option>
+                                <option value="mtn" <?php echo getSetting($db, 'default_gateway') === 'mtn' ? 'selected' : ''; ?>>MTN Mobile Money</option>
+                                <option value="stripe" <?php echo getSetting($db, 'default_gateway') === 'stripe' ? 'selected' : ''; ?>>Stripe</option>
+                                <option value="card" <?php echo getSetting($db, 'default_gateway') === 'card' ? 'selected' : ''; ?>>Card Payment (Visa/Mastercard)</option>
+                            </select>
+                        </div>
+
+                        <h6 class="mb-3">API Keys & Configuration</h6>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">MTN MoMo API Key</label>
+                                <input type="password" class="form-control" name="mtn_api_key" value="<?php echo htmlspecialchars(getSetting($db, 'mtn_api_key', '')); ?>" placeholder="Enter MTN API Key">
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">Stripe API Key</label>
+                                <input type="password" class="form-control" name="stripe_api_key" value="<?php echo htmlspecialchars(getSetting($db, 'stripe_api_key', '')); ?>" placeholder="Enter Stripe API Key">
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Visa Merchant ID</label>
+                                <input type="text" class="form-control" name="visa_merchant_id" value="<?php echo htmlspecialchars(getSetting($db, 'visa_merchant_id', '')); ?>" placeholder="Enter Visa Merchant ID">
+                            </div>
+                        </div>
+
+                        <h5 class="mb-3 mt-4">Legacy Payment Gateway</h5>
+                        <div class="mb-3">
+                            <label class="form-label">Primary Payment Gateway (Legacy)</label>
                             <select class="form-select" name="payment_gateway">
                                 <option value="flutterwave" <?php echo getSetting($db, 'payment_gateway') === 'flutterwave' ? 'selected' : ''; ?>>Flutterwave</option>
                                 <option value="paypal" <?php echo getSetting($db, 'payment_gateway') === 'paypal' ? 'selected' : ''; ?>>PayPal</option>
@@ -1225,6 +1305,171 @@ $system_info = [
                             <i class="fas fa-save me-2"></i> Save Payment Settings
                         </button>
                     </form>
+                </div>
+                
+                <!-- Subscription Plans Management -->
+                <div class="settings-section mt-4">
+                    <h3 class="section-title">Subscription Plans</h3>
+                    <p class="text-muted">Manage provider subscription plans with different feature levels.</p>
+                    
+                    <!-- Add New Plan Form -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0"><i class="fas fa-plus me-2"></i>Add New Plan</h5>
+                        </div>
+                        <div class="card-body">
+                            <form method="POST" class="row g-3">
+                                <div class="col-md-2">
+                                    <label class="form-label">Plan Name</label>
+                                    <input type="text" class="form-control" name="plan_name" required placeholder="e.g., Basic">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">Price (RWF)</label>
+                                    <input type="number" class="form-control" name="plan_price" required min="0" step="100" placeholder="0">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">Service Limit</label>
+                                    <input type="number" class="form-control" name="service_limit" required min="0" placeholder="3">
+                                    <small class="text-muted">0 = unlimited</small>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">Photo Limit</label>
+                                    <input type="number" class="form-control" name="photo_limit" required min="0" placeholder="3">
+                                    <small class="text-muted">0 = unlimited</small>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">Analytics Level</label>
+                                    <select class="form-select" name="analytics_level">
+                                        <option value="none">None</option>
+                                        <option value="basic">Basic</option>
+                                        <option value="better">Better</option>
+                                        <option value="advanced">Advanced</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">AI Features</label>
+                                    <div class="form-check mt-2">
+                                        <input class="form-check-input" type="checkbox" name="ai_enabled" id="ai_enabled" value="1">
+                                        <label class="form-check-label" for="ai_enabled">Enable AI</label>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <button type="submit" name="add_plan" class="btn btn-success">
+                                        <i class="fas fa-plus me-2"></i>Add Plan
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <!-- Existing Plans List -->
+                    <div class="card">
+                        <div class="card-header bg-dark text-white">
+                            <h5 class="mb-0"><i class="fas fa-list me-2"></i>Existing Plans</h5>
+                        </div>
+                        <div class="card-body">
+                            <?php if (empty($plans)): ?>
+                                <p class="text-muted">No plans found. Add a plan above.</p>
+                            <?php else: ?>
+                                <div class="table-responsive">
+                                    <table class="table table-bordered table-hover">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Price</th>
+                                                <th>Services</th>
+                                                <th>Photos</th>
+                                                <th>Analytics</th>
+                                                <th>AI</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($plans as $plan): ?>
+                                            <tr>
+                                                <td><strong><?php echo htmlspecialchars($plan['name']); ?></strong></td>
+                                                <td><?php echo number_format($plan['monthly_price']); ?> RWF</td>
+                                                <td><?php echo $plan['service_limit'] == 0 ? 'Unlimited' : $plan['service_limit']; ?></td>
+                                                <td><?php echo $plan['photo_limit'] == 0 ? 'Unlimited' : $plan['photo_limit']; ?></td>
+                                                <td><span class="badge bg-<?php 
+                                                    echo $plan['analytics_level'] === 'advanced' ? 'success' : 
+                                                        ($plan['analytics_level'] === 'better' ? 'info' : 
+                                                        ($plan['analytics_level'] === 'basic' ? 'warning' : 'secondary'));
+                                                ?>"><?php echo ucfirst($plan['analytics_level']); ?></span></td>
+                                                <td><?php echo $plan['ai_enabled'] ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>'; ?></td>
+                                                <td>
+                                                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#editPlanModal<?php echo $plan['id']; ?>">
+                                                        <i class="fas fa-edit"></i>
+                                                    </button>
+                                                    <form method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this plan?');">
+                                                        <input type="hidden" name="plan_id" value="<?php echo $plan['id']; ?>">
+                                                        <button type="submit" name="delete_plan" class="btn btn-sm btn-danger">
+                                                            <i class="fas fa-trash"></i>
+                                                        </button>
+                                                    </form>
+                                                </td>
+                                            </tr>
+                                            
+                                            <!-- Edit Plan Modal -->
+                                            <div class="modal fade" id="editPlanModal<?php echo $plan['id']; ?>" tabindex="-1">
+                                                <div class="modal-dialog">
+                                                    <div class="modal-content">
+                                                        <div class="modal-header">
+                                                            <h5 class="modal-title">Edit Plan: <?php echo htmlspecialchars($plan['name']); ?></h5>
+                                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                        </div>
+                                                        <form method="POST">
+                                                            <div class="modal-body">
+                                                                <input type="hidden" name="plan_id" value="<?php echo $plan['id']; ?>">
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">Plan Name</label>
+                                                                    <input type="text" class="form-control" name="plan_name" value="<?php echo htmlspecialchars($plan['name']); ?>" required>
+                                                                </div>
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">Price (RWF)</label>
+                                                                    <input type="number" class="form-control" name="plan_price" value="<?php echo $plan['monthly_price']; ?>" required min="0" step="100">
+                                                                </div>
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">Service Limit</label>
+                                                                    <input type="number" class="form-control" name="service_limit" value="<?php echo $plan['service_limit']; ?>" required min="0">
+                                                                    <small class="text-muted">0 = unlimited</small>
+                                                                </div>
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">Photo Limit</label>
+                                                                    <input type="number" class="form-control" name="photo_limit" value="<?php echo $plan['photo_limit']; ?>" required min="0">
+                                                                    <small class="text-muted">0 = unlimited</small>
+                                                                </div>
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">Analytics Level</label>
+                                                                    <select class="form-select" name="analytics_level">
+                                                                        <option value="none" <?php echo $plan['analytics_level'] === 'none' ? 'selected' : ''; ?>>None</option>
+                                                                        <option value="basic" <?php echo $plan['analytics_level'] === 'basic' ? 'selected' : ''; ?>>Basic</option>
+                                                                        <option value="better" <?php echo $plan['analytics_level'] === 'better' ? 'selected' : ''; ?>>Better</option>
+                                                                        <option value="advanced" <?php echo $plan['analytics_level'] === 'advanced' ? 'selected' : ''; ?>>Advanced</option>
+                                                                    </select>
+                                                                </div>
+                                                                <div class="mb-3">
+                                                                    <div class="form-check">
+                                                                        <input class="form-check-input" type="checkbox" name="ai_enabled" id="ai_enabled_edit<?php echo $plan['id']; ?>" value="1" <?php echo $plan['ai_enabled'] ? 'checked' : ''; ?>>
+                                                                        <label class="form-check-label" for="ai_enabled_edit<?php echo $plan['id']; ?>">Enable AI Features</label>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div class="modal-footer">
+                                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                                                <button type="submit" name="update_plan" class="btn btn-primary">Save Changes</button>
+                                                            </div>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1440,12 +1685,6 @@ $system_info = [
 
         // Settings validation
         function validateSettings(form) {
-            const commissionRate = form.querySelector('input[name="commission_rate"]');
-            if (commissionRate && commissionRate.value > 50) {
-                alert('Commission rate cannot exceed 50%');
-                return false;
-            }
-            
             const fileSize = form.querySelector('input[name="max_file_size"]');
             if (fileSize && fileSize.value > 100) {
                 alert('Maximum file size cannot exceed 100MB');
@@ -1472,6 +1711,22 @@ $system_info = [
                 bsAlert.close();
             });
         }, 5000);
+
+        // Admin dark mode toggle handling
+        const adminThemeToggle = document.getElementById('admin_theme');
+        if (adminThemeToggle) {
+            const storedTheme = localStorage.getItem('admin_theme');
+            if (storedTheme) {
+                document.documentElement.setAttribute('data-theme', storedTheme);
+                adminThemeToggle.checked = storedTheme === 'dark';
+            }
+
+            adminThemeToggle.addEventListener('change', function() {
+                const theme = this.checked ? 'dark' : 'light';
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('admin_theme', theme);
+            });
+        }
     </script>
 </body>
 </html>

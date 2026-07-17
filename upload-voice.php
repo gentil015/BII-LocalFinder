@@ -89,6 +89,15 @@ if (!move_uploaded_file($file['tmp_name'], $target)) {
     exit;
 }
 
+// Verify file exists and is readable after upload
+if (!file_exists($target) || !is_readable($target)) {
+    file_put_contents(__DIR__ . '/voice_upload.log', date('Y-m-d H:i:s') . ' - File validation failed after upload: ' . $target . ' (exists: ' . (file_exists($target) ? 'yes' : 'no') . ', readable: ' . (is_readable($target) ? 'yes' : 'no') . ")\n", FILE_APPEND);
+    @unlink($target);
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'File validation failed']);
+    exit;
+}
+
 file_put_contents(__DIR__ . '/voice_upload.log', date('Y-m-d H:i:s') . ' - File saved successfully to ' . $target . "\n", FILE_APPEND);
 
 $filePath = 'uploads/chat/' . $filename;

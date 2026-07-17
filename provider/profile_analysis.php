@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../config/database.php';
+require_once '../includes/functions.php';
 require_once '../includes/ai_helpers.php';
 
 header('Content-Type: application/json');
@@ -11,6 +12,15 @@ if (!isLoggedIn() || !isProvider()) {
 }
 
 $db = Database::getInstance()->getConnection();
+$stmt = $db->prepare("SELECT id FROM service_providers WHERE user_id = ? LIMIT 1");
+$stmt->execute([$_SESSION['user_id']]);
+$providerRow = $stmt->fetch();
+
+if (empty($providerRow['id']) || !isProviderAIEnabled($providerRow['id'])) {
+    echo json_encode(['success' => false, 'error' => 'AI features are disabled for this provider.']);
+    exit;
+}
+
 $aiHelper = new AIHelper($db);
 
 // Get current provider data

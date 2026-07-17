@@ -8,271 +8,31 @@ if (!headers_sent()) {
 
 require_once 'config/database.php';
 require_once 'includes/functions.php';
+require_once 'controllers/pages/HomePageController.php';
 
 // Release session lock early for better performance
 session_write_close();
 
 $db = Database::getInstance()->getConnection();
+$controller = new HomePageController();
+$viewData = $controller->index($db);
 
-// -- helper: check if column exists to avoid SQL errors on different schemas
-function hasColumn(PDO $db, string $table, string $column): bool {
-    $stmt = $db->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?");
-    $stmt->execute([DB_NAME, $table, $column]);
-    return (bool) $stmt->fetchColumn();
-}
-
-$hasIsActive   = hasColumn($db, 'service_providers', 'is_active');
-$hasIsBanned   = hasColumn($db, 'service_providers', 'is_banned');
-$hasIsFeatured = hasColumn($db, 'service_providers', 'is_featured');
-
-// Cache system implementation
-$cacheDir = __DIR__ . '/cache';
-if (!is_dir($cacheDir)) {
-    mkdir($cacheDir, 0755, true);
-}
-
-function cache_get($key, $ttl = 60) {
-    global $cacheDir;
-    $file = $cacheDir . DIRECTORY_SEPARATOR . hash('sha256', $key) . '.cache';
-
-    if (!is_file($file)) {
-        return false;
-    }
-
-    $mtime = @filemtime($file);
-    if ($mtime === false) {
-        if (is_file($file)) {
-            @unlink($file);
-        }
-        return false;
-    }
-
-    if ($mtime + $ttl < time()) {
-        if (is_file($file)) {
-            @unlink($file);
-        }
-        return false;
-    }
-
-    $data = @file_get_contents($file);
-    if ($data === false) return false;
-    $value = @unserialize($data);
-    return $value;
-}
-
-function cache_set($key, $value) {
-    global $cacheDir;
-    $file = $cacheDir . DIRECTORY_SEPARATOR . hash('sha256', $key) . '.cache';
-
-    $tmp = $file . '.' . bin2hex(random_bytes(8)) . '.tmp';
-    if (@file_put_contents($tmp, serialize($value), LOCK_EX) === false) {
-        @unlink($tmp);
-        return false;
-    }
-
-    @rename($tmp, $file);
-    @chmod($file, 0644);
-    return true;
-}
-
-// Load platform settings from database
-function getPlatformSetting($key, $default = '') {
-    global $db;
-    static $settings = null;
-    
-    if ($settings === null) {
-        $stmt = $db->query("SELECT setting_key, setting_value FROM system_settings");
-        $settings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
-    }
-    
-    return $settings[$key] ?? $default;
-}
-
-// Check maintenance mode
-$maintenance_mode = getPlatformSetting('maintenance_mode', '0');
-if ($maintenance_mode && !(isset($_SESSION['user_id']) && isAdmin())) {
+if (!empty($viewData['maintenance_mode']) && !(isset($_SESSION['user_id']) && isAdmin())) {
     header('Location: maintenance.php');
     exit;
 }
 
-// Fetch categories (cached for 5 minutes)
-$categories = cache_get('categories', 300);
-if ($categories === false) {
-    $stmt = $db->query("SELECT id, name, description, icon, is_premium, monthly_fee FROM categories WHERE is_active = 1 ORDER BY name");
-    $categories = $stmt->fetchAll();
-    cache_set('categories', $categories);
-}
+$categories = $viewData['categories'] ?? [];
+$featured_providers = $viewData['featured_providers'] ?? [];
+$nearby_providers = $viewData['nearby_providers'] ?? [];
+$recent_providers = $viewData['recent_providers'] ?? [];
+$districts = $viewData['districts'] ?? [];
 
-// Fetch category statistics (provider count per category)
-$category_stats = cache_get('category_stats', 300);
-if ($categories === false) {
-    $stmt = $db->query("SELECT id, name, description, icon, is_premium, monthly_fee FROM categories WHERE is_active = 1 ORDER BY name");
-    $categories = $stmt->fetchAll();
-    cache_set('categories', $categories);
-}
-
-// Category provider counts removed to avoid displaying platform data
-
-// Fetch featured providers (cached for 2 minutes)
-$featured_providers = cache_get('featured_providers', 120);
-if ($featured_providers === false) {
-    $providerWhere = ["u.is_verified = 1", "sp.availability = 'available'"];
-    if ($hasIsActive) {
-        $providerWhere[] = "sp.is_active = 1";
-    }
-    if ($hasIsBanned) {
-        $providerWhere[] = "sp.is_banned = 0";
-    }
-    $providerWhereSql = implode(' AND ', $providerWhere);
-
-    if ($hasIsFeatured) {
-        $orderBy = "sp.is_featured DESC, sp.verification_level DESC, sp.average_rating DESC";
-        $featuredCondition = "(sp.is_featured = 1 OR sp.verification_level IN ('verified', 'gold', 'premium'))";
-    } else {
-        $orderBy = "sp.verification_level DESC, sp.average_rating DESC";
-        $featuredCondition = "sp.verification_level IN ('verified', 'gold', 'premium')";
-    }
-
-    $idsStmt = $db->prepare("
-        SELECT sp.id
-        FROM service_providers sp
-        JOIN users u ON u.id = sp.user_id
-        WHERE {$providerWhereSql} AND {$featuredCondition}
-        ORDER BY {$orderBy}
-        LIMIT 8
-    ");
-    $idsStmt->execute();
-    $ids = $idsStmt->fetchAll(PDO::FETCH_COLUMN);
-    
-    if (!empty($ids)) {
-        $in = implode(',', array_map('intval', $ids));
-
-        $selectFallbacks = [];
-        $selectFallbacks[] = $hasIsFeatured ? "sp.is_featured" : "0 as is_featured";
-        $selectFallbacks[] = $hasIsFeatured ? "sp.featured_until" : "NULL as featured_until";
-        $selectFallbacks[] = $hasIsBanned ? "sp.is_banned" : "0 as is_banned";
-
-        $selectExtras = implode(', ', $selectFallbacks);
-
-        $stmt = $db->query("
-            SELECT 
-                u.id as user_id,
-                u.full_name,
-                u.email,
-                u.phone,
-                u.profile_image,
-                u.is_verified as user_verified,
-                sp.id as provider_id,
-                sp.profession,
-                sp.bio,
-                sp.location,
-                sp.district,
-                sp.sector,
-                sp.experience_years,
-                sp.hourly_rate,
-                sp.average_rating,
-                sp.total_reviews,
-                sp.verification_level,
-                {$selectExtras},
-                c.name as category_name,
-                c.icon as category_icon
-            FROM service_providers sp
-            JOIN users u ON u.id = sp.user_id
-            LEFT JOIN provider_services ps ON sp.id = ps.provider_id
-            LEFT JOIN categories c ON ps.category_id = c.id
-            WHERE sp.id IN ($in)
-            GROUP BY sp.id
-            ORDER BY {$orderBy}
-        ");
-        $featured_providers = $stmt->fetchAll();
-    } else {
-        $featured_providers = [];
-    }
-    cache_set('featured_providers', $featured_providers);
-}
-
-// Fetch providers by location (nearby providers)
-$nearby_providers = cache_get('nearby_providers', 180);
-if ($nearby_providers === false) {
-    $providerWhere = ["u.is_verified = 1", "sp.availability = 'available'"];
-    if ($hasIsActive) $providerWhere[] = "sp.is_active = 1";
-    if ($hasIsBanned) $providerWhere[] = "sp.is_banned = 0";
-    $providerWhereSql = implode(' AND ', $providerWhere);
-    
-    $selectFallbacks = [];
-    $selectFallbacks[] = $hasIsFeatured ? "sp.is_featured" : "0 as is_featured";
-    $selectExtras = implode(', ', $selectFallbacks);
-    
-    $stmt = $db->query("
-        SELECT sp.district, COUNT(DISTINCT sp.id) as provider_count
-        FROM service_providers sp
-        JOIN users u ON u.id = sp.user_id
-        WHERE {$providerWhereSql}
-        GROUP BY sp.district
-        ORDER BY provider_count DESC
-        LIMIT 6
-    ");
-    $nearby_providers = $stmt->fetchAll();
-    cache_set('nearby_providers', $nearby_providers);
-}
-
-// Fetch recently joined providers
-$recent_providers = cache_get('recent_providers', 120);
-if ($recent_providers === false) {
-    $providerWhere = ["u.is_verified = 1"];
-    if ($hasIsActive) $providerWhere[] = "sp.is_active = 1";
-    if ($hasIsBanned) $providerWhere[] = "sp.is_banned = 0";
-    $providerWhereSql = implode(' AND ', $providerWhere);
-    
-    $selectFallbacks = [];
-    $selectFallbacks[] = $hasIsFeatured ? "sp.is_featured" : "0 as is_featured";
-    $selectExtras = implode(', ', $selectFallbacks);
-    
-    $stmt = $db->query("
-        SELECT 
-            u.id as user_id,
-            u.full_name,
-            u.profile_image,
-            sp.id as provider_id,
-            sp.profession,
-            sp.location,
-            sp.district,
-            sp.average_rating,
-            sp.total_reviews,
-            sp.verification_level,
-            sp.created_at,
-            {$selectExtras},
-            c.name as category_name,
-            c.icon as category_icon
-        FROM service_providers sp
-        JOIN users u ON u.id = sp.user_id
-        LEFT JOIN provider_services ps ON sp.id = ps.provider_id
-        LEFT JOIN categories c ON ps.category_id = c.id
-        WHERE {$providerWhereSql}
-        GROUP BY sp.id
-        ORDER BY sp.created_at DESC
-        LIMIT 4
-    ");
-    $recent_providers = $stmt->fetchAll();
-    cache_set('recent_providers', $recent_providers);
-}
-
-
-
-// Fetch districts
-$districts = cache_get('districts', 600);
-if ($districts === false) {
-    $stmt = $db->query("SELECT name, code FROM districts ORDER BY name");
-    $districts = $stmt->fetchAll();
-    cache_set('districts', $districts);
-}
-
-// Get platform settings for display
-$platform_name = getPlatformSetting('platform_name', 'BII LocalFinder');
-$contact_email = getPlatformSetting('contact_email', 'support@biilocalfinder.com');
-$contact_phone = getPlatformSetting('contact_phone', '+250 788 123 456');
-$platform_description = getPlatformSetting('platform_description', 'Connecting clients with trusted local service providers');
-$copyright_text = getPlatformSetting('copyright_text', '© 2024 BII LocalFinder. All rights reserved.');
+$platform_name = $viewData['platform_name'] ?? 'BII LocalFinder';
+$contact_email = $viewData['contact_email'] ?? 'support@biilocalfinder.com';
+$contact_phone = $viewData['contact_phone'] ?? '+250 788 123 456';
+$platform_description = $viewData['platform_description'] ?? 'Connecting clients with trusted local service providers';
+$copyright_text = $viewData['copyright_text'] ?? '© 2024 BII LocalFinder. All rights reserved.';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1849,8 +1609,8 @@ $copyright_text = getPlatformSetting('copyright_text', '© 2024 BII LocalFinder.
                         ps.price as service_price,
                         ps.payment_type,
                         ps.duration,
-                        c.name as category_name,
-                        c.icon as category_icon,
+                        GROUP_CONCAT(DISTINCT c.name SEPARATOR ', ') as category_name,
+                        GROUP_CONCAT(DISTINCT c.icon SEPARATOR ', ') as category_icon,
                         COUNT(DISTINCT sp.id) as provider_count,
                         COUNT(DISTINCT b.id) as booking_count,
                         AVG(sp.average_rating) as avg_rating

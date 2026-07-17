@@ -38,14 +38,19 @@ error_reporting(E_ALL);
 
 $errors = [];
 $success = '';
+$csrf_token = ensureCsrfToken();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $full_name = sanitize($_POST['full_name']);
-    $email = sanitize($_POST['email']);
-    $phone = sanitize($_POST['phone']);
-    $password = $_POST['password'];
-    $confirm_password = $_POST['confirm_password'];
-    $user_type = sanitize($_POST['user_type']);
+    if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+        $errors[] = 'Invalid form submission. Please refresh and try again.';
+    }
+
+    $full_name = sanitize(getRequestValue('full_name', '', 'POST'));
+    $email = sanitize(getRequestValue('email', '', 'POST'));
+    $phone = sanitize(getRequestValue('phone', '', 'POST'));
+    $password = $_POST['password'] ?? '';
+    $confirm_password = $_POST['confirm_password'] ?? '';
+    $user_type = sanitize(getRequestValue('user_type', '', 'POST'));
     // Optional profile image filename (will be set if upload provided)
     $profile_image = '';
     
@@ -65,13 +70,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = "All fields are required";
     }
 
-    if (strlen($password) < $min_password_length) {
-        $errors[] = "Password must be at least {$min_password_length} characters";
-    }
-
-    if ($require_special_chars && !preg_match('/[!@#$%^&*(),.?":{}|<>]/', $password)) {
-        $errors[] = "Password must contain at least one special character";
-    }
+    validateEmailField($email, 'email', $errors);
+    validatePasswordField($password, $errors, (int) $min_password_length, (bool) $require_special_chars);
 
     if ($password !== $confirm_password) {
         $errors[] = "Passwords do not match";
@@ -989,6 +989,7 @@ try {
 
                         <!-- ── CLIENT FORM ── -->
                         <form method="POST" enctype="multipart/form-data" id="clientForm" class="registration-form" data-user-type="client">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                             <button type="button" class="back-to-selection" onclick="goBackToSelection()">
                                 <i class="fas fa-arrow-left"></i> Back
                             </button>
@@ -1062,6 +1063,7 @@ try {
 
                         <!-- ── PROVIDER FORM ── -->
                         <form method="POST" enctype="multipart/form-data" id="providerForm" class="registration-form" data-user-type="provider">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                             <button type="button" class="back-to-selection" onclick="goBackToSelection()">
                                 <i class="fas fa-arrow-left"></i> Back
                             </button>

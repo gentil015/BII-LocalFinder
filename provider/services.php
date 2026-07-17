@@ -4,6 +4,8 @@ require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once '../includes/service_negotiation.php';
 require_once '../includes/language.php';
+require_once '../includes/service_ai_insights.php';
+require_once '../includes/subscription_access.php';
 
 requireProvider();
 
@@ -15,6 +17,119 @@ if (isMaintenanceMode() && !isAdmin()) {
 $db = Database::getInstance()->getConnection();
 $success = '';
 $errors = [];
+
+// Image upload configuration
+$upload_dir = '../uploads/service_images/';
+$max_file_size = 4 * 1024 * 1024; // 4MB
+$allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+
+if (!is_dir($upload_dir)) {
+    mkdir($upload_dir, 0755, true);
+}
+
+// Function to handle image upload
+function handleImageUpload($file_input_name, $existing_image = null) {
+    global $upload_dir, $max_file_size, $allowed_types;
+
+    if (!isset($_FILES[$file_input_name]) || $_FILES[$file_input_name]['error'] === UPLOAD_ERR_NO_FILE) {
+        return $existing_image; // Keep existing image if no new upload
+    }
+
+    $file = $_FILES[$file_input_name];
+
+    // Validate file type
+    if (!in_array($file['type'], $allowed_types)) {
+        throw new Exception('Invalid file type. Only JPG, PNG, and WebP images are allowed.');
+    }
+
+    // Validate file size
+    if ($file['size'] > $max_file_size) {
+        throw new Exception('File size too large. Maximum size is 4MB.');
+    }
+
+    // Generate unique filename
+    $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
+    $filename = uniqid('service_', true) . '.' . $extension;
+    $filepath = $upload_dir . $filename;
+
+    // Move uploaded file
+    if (!move_uploaded_file($file['tmp_name'], $filepath)) {
+        throw new Exception('Failed to upload image.');
+    }
+
+    // Delete old image if exists
+    if ($existing_image && file_exists($upload_dir . $existing_image)) {
+        unlink($upload_dir . $existing_image);
+    }
+
+    return $filename;
+}
+
+// Function to handle multiple image uploads
+function handleMultipleImageUploads($file_input_name, $existing_images = []) {
+    global $upload_dir, $max_file_size, $allowed_types;
+
+    $uploaded_files = [];
+
+    if (!isset($_FILES[$file_input_name])) {
+        return $existing_images;
+    }
+
+    $files = $_FILES[$file_input_name];
+
+    // Handle single file upload (when only one file is uploaded)
+    if (!is_array($files['name'])) {
+        if ($files['error'] !== UPLOAD_ERR_NO_FILE) {
+            try {
+                $filename = handleImageUpload($file_input_name, null);
+                $uploaded_files[] = $filename;
+            } catch (Exception $e) {
+                throw $e;
+            }
+        }
+    } else {
+        // Handle multiple file uploads
+        foreach ($files['name'] as $key => $name) {
+            if ($files['error'][$key] === UPLOAD_ERR_NO_FILE) continue;
+
+            // Create a temporary single file array for processing
+            $single_file = [
+                'name' => $files['name'][$key],
+                'type' => $files['type'][$key],
+                'tmp_name' => $files['tmp_name'][$key],
+                'error' => $files['error'][$key],
+                'size' => $files['size'][$key]
+            ];
+
+            // Temporarily set $_FILES for the single file
+            $_FILES['temp_single_file'] = $single_file;
+
+            try {
+                $filename = handleImageUpload('temp_single_file', null);
+                $uploaded_files[] = $filename;
+            } catch (Exception $e) {
+                // Clean up any uploaded files on error
+                foreach ($uploaded_files as $uploaded_file) {
+                    if (file_exists($upload_dir . $uploaded_file)) {
+                        unlink($upload_dir . $uploaded_file);
+                    }
+                }
+                throw $e;
+            }
+        }
+    }
+
+    // Delete old images that are no longer needed
+    if (!empty($existing_images)) {
+        foreach ($existing_images as $old_image) {
+            if (!in_array($old_image, $uploaded_files) && file_exists($upload_dir . $old_image)) {
+                unlink($upload_dir . $old_image);
+            }
+        }
+    }
+
+    return array_merge($existing_images, $uploaded_files);
+}
 
 if (!function_exists('parseOptionalExtrasInput')) {
     function parseOptionalExtrasInput($input) {
@@ -102,6 +217,13 @@ $stmt = $db->prepare("
 $stmt->execute([$_SESSION['user_id']]);
 $provider = $stmt->fetch();
 
+// Check if AI features are enabled for this provider
+$provider_ai_enabled = isProviderAIEnabled($provider['id']);
+
+// Check if specific AI sub-features are enabled
+$ai_pricing_suggestions_enabled = getProviderSetting($provider['id'], 'ai_features_ai_pricing_suggestions') == '1';
+$ai_description_improvement_enabled = getProviderSetting($provider['id'], 'ai_features_ai_description_improvement') == '1';
+
 // Get provider's categories (from provider_categories mapping)
 $stmt = $db->prepare("
     SELECT DISTINCT c.id, c.name, c.icon 
@@ -112,11 +234,21 @@ $stmt = $db->prepare("
 $stmt->execute([$provider['id']]);
 $provider_categories = $stmt->fetchAll();
 
+// Check subscription limits for service creation
+$provider_id = (int)$_SESSION['user_id'];
+$can_add_service = canCreateService($provider_id);
+$service_limit = getServiceLimit($provider_id);
+$current_service_count = getProviderServiceCount($provider_id);
+
 // Handle actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Add new service
     if (isset($_POST['add_service'])) {
-        $name = sanitize($_POST['name']);
+        // Check subscription limit first
+        if (!$can_add_service) {
+            $errors[] = "Service limit reached. Upgrade your plan to create more services.";
+        } else {
+            $name = sanitize($_POST['name']);
         $category_id = intval($_POST['category_id']);
         $description = sanitize($_POST['description']);
         $price = floatval($_POST['price']);
@@ -197,19 +329,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (empty($errors)) {
             try {
-                $stmt = $db->prepare("INSERT INTO provider_services 
-                    (provider_id, category_id, name, description, price, duration, is_available, payment_type, negotiable, min_price, max_price, base_price, optional_extras, availability_days, time_slots, booking_mode, service_status, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+                // Handle main image upload
+                $service_image = '';
+                if (isset($_FILES['service_image']) && $_FILES['service_image']['error'] !== UPLOAD_ERR_NO_FILE) {
+                    $service_image = handleImageUpload('service_image');
+                }
+
+                // Handle additional images upload
+                $service_images = [];
+                if (isset($_FILES['service_images'])) {
+                    $service_images = handleMultipleImageUploads('service_images');
+                }
+
+                $stmt = $db->prepare("INSERT INTO provider_services
+                    (provider_id, category_id, name, description, price, duration, is_available, payment_type, negotiable, min_price, max_price, base_price, optional_extras, availability_days, time_slots, booking_mode, service_status, service_image, service_images, image_alt_text, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+
+                $service_images_json = !empty($service_images) ? json_encode($service_images) : null;
+                $image_alt_text = sanitize($_POST['image_alt_text'] ?? '');
+
                 $stmt->execute([
-                    $provider['id'], $category_id, $name, $description, $price, $duration, $is_available, $payment_type, $negotiable, $min_price, $max_price, $price, $optional_extras_json, $availability_days_str, $time_slots_json, $booking_mode, $service_status
+                    $provider['id'], $category_id, $name, $description, $price, $duration, $is_available, $payment_type, $negotiable, $min_price, $max_price, $price, $optional_extras_json, $availability_days_str, $time_slots_json, $booking_mode, $service_status, $service_image, $service_images_json, $image_alt_text
                 ]);
                 $success = "Service added successfully";
             } catch (Exception $e) {
-                $errors[] = "Failed to add service";
+                $errors[] = "Failed to add service: " . $e->getMessage();
                 error_log("Add service error: ".$e->getMessage());
             }
-        }
-    }
+        } // End if (empty($errors))
+    } // End else (subscription check)
+    } // End add_service
     
     // Update service
     if (isset($_POST['update_service'])) {
@@ -289,15 +438,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (empty($errors)) {
             try {
+                // Get existing images
+                $stmt = $db->prepare("SELECT service_image, service_images FROM provider_services WHERE id = ? AND provider_id = ?");
+                $stmt->execute([$service_id, $provider['id']]);
+                $existing = $stmt->fetch();
+
+                $existing_main_image = $existing['service_image'] ?? '';
+                $existing_images = !empty($existing['service_images']) ? json_decode($existing['service_images'], true) : [];
+
+                // Handle main image upload
+                $service_image = $existing_main_image;
+                if (isset($_FILES['service_image']) && $_FILES['service_image']['error'] !== UPLOAD_ERR_NO_FILE) {
+                    $service_image = handleImageUpload('service_image', $existing_main_image);
+                }
+
+                // Handle additional images upload
+                $service_images = $existing_images;
+                if (isset($_FILES['service_images'])) {
+                    $service_images = handleMultipleImageUploads('service_images', $existing_images);
+                }
+
                 $stmt = $db->prepare("UPDATE provider_services
-                    SET name = ?, description = ?, price = ?, duration = ?, is_available = ?, payment_type = ?, negotiable = ?, min_price = ?, max_price = ?, base_price = ?, optional_extras = ?, availability_days = ?, time_slots = ?, booking_mode = ?, service_status = ?, updated_at = NOW()
+                    SET name = ?, description = ?, price = ?, duration = ?, is_available = ?, payment_type = ?, negotiable = ?, min_price = ?, max_price = ?, base_price = ?, optional_extras = ?, availability_days = ?, time_slots = ?, booking_mode = ?, service_status = ?, service_image = ?, service_images = ?, image_alt_text = ?, updated_at = NOW()
                     WHERE id = ? AND provider_id = ?");
+
+                $service_images_json = !empty($service_images) ? json_encode($service_images) : null;
+                $image_alt_text = sanitize($_POST['image_alt_text'] ?? '');
+
                 $stmt->execute([
-                    $name, $description, $price, $duration, $is_available, $payment_type, $negotiable, $min_price, $max_price, $price, $optional_extras_json, $availability_days_str, $time_slots_json, $booking_mode, $service_status, $service_id, $provider['id']
+                    $name, $description, $price, $duration, $is_available, $payment_type, $negotiable, $min_price, $max_price, $price, $optional_extras_json, $availability_days_str, $time_slots_json, $booking_mode, $service_status, $service_image, $service_images_json, $image_alt_text, $service_id, $provider['id']
                 ]);
                 $success = "Service updated successfully";
             } catch (Exception $e) {
-                $errors[] = "Failed to update service";
+                $errors[] = "Failed to update service: " . $e->getMessage();
                 error_log("Update service error: ".$e->getMessage());
             }
         }
@@ -390,6 +563,12 @@ $stmt = $db->prepare("
 $stmt->execute([$provider['id']]);
 $popular_services = $stmt->fetchAll();
 
+// Initialize AI Insights (only if AI is enabled)
+$ai_insights = null;
+if ($provider_ai_enabled) {
+    $ai_insights = new AIServiceInsights($db, $provider['id']);
+}
+
 // Get related services organized by category
 $related_services_by_category = [];
 foreach ($provider_categories as $category) {
@@ -414,8 +593,24 @@ foreach ($provider_categories as $category) {
 
 // Get service details view (service statistics)
 $service_details = [];
+$service_ai_data = [];
 if (!empty($services)) {
     foreach ($services as $service) {
+        // Calculate AI insights for this service (only if AI is enabled)
+        $performance_score = null;
+        $demand_indicator = null;
+        $conversion_rate = null;
+        $price_suggestion = null;
+        if ($provider_ai_enabled && $ai_insights) {
+            $performance_score = $ai_insights->calculatePerformanceScore($service['id']);
+            $demand_indicator = $ai_insights->getDemandIndicator($service['id']);
+            $conversion_rate = $ai_insights->getConversionRate($service['id']);
+            // Only calculate price suggestion if the sub-toggle is enabled
+            if ($ai_pricing_suggestions_enabled) {
+                $price_suggestion = $ai_insights->suggestOptimalPrice($service['category_id'], $service['price']);
+            }
+        }
+        
         // Get service bookings count and revenue
         $stmt = $db->prepare("
             SELECT 
@@ -455,6 +650,27 @@ if (!empty($services)) {
             'reviews' => $review_stats,
             'inquiries' => $inquiry_stats
         ];
+
+        // Prepare service data for AI tips generation (only if AI is enabled)
+        if ($provider_ai_enabled && $ai_insights) {
+            $service_with_stats = array_merge($service, [
+                'total_reviews' => $review_stats['total_reviews'] ?? 0,
+                'avg_rating' => $review_stats['avg_rating'] ?? 0,
+                'completed_bookings' => $booking_stats['completed_bookings'] ?? 0
+            ]);
+
+            // Generate optimization tips
+            $optimization_tips = $ai_insights->generateOptimizationTips($service_with_stats, $performance_score, $conversion_rate, $demand_indicator);
+
+            // Store AI data for easy access in templates
+            $service_ai_data[$service['id']] = [
+                'performance_score' => $performance_score,
+                'demand_indicator' => $demand_indicator,
+                'conversion_rate' => $conversion_rate,
+                'price_suggestion' => $price_suggestion,
+                'optimization_tips' => $optimization_tips
+            ];
+        }
     }
 }
 ?>
@@ -467,6 +683,8 @@ if (!empty($services)) {
     <title><?php echo __('title', [], 'services_page'); ?> - <?php echo getPlatformName(); ?></title>
     <link rel="stylesheet" href="../bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Dark Mode CSS -->
+    <link rel="stylesheet" href="../assets/css/dark-mode.css">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { box-sizing: border-box; }
@@ -501,6 +719,33 @@ if (!empty($services)) {
             --shadow-md: 0 4px 16px rgba(0,0,0,0.09);
             --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
             --transition: all 0.18s cubic-bezier(0.4,0,0.2,1);
+        }
+
+        /* Dark Mode Variables */
+        [data-theme="dark"] {
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --primary-light: #1e3a8a;
+            --secondary: #64748b;
+            --success: #10b981;
+            --success-light: #064e3b;
+            --danger: #ef4444;
+            --danger-light: #7f1d1d;
+            --warning: #f59e0b;
+            --warning-light: #78350f;
+            --info: #06b6d4;
+            --info-light: #164e63;
+            --surface: #0f172a;
+            --surface-2: #1e293b;
+            --border: #334155;
+            --border-subtle: #475569;
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --shadow-xs: 0 1px 3px rgba(0,0,0,0.3);
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.4);
+            --shadow-md: 0 4px 16px rgba(0,0,0,0.5);
+            --shadow-lg: 0 8px 32px rgba(0,0,0,0.6);
         }
 
         body {
@@ -859,7 +1104,69 @@ if (!empty($services)) {
         .info-label-modal { font-size: 0.78rem; color: var(--text-muted); font-weight: 500; }
         .info-val-modal { font-size: 0.83rem; font-weight: 600; color: var(--text-primary); text-align: right; max-width: 60%; }
 
-        /* ── RESPONSIVE ── */
+        /* ── IMAGE UPLOAD ── */
+        .image-upload-area {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius-md);
+            padding: 2rem;
+            text-align: center;
+            transition: var(--transition);
+            position: relative;
+            background: var(--surface-2);
+            cursor: pointer;
+        }
+        .image-upload-area:hover, .image-upload-area.dragover {
+            border-color: var(--primary);
+            background: var(--primary-light);
+        }
+        .image-upload-area.multiple { min-height: 120px; }
+        .upload-placeholder { color: var(--text-muted); }
+        .upload-placeholder i { font-size: 2rem; margin-bottom: 0.5rem; display: block; }
+        .upload-text strong { display: block; color: var(--text-primary); margin-bottom: 0.25rem; }
+        .upload-hint { font-size: 0.75rem; opacity: 0.8; }
+
+        .image-preview {
+            position: relative;
+            display: inline-block;
+            max-width: 100%;
+            margin-top: 1rem;
+        }
+        .image-preview img {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: var(--radius-sm);
+            box-shadow: var(--shadow-sm);
+        }
+        .btn-remove-image {
+            position: absolute;
+            top: -8px; right: -8px;
+            width: 24px; height: 24px;
+            border-radius: 50%;
+            background: var(--danger);
+            color: white;
+            border: none;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.7rem; cursor: pointer;
+            box-shadow: var(--shadow-sm);
+        }
+        .btn-remove-image:hover { background: #c82333; }
+
+        .additional-images-preview {
+            display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem;
+        }
+        .additional-image-item {
+            position: relative;
+            width: 80px; height: 80px;
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            border: 2px solid var(--border);
+        }
+        .additional-image-item img {
+            width: 100%; height: 100%; object-fit: cover;
+        }
+        .additional-image-item .btn-remove-image {
+            top: -6px; right: -6px; width: 20px; height: 20px; font-size: 0.6rem;
+        }
         @media (max-width: 992px) {
             .layout-cols { flex-direction: column !important; }
             .side-col { width: 100% !important; }
@@ -927,6 +1234,13 @@ if (!empty($services)) {
     </style>
 </head>
 <body>
+    <script>
+        // Initialize theme from localStorage
+        (function() {
+            const theme = localStorage.getItem('provider_theme') || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
 <button class="mobile-menu-toggle" id="mobileToggle"><i class="fas fa-bars"></i></button>
 <div class="overlay" id="overlay"></div>
 <?php include __DIR__ . '/includes/sidebar.php'; ?>
@@ -956,9 +1270,15 @@ if (!empty($services)) {
         <h1><i class="fas fa-concierge-bell"></i> Service Management</h1>
         <p>Create, manage and optimise your service offerings</p>
     </div>
+    <?php if ($can_add_service): ?>
     <button class="btn-primary-cta" data-bs-toggle="modal" data-bs-target="#addServiceModal">
         <i class="fas fa-plus-circle"></i> Add New Service
     </button>
+    <?php else: ?>
+    <button class="btn-primary-cta" data-bs-toggle="modal" data-bs-target="#upgradePlanModal">
+        <i class="fas fa-lock"></i> Upgrade to Add More Services
+    </button>
+    <?php endif; ?>
 </div>
 
 <!-- KPI STATS -->
@@ -1115,6 +1435,52 @@ if (!empty($services)) {
 
                     <p class="sc-description"><?php echo htmlspecialchars($service['description']); ?></p>
 
+                    <!-- AI INSIGHTS ROW -->
+                    <?php if (isset($service_ai_data[$service['id']])): 
+                        $ai = $service_ai_data[$service['id']];
+                        $perf = $ai['performance_score'];
+                        $demand = $ai['demand_indicator'];
+                        $conv = $ai['conversion_rate'];
+                    ?>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:1rem;padding:0.75rem;background:var(--surface-2);border-radius:var(--radius-sm);border:1px solid var(--border-subtle);">
+                        <div style="text-align:center;">
+                            <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);">Performance</div>
+                            <div style="font-size:1.35rem;font-weight:800;color:<?php echo $perf >= 70 ? '#10b981' : ($perf >= 40 ? '#f59e0b' : '#ef4444'); ?>;"><?php echo $perf; ?></div>
+                            <div style="font-size:0.6rem;color:var(--text-muted);">Score</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);">Demand</div>
+                            <div style="display:flex;align-items:center;justify-content:center;gap:0.25rem;">
+                                <i class="<?php echo $demand['icon']; ?>" style="color:<?php echo $demand['color']; ?>;font-size:0.9rem;"></i>
+                                <span style="font-size:0.75rem;font-weight:700;color:<?php echo $demand['color']; ?>"><?php echo $demand['label']; ?></span>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
+                    <!-- AI INSIGHTS ROW -->
+                    <?php if (isset($service_ai_data[$service['id']])): 
+                        $ai = $service_ai_data[$service['id']];
+                        $perf = $ai['performance_score'];
+                        $demand = $ai['demand_indicator'];
+                        $conv = $ai['conversion_rate'];
+                    ?>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:1rem;padding:0.75rem;background:var(--surface-2);border-radius:var(--radius-sm);border:1px solid var(--border-subtle);">
+                        <div style="text-align:center;">
+                            <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);">Performance</div>
+                            <div style="font-size:1.35rem;font-weight:800;color:<?php echo $perf >= 70 ? '#10b981' : ($perf >= 40 ? '#f59e0b' : '#ef4444'); ?>;"><?php echo $perf; ?></div>
+                            <div style="font-size:0.6rem;color:var(--text-muted);">Score</div>
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);">Demand</div>
+                            <div style="display:flex;align-items:center;justify-content:center;gap:0.25rem;">
+                                <i class="<?php echo $demand['icon']; ?>" style="color:<?php echo $demand['color']; ?>;font-size:0.9rem;"></i>
+                                <span style="font-size:0.75rem;font-weight:700;color:<?php echo $demand['color']; ?>"><?php echo $demand['label']; ?></span>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
                     <div class="sc-mini-stats">
                         <div class="sc-stat">
                             <div class="sc-stat-num"><?php echo $bookings_count; ?></div>
@@ -1172,7 +1538,8 @@ if (!empty($services)) {
                             data-service-max-price="<?php echo $service['max_price'] ?? ''; ?>"
                             data-service-booking-mode="<?php echo htmlspecialchars($service['booking_mode'] ?? 'request_approval',ENT_QUOTES); ?>"
                             data-service-status="<?php echo $sStatus; ?>"
-                            data-service-payment-type="<?php echo htmlspecialchars($service['payment_type'],ENT_QUOTES); ?>">
+                            data-service-payment-type="<?php echo htmlspecialchars($service['payment_type'],ENT_QUOTES); ?>"
+                            data-service-ai="<?php echo isset($service_ai_data[$service['id']]) ? htmlspecialchars(json_encode($service_ai_data[$service['id']]),ENT_QUOTES) : ''; ?>">
                             <i class="fas fa-eye"></i> Details
                         </button>
                         <!-- Edit -->
@@ -1382,6 +1749,31 @@ if (!empty($services)) {
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                <!-- AI Insights Section -->
+                <div id="detailAIInsights" style="background:linear-gradient(135deg, rgba(13, 110, 253, 0.05) 0%, rgba(0, 184, 148, 0.05) 100%);padding:1rem;border-radius:var(--radius-sm);border:1px solid var(--border-subtle);margin-bottom:1rem;display:none;">
+                    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:var(--primary);margin-bottom:0.75rem;">
+                        <i class="fas fa-brain" style="margin-right:0.25rem;"></i> AI-Powered Insights
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
+                        <div style="text-align:center;padding:0.5rem;background:var(--surface);border-radius:4px;">
+                            <div style="font-size:0.6rem;color:var(--text-muted);margin-bottom:0.25rem;">Performance Score</div>
+                            <div style="font-size:1.5rem;font-weight:800;" id="detailPerfScore">—</div>
+                        </div>
+                        <div style="text-align:center;padding:0.5rem;background:var(--surface);border-radius:4px;">
+                            <div style="font-size:0.6rem;color:var(--text-muted);margin-bottom:0.25rem;">Demand Level</div>
+                            <div style="font-size:0.9rem;font-weight:700;" id="detailDemandBadge">—</div>
+                        </div>
+                        <div style="text-align:center;padding:0.5rem;background:var(--surface);border-radius:4px;">
+                            <div style="font-size:0.6rem;color:var(--text-muted);margin-bottom:0.25rem;">Conversion Rate</div>
+                            <div style="font-size:1.5rem;font-weight:800;" id="detailConvRate">—</div>
+                        </div>
+                    </div>
+                    <div style="padding:0.75rem;background:var(--surface);border-radius:4px;">
+                        <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:0.5rem;">Top Recommendations</div>
+                        <div id="detailTips" style="font-size:0.825rem;color:var(--text-secondary);line-height:1.5;"></div>
+                    </div>
+                </div>
+
                 <!-- Stats Row -->
                 <div class="detail-stat-row">
                     <div class="detail-stat">
@@ -1419,6 +1811,12 @@ if (!empty($services)) {
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn-secondary-cta" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn-primary-cta" id="detailPriceCompareBtn" style="display:none;" onclick="showPriceComparison(event)">
+                    <i class="fas fa-chart-bar"></i> Compare Price
+                </button>
+                <button type="button" class="btn-primary-cta" id="detailGetSuggestionsBtn" style="display:none;" onclick="showAISuggestions(event)">
+                    <i class="fas fa-lightbulb"></i> AI Suggestions
+                </button>
             </div>
         </div>
     </div>
@@ -1428,7 +1826,7 @@ if (!empty($services)) {
 <div class="modal fade" id="addServiceModal" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
-            <form method="POST" id="serviceForm">
+            <form method="POST" id="serviceForm" enctype="multipart/form-data">
                 <div class="modal-header" style="background:var(--primary-light);">
                     <h5 class="modal-title"><i class="fas fa-plus-circle me-2" style="color:var(--primary);"></i> Add New Service</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -1438,6 +1836,7 @@ if (!empty($services)) {
                     <div class="modal-tabs" id="addTabs">
                         <button type="button" class="modal-tab-btn active" data-tab="add-basic">Basic Info</button>
                         <button type="button" class="modal-tab-btn" data-tab="add-pricing">Pricing</button>
+                        <button type="button" class="modal-tab-btn" data-tab="add-images">Images</button>
                         <button type="button" class="modal-tab-btn" data-tab="add-schedule">Schedule</button>
                         <button type="button" class="modal-tab-btn" data-tab="add-advanced">Advanced</button>
                     </div>
@@ -1561,13 +1960,47 @@ if (!empty($services)) {
                         </div>
                     </div>
 
-                    <!-- Advanced -->
-                    <div class="tab-pane-custom" id="add-advanced">
+                    <!-- Images -->
+                    <div class="tab-pane-custom" id="add-images">
                         <div class="row g-3">
                             <div class="col-12">
-                                <label class="form-label">Optional Extras</label>
-                                <textarea name="optional_extras" class="form-control" rows="4" placeholder="Emergency service (+10000)&#10;Weekend surcharge (+5000)&#10;Materials included (+3000)"></textarea>
-                                <div class="form-text">One extra per line. Format: <code>Label (+price)</code></div>
+                                <label class="form-label">Main Service Image</label>
+                                <div class="image-upload-area" id="mainImageUpload">
+                                    <div class="upload-placeholder">
+                                        <i class="fas fa-cloud-upload-alt"></i>
+                                        <div class="upload-text">
+                                            <strong>Click to upload</strong> or drag and drop
+                                            <div class="upload-hint">JPG, PNG, WebP up to 4MB</div>
+                                        </div>
+                                    </div>
+                                    <input type="file" name="service_image" id="addServiceImage" accept="image/*" style="display: none;">
+                                    <div class="image-preview" id="addMainImagePreview" style="display: none;">
+                                        <img src="" alt="Preview" id="addMainImageImg">
+                                        <button type="button" class="btn-remove-image" onclick="removeImage('addMainImagePreview', 'addServiceImage')">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Image Alt Text</label>
+                                <input type="text" name="image_alt_text" class="form-control" placeholder="Describe the image for accessibility" value="<?php echo htmlspecialchars($_POST['image_alt_text'] ?? ''); ?>">
+                                <div class="form-text">Help screen readers understand your image</div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Additional Images (Optional)</label>
+                                <div class="image-upload-area multiple" id="additionalImagesUpload">
+                                    <div class="upload-placeholder">
+                                        <i class="fas fa-images"></i>
+                                        <div class="upload-text">
+                                            <strong>Click to upload</strong> or drag and drop multiple images
+                                            <div class="upload-hint">JPG, PNG, WebP up to 4MB each</div>
+                                        </div>
+                                    </div>
+                                    <input type="file" name="service_images[]" id="addServiceImages" accept="image/*" multiple style="display: none;">
+                                    <div class="additional-images-preview" id="addAdditionalImagesPreview"></div>
+                                </div>
+                                <div class="form-text">Upload up to 5 additional images to showcase your work</div>
                             </div>
                         </div>
                     </div>
@@ -1586,7 +2019,7 @@ if (!empty($services)) {
 <div class="modal fade" id="editServiceModal" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
-            <form method="POST" id="editServiceForm">
+            <form method="POST" id="editServiceForm" enctype="multipart/form-data">
                 <input type="hidden" name="service_id" id="editServiceId">
                 <div class="modal-header" style="background:var(--primary-light);">
                     <h5 class="modal-title"><i class="fas fa-pencil-alt me-2" style="color:var(--primary);"></i> Edit Service</h5>
@@ -1596,6 +2029,7 @@ if (!empty($services)) {
                     <div class="modal-tabs" id="editTabs">
                         <button type="button" class="modal-tab-btn active" data-tab="edit-basic">Basic Info</button>
                         <button type="button" class="modal-tab-btn" data-tab="edit-pricing">Pricing</button>
+                        <button type="button" class="modal-tab-btn" data-tab="edit-images">Images</button>
                         <button type="button" class="modal-tab-btn" data-tab="edit-schedule">Schedule</button>
                         <button type="button" class="modal-tab-btn" data-tab="edit-advanced">Advanced</button>
                     </div>
@@ -1678,6 +2112,51 @@ if (!empty($services)) {
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Images -->
+                    <div class="tab-pane-custom" id="edit-images">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">Main Service Image</label>
+                                <div class="image-upload-area" id="editMainImageUpload">
+                                    <div class="upload-placeholder">
+                                        <i class="fas fa-cloud-upload-alt"></i>
+                                        <div class="upload-text">
+                                            <strong>Click to upload</strong> or drag and drop
+                                            <div class="upload-hint">JPG, PNG, WebP up to 4MB</div>
+                                        </div>
+                                    </div>
+                                    <input type="file" name="service_image" id="editServiceImage" accept="image/*" style="display: none;">
+                                    <div class="image-preview" id="editMainImagePreview" style="display: none;">
+                                        <img src="" alt="Preview" id="editMainImageImg">
+                                        <button type="button" class="btn-remove-image" onclick="removeImage('editMainImagePreview', 'editServiceImage')">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Image Alt Text</label>
+                                <input type="text" name="image_alt_text" class="form-control" id="editImageAltText" placeholder="Describe the image for accessibility">
+                                <div class="form-text">Help screen readers understand your image</div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Additional Images (Optional)</label>
+                                <div class="image-upload-area multiple" id="editAdditionalImagesUpload">
+                                    <div class="upload-placeholder">
+                                        <i class="fas fa-images"></i>
+                                        <div class="upload-text">
+                                            <strong>Click to upload</strong> or drag and drop multiple images
+                                            <div class="upload-hint">JPG, PNG, WebP up to 4MB each</div>
+                                        </div>
+                                    </div>
+                                    <input type="file" name="service_images[]" id="editServiceImages" accept="image/*" multiple style="display: none;">
+                                    <div class="additional-images-preview" id="editAdditionalImagesPreview"></div>
+                                </div>
+                                <div class="form-text">Upload up to 5 additional images to showcase your work</div>
                             </div>
                         </div>
                     </div>
@@ -1839,7 +2318,7 @@ initModalTabs(document.getElementById('editTabs'));
 document.getElementById('addServiceModal')?.addEventListener('show.bs.modal', () => {
     const tabs = document.getElementById('addTabs');
     tabs?.querySelectorAll('.modal-tab-btn').forEach((b,i) => b.classList.toggle('active',i===0));
-    document.querySelectorAll('#add-basic,#add-pricing,#add-schedule,#add-advanced').forEach((p,i) => p.classList.toggle('active',i===0));
+    document.querySelectorAll('#add-basic,#add-pricing,#add-images,#add-schedule,#add-advanced').forEach((p,i) => p.classList.toggle('active',i===0));
 });
 
 // ── NEGOTIABLE TOGGLE ───────────────────────────────────────────────────
@@ -1900,6 +2379,49 @@ document.getElementById('serviceDetailsModal')?.addEventListener('show.bs.modal'
             extrasRow.style.display = '';
         } catch { extrasRow.style.display = 'none'; }
     } else { extrasRow.style.display = 'none'; }
+
+    // AI Insights
+    const aiData = btn.getAttribute('data-service-ai');
+    if (aiData) {
+        try {
+            const ai = JSON.parse(aiData);
+            const aiSection = document.getElementById('detailAIInsights');
+            aiSection.style.display = 'block';
+
+            // Performance Score Color
+            const perfScore = ai.performance_score || 0;
+            const perfEl = document.getElementById('detailPerfScore');
+            let perfColor = '#ef4444'; // red
+            if (perfScore >= 70) perfColor = '#10b981'; // green
+            else if (perfScore >= 40) perfColor = '#f59e0b'; // yellow
+            perfEl.textContent = perfScore.toFixed(1);
+            perfEl.style.color = perfColor;
+
+            // Demand Badge
+            const demand = ai.demand_indicator || {};
+            const demandEl = document.getElementById('detailDemandBadge');
+            demandEl.innerHTML = '<i class="' + (demand.icon || 'fas fa-circle') + '" style="color:' + (demand.color || '#666') + ';margin-right:0.25rem;"></i>' + (demand.label || '—');
+            demandEl.style.color = demand.color || '#666';
+
+            // Conversion Rate
+            const convEl = document.getElementById('detailConvRate');
+            const convRate = ai.conversion_rate !== undefined ? ai.conversion_rate.toFixed(1) : '—';
+            convEl.textContent = convRate;
+            if (convRate !== '—') convEl.textContent = convRate + '%';
+
+            // Tips
+            const tips = ai.optimization_tips || [];
+            const tipsEl = document.getElementById('detailTips');
+            if (tips.length > 0) {
+                const tipPriority = {high:'🔴',medium:'🟡',low:'🟢'};
+                tipsEl.innerHTML = tips.slice(0, 3).map(t => '<div style="margin-bottom:0.5rem;"><span style="font-weight:700;">' + (tipPriority[t.priority] || '•') + ' ' + t.title + ':</span> ' + t.description + '</div>').join('');
+            } else {
+                tipsEl.textContent = 'No optimization tips available yet. Gather more bookings to unlock insights.';
+            }
+        } catch (e) { console.error('AI data parse error:', e); }
+    } else {
+        document.getElementById('detailAIInsights').style.display = 'none';
+    }
 });
 
 // ── EDIT MODAL POPULATE ─────────────────────────────────────────────────
@@ -1917,6 +2439,7 @@ document.getElementById('editServiceModal')?.addEventListener('show.bs.modal', f
     document.getElementById('editServicePaymentType').value = get('payment-type') || 'fixed_price';
     document.getElementById('editServiceBookingMode').value = get('booking-mode') || 'request_approval';
     document.getElementById('editServiceAvailable').checked = get('available') === '1';
+    document.getElementById('editImageAltText').value = get('image-alt-text') || '';
 
     // Negotiable
     const neg = get('negotiable') === '1';
@@ -1956,7 +2479,72 @@ document.getElementById('editServiceModal')?.addEventListener('show.bs.modal', f
     // Reset to first tab
     const editTabs = document.getElementById('editTabs');
     editTabs?.querySelectorAll('.modal-tab-btn').forEach((b,i) => b.classList.toggle('active',i===0));
-    document.querySelectorAll('#edit-basic,#edit-pricing,#edit-schedule,#edit-advanced').forEach((p,i) => p.classList.toggle('active',i===0));
+    document.querySelectorAll('#edit-basic,#edit-pricing,#edit-images,#edit-schedule,#edit-advanced').forEach((p,i) => p.classList.toggle('active',i===0));
+
+    // Load existing images if any
+    const mainImageField = document.getElementById('editServiceImage');
+    const mainImagePreview = document.getElementById('editMainImagePreview');
+    const mainImageImg = document.getElementById('editMainImageImg');
+
+    // Note: Image paths would need to be loaded from data attributes
+    // This is a placeholder for where you'd load existing service images
+});
+
+// ── AI RECOMMENDATIONS ─────────────────────────────────────────────────
+let currentAIData = null;
+
+function showPriceComparison(e) {
+    e?.preventDefault();
+    if (!currentAIData?.price_suggestion) {
+        showToast('Price data not available', 'info');
+        return;
+    }
+    const ps = currentAIData.price_suggestion;
+    const msg = 'Your Price: RWF ' + parseInt(ps.suggested_price).toLocaleString() + '\n' +
+                'Market Average: RWF ' + parseInt(ps.market_avg).toLocaleString() + '\n' +
+                'Range: RWF ' + parseInt(ps.market_min).toLocaleString() + ' – RWF ' + parseInt(ps.market_max).toLocaleString() + '\n\n' +
+                ps.recommendation;
+    showToast(msg.replace(/\n/g, '<br>'), 'info');
+}
+
+function showAISuggestions(e) {
+    e?.preventDefault();
+    if (!currentAIData) {
+        showToast('AI suggestions not available', 'info');
+        return;
+    }
+    const ai = currentAIData;
+    const tips = (ai.optimization_tips || []).slice(0, 3);
+    if (tips.length === 0) {
+        showToast('No optimization tips available yet', 'info');
+        return;
+    }
+    let html = '<div style="text-align:left;">';
+    tips.forEach((tip, i) => {
+        const priority = {'high':'🔴','medium':'🟡','low':'🟢'}[tip.priority] || '•';
+        html += '<div style="margin-bottom:0.75rem;padding:0.75rem;background:rgba(0,0,0,0.05);border-radius:4px;">' +
+                '<div style="font-weight:700;margin-bottom:0.25rem;">' + priority + ' ' + tip.title + '</div>' +
+                '<div style="font-size:0.85rem;color:#666;">' + tip.description + '</div></div>';
+    });
+    html += '</div>';
+    showToast(html, 'info');
+}
+
+// Update currentAIData when details modal is shown
+document.getElementById('serviceDetailsModal')?.addEventListener('show.bs.modal', function(event) {
+    const btn = event.relatedTarget;
+    if (btn) {
+        const aiStr = btn.getAttribute('data-service-ai');
+        if (aiStr) {
+            try {
+                currentAIData = JSON.parse(aiStr);
+                document.getElementById('detailPriceCompareBtn').style.display =
+                    (currentAIData?.price_suggestion) ? 'inline-block' : 'none';
+                document.getElementById('detailGetSuggestionsBtn').style.display =
+                    (currentAIData?.optimization_tips?.length > 0) ? 'inline-block' : 'none';
+            } catch(e) { console.error('Failed to parse AI data:', e); }
+        }
+    }
 });
 
 // ── FORM VALIDATION ────────────────────────────────────────────────────
@@ -1967,16 +2555,207 @@ document.getElementById('serviceForm')?.addEventListener('submit', function(e) {
     if (duration < 15) { e.preventDefault(); showToast('Duration must be at least 15 minutes','warning'); return; }
 });
 
-// Staggered card entrance
-document.querySelectorAll('.service-card').forEach((card, i) => {
-    card.style.opacity = '0';
-    card.style.transform = 'translateY(16px)';
-    setTimeout(() => {
-        card.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
-        card.style.opacity = '1';
-        card.style.transform = 'translateY(0)';
-    }, 80 + i * 50);
-});
+// ── IMAGE UPLOAD HANDLING ──────────────────────────────────────────────
+function initializeImageUploads() {
+    // Main image uploads
+    ['mainImageUpload', 'editMainImageUpload'].forEach(id => {
+        const area = document.getElementById(id);
+        const input = document.getElementById(id.replace('Upload', ''));
+        const preview = document.getElementById(id.replace('Upload', 'Preview'));
+        const img = document.getElementById(id.replace('Upload', 'Img'));
+
+        if (area && input && preview && img) {
+            // Click to upload
+            area.addEventListener('click', () => input.click());
+
+            // Drag and drop
+            area.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                area.classList.add('dragover');
+            });
+            area.addEventListener('dragleave', () => area.classList.remove('dragover'));
+            area.addEventListener('drop', (e) => {
+                e.preventDefault();
+                area.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFileSelection(files[0], input, preview, img);
+                }
+            });
+
+            // File input change
+            input.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    handleFileSelection(e.target.files[0], input, preview, img);
+                }
+            });
+        }
+    });
+
+    // Additional images uploads
+    ['additionalImagesUpload', 'editAdditionalImagesUpload'].forEach(id => {
+        const area = document.getElementById(id);
+        const input = document.getElementById(id.replace('Upload', ''));
+        const preview = document.getElementById(id.replace('Upload', 'Preview'));
+
+        if (area && input && preview) {
+            // Click to upload
+            area.addEventListener('click', () => input.click());
+
+            // Drag and drop
+            area.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                area.classList.add('dragover');
+            });
+            area.addEventListener('dragleave', () => area.classList.remove('dragover'));
+            area.addEventListener('drop', (e) => {
+                e.preventDefault();
+                area.classList.remove('dragover');
+                const files = Array.from(e.dataTransfer.files);
+                handleMultipleFileSelection(files, input, preview);
+            });
+
+            // File input change
+            input.addEventListener('change', (e) => {
+                const files = Array.from(e.target.files);
+                handleMultipleFileSelection(files, input, preview);
+            });
+        }
+    });
+}
+
+function handleFileSelection(file, input, preview, img) {
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+        showToast('Please select a valid image file (JPG, PNG, or WebP)', 'warning');
+        return;
+    }
+
+    // Validate file size (4MB)
+    const maxSize = 4 * 1024 * 1024;
+    if (file.size > maxSize) {
+        showToast('File size must be less than 4MB', 'warning');
+        return;
+    }
+
+    // Show preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        img.src = e.target.result;
+        preview.style.display = 'block';
+        // Hide placeholder
+        preview.parentElement.querySelector('.upload-placeholder').style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+}
+
+function handleMultipleFileSelection(files, input, preview) {
+    const maxFiles = 5;
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    const maxSize = 4 * 1024 * 1024;
+
+    // Filter valid files
+    const validFiles = files.filter(file => {
+        if (!allowedTypes.includes(file.type)) {
+            showToast(`Skipping ${file.name}: Invalid file type`, 'warning');
+            return false;
+        }
+        if (file.size > maxSize) {
+            showToast(`Skipping ${file.name}: File too large (max 4MB)`, 'warning');
+            return false;
+        }
+        return true;
+    });
+
+    if (validFiles.length > maxFiles) {
+        showToast(`You can upload up to ${maxFiles} images`, 'warning');
+        validFiles.splice(maxFiles);
+    }
+
+    // Clear existing previews
+    preview.innerHTML = '';
+
+    // Create previews
+    validFiles.forEach((file, index) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const item = document.createElement('div');
+            item.className = 'additional-image-item';
+            item.innerHTML = `
+                <img src="${e.target.result}" alt="Preview ${index + 1}">
+                <button type="button" class="btn-remove-image" onclick="removeAdditionalImage(this)">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+            preview.appendChild(item);
+        };
+        reader.readAsDataURL(file);
+    });
+
+    // Update input files
+    const dt = new DataTransfer();
+    validFiles.forEach(file => dt.items.add(file));
+    input.files = dt.files;
+}
+
+function removeImage(previewId, inputId) {
+    const preview = document.getElementById(previewId);
+    const input = document.getElementById(inputId);
+    const placeholder = preview.parentElement.querySelector('.upload-placeholder');
+
+    preview.style.display = 'none';
+    placeholder.style.display = 'block';
+    input.value = '';
+}
+
+function removeAdditionalImage(button) {
+    const item = button.parentElement;
+    const preview = item.parentElement;
+    const input = document.getElementById(preview.id.replace('Preview', ''));
+
+    item.remove();
+
+    // Update input files
+    const remainingItems = preview.querySelectorAll('.additional-image-item');
+    const dt = new DataTransfer();
+
+    // We can't easily reconstruct the FileList from remaining previews,
+    // so we'll just clear the input and let user re-select
+    input.value = '';
+}
+
+// Initialize image uploads when page loads
+document.addEventListener('DOMContentLoaded', initializeImageUploads);
 </script>
+
+<!-- Upgrade Plan Modal -->
+<?php if (!$can_add_service): ?>
+<div class="modal fade" id="upgradePlanModal" tabindex="-1" aria-labelledby="upgradePlanModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="upgradePlanModalLabel">Upgrade Your Plan</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <div class="mb-4">
+                    <i class="fas fa-lock" style="font-size: 3rem; color: #dc3545;"></i>
+                </div>
+                <h4>Service Limit Reached</h4>
+                <p class="text-muted">
+                    You have reached your limit of <strong><?php echo $service_limit; ?></strong> services 
+                    (currently using <?php echo $current_service_count; ?>).
+                </p>
+                <p>Upgrade your plan to create more services and unlock additional features.</p>
+                <a href="select-plan.php" class="btn btn-primary btn-lg">
+                    <i class="fas fa-arrow-up"></i> View Plans
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 </body>
 </html>

@@ -482,6 +482,7 @@ if ($with) {
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/css/dark-mode.css">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -505,6 +506,58 @@ if ($with) {
             --shadow-sm:    0 1px 4px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
             --shadow-md:    0 4px 16px rgba(0,0,0,0.08);
             --transition:   all 0.18s cubic-bezier(0.4,0,0.2,1);
+        }
+
+        /* Dark Mode Overrides */
+        [data-theme="dark"] {
+            --accent:       #1e40af;
+            --accent-dark:  #1d4ed8;
+            --accent-light: rgba(30,64,175,0.08);
+            --surface:      #0f172a;
+            --surface-2:    #1e293b;
+            --border:       #334155;
+            --border-subtle:#475569;
+            --text-primary: #f1f5f9;
+            --text-secondary:#cbd5e1;
+            --text-muted:   #94a3b8;
+            --sent-bg:      #1e40af;
+            --recv-bg:      #334155;
+            --online:       #059669;
+        }
+
+        /* Dark Mode Card Overrides */
+        [data-theme="dark"] .service-card {
+            background: rgba(30,64,175,0.05);
+            border: 1px solid rgba(30,64,175,0.1);
+        }
+
+        [data-theme="dark"] .location-card {
+            background: rgba(30,64,175,0.05);
+            border: 1px solid rgba(30,64,175,0.1);
+        }
+
+        [data-theme="dark"] .message.sent .service-card,
+        [data-theme="dark"] .message.sent .location-card {
+            background: rgba(30,64,175,0.08);
+            border: 1px solid rgba(30,64,175,0.2);
+        }
+
+        [data-theme="dark"] .service-title {
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .message.sent .service-title {
+            color: #e2e8f0;
+        }
+
+        [data-theme="dark"] .badge.negotiable {
+            background: rgba(245,158,11,0.15);
+            color: #d97706;
+        }
+
+        [data-theme="dark"] .message.sent .badge.negotiable {
+            background: rgba(245,158,11,0.2);
+            color: #f59e0b;
         }
 
         body {
@@ -1057,17 +1110,17 @@ if ($with) {
         }
 
         .location-card {
-            background: rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.1);
             border-radius: var(--radius-md);
             padding: 0.875rem;
             margin: 0.25rem 0;
             border: 1px solid rgba(255,255,255,0.2);
         }
 
-        .message.received .service-card,
-        .message.received .location-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
+        .message.sent .service-card,
+        .message.sent .location-card {
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
         }
 
         .service-card-header,
@@ -1090,11 +1143,11 @@ if ($with) {
         .service-title {
             font-weight: 700;
             font-size: 0.95rem;
-            color: white;
+            color: var(--text-primary);
         }
 
-        .message.received .service-title {
-            color: var(--text-primary);
+        .message.sent .service-title {
+            color: white;
         }
 
         .badge.negotiable {
@@ -1114,13 +1167,13 @@ if ($with) {
 
         .service-description {
             font-size: 0.8rem;
-            color: rgba(255,255,255,0.8);
+            color: var(--text-secondary);
             line-height: 1.4;
             margin-bottom: 0.5rem;
         }
 
-        .message.received .service-description {
-            color: var(--text-secondary);
+        .message.sent .service-description {
+            color: rgba(255,255,255,0.8);
         }
 
         .location-card-body {
@@ -1512,6 +1565,7 @@ if ($with) {
                     </div>
                 </div>
                 <div class="chat-header-actions">
+                    <button class="header-btn" id="darkModeToggleBtn" title="Toggle dark mode"><i class="fas fa-moon"></i></button>
                     <button class="header-btn" id="chatOptionsBtn" title="Chat options"><i class="fas fa-ellipsis-v"></i></button>
                     <div class="chat-options-dropdown" id="chatOptionsDropdown" aria-hidden="true">
                         <button id="chatOptViewOffers">View Offers</button>
@@ -2707,6 +2761,26 @@ function acceptOfferDirect(btn, serviceId) {
     const clientId = <?php echo $with; ?>;
     window.location.href = `../client/booking.php?provider_id=${clientId}&service_id=${serviceId}`;
 }
+
+// Dark Mode Toggle
+document.getElementById('darkModeToggleBtn')?.addEventListener('click', function() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('provider_theme', newTheme);
+    const icon = this.querySelector('i');
+    icon.className = newTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+});
+
+// Initialize dark mode icon
+document.addEventListener('DOMContentLoaded', function() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+    const toggleBtn = document.getElementById('darkModeToggleBtn');
+    if (toggleBtn) {
+        const icon = toggleBtn.querySelector('i');
+        icon.className = currentTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+    }
+});
 </script>
 <script>
     window.chatContext = {

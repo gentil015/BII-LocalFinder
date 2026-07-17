@@ -114,9 +114,9 @@ if ($max_daily_bookings > 0) {
 }
 
 if ($slots_per_day > 0) {
-    $stmt = $db->prepare("SELECT preferred_date, COUNT(*) as cnt FROM bookings WHERE provider_id = ? AND preferred_date >= CURDATE() AND status IN ('pending','confirmed','accepted','in progress') GROUP BY preferred_date");
-    $stmt->execute([$provider_id]);
-    $bookings_per_day = $stmt->fetchAll();
+        $stmt = $db->prepare("SELECT preferred_date, COUNT(*) as cnt FROM bookings WHERE provider_id = ? AND preferred_date >= CURDATE() AND status IN ('pending','confirmed') GROUP BY preferred_date");
+        $stmt->execute([$provider_id]);
+        $bookings_per_day = $stmt->fetchAll();
 
     foreach ($bookings_per_day as $row) {
         if (!empty($row['preferred_date']) && intval($row['cnt']) >= $slots_per_day) {
@@ -136,15 +136,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['final_submit'])) {
     $service_desc = trim($_POST['serviceDesc'] ?? '');
     $preferred_date = trim($_POST['preferred_date'] ?? '');
     $preferred_time = trim($_POST['preferred_time'] ?? '');
-    $client_name = trim($_POST['clientName'] ?? '');
-    $client_phone = trim($_POST['clientPhone'] ?? '');
-    $client_location = trim($_POST['clientLocation'] ?? '');
-    $urgency_level = trim($_POST['urgencyLevel'] ?? 'normal');
+    $client_name = trim($_POST['client_name'] ?? '');
+    $client_phone = trim($_POST['client_phone'] ?? '');
+    $client_location = trim($_POST['client_location'] ?? '');
+    $urgency_level = trim($_POST['urgency_level'] ?? 'normal');
     $client_proposed_price = !empty($_POST['client_proposed_price']) ? floatval($_POST['client_proposed_price']) : null;
+
+    if (empty($_SESSION['user_id'])) {
+        $booking_errors[] = "Please log in to submit a booking.";
+    }
 
     // Validate all required fields
     if (empty($service_desc) || empty($preferred_date) || !$service_id) {
         $booking_errors[] = "Please fill all required fields";
+    }
+    if (empty($client_name) || empty($client_phone) || empty($client_location)) {
+        $booking_errors[] = "Please enter your name, phone number, and location.";
     }
 
     // validate date
@@ -274,10 +281,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['final_submit'])) {
             $bookingStatus = 'confirmed';
         }
 
+        $booking_amount = $client_proposed_price !== null
+            ? $client_proposed_price
+            : (isset($selectedService['price']) ? floatval($selectedService['price']) : null);
+
         $stmt = $db->prepare("INSERT INTO bookings (client_id, provider_id, service_id, service_description, preferred_date, preferred_time, location, amount, status, provider_share_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        if ($stmt->execute([$_SESSION['user_id'], $provider_id, $service_id, $service_desc, $preferred_date, $preferred_time, $client_location, $client_proposed_price, $bookingStatus, $share_id ? $share_id : null])) {
+        if ($stmt->execute([$_SESSION['user_id'], $provider_id, $service_id, $service_desc, $preferred_date, $preferred_time, $client_location, $booking_amount, $bookingStatus, $share_id ? $share_id : null])) {
             $booking_id = $db->lastInsertId();
             $booking_ref = '#BK-' . date('Y') . '-' . str_pad($booking_id,5,'0',STR_PAD_LEFT);
+
+            // Create payment record if amount > 0
+            if ($client_proposed_price > 0) {
+                require_once '../payments/PaymentManager.php';
+                $paymentManager = new PaymentManager();
+                $payment_id = $paymentManager->createPaymentForBooking($booking_id);
+                if ($payment_id) {
+                    // Log payment creation
+                    $stmt = $db->prepare("INSERT INTO user_activities (user_id, activity_type, description, ip_address, user_agent) VALUES (?, 'payment_created', ?, ?, ?)");
+                    $stmt->execute([$_SESSION['user_id'], "Payment created for booking {$booking_ref}", $_SERVER['REMOTE_ADDR'] ?? null, $_SERVER['HTTP_USER_AGENT'] ?? null]);
+                }
+            }
 
             // send email/notification first
             if (!empty($provider['email'])) {
@@ -1068,6 +1091,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['final_submit'])) {
                 </div>
             <?php else: ?>
                 <form id="bookingForm" method="post" action="?provider_id=<?php echo $provider_id; ?>">
+                <input type="hidden" name="current_step" id="currentStepHidden" value="1">
                 <!-- Multi-Step Booking Form -->
                 <div class="card" id="bookingCard">
 
@@ -1378,10 +1402,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['final_submit'])) {
                         </div>
 
                         <div class="step-nav">
-                            <button class="btn btn-secondary" onclick="goToStep(3)">
+                            <button type="button" class="btn btn-secondary" onclick="goToStep(3)">
                                 <i class="fas fa-arrow-left"></i> Edit Details
                             </button>
-                            <button class="btn btn-success" onclick="submitBooking()" id="submitBtn">
+                            <button type="button" class="btn btn-success submit-booking-btn" onclick="submitBooking()" id="submitBtn">
                                 <i class="fas fa-paper-plane"></i> Send Booking Request
                             </button>
                         </div>
@@ -1458,7 +1482,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['final_submit'])) {
                         </div>
                         <div id="termsErrorSummary" class="field-error" style="display:none;font-size:.82rem;margin-bottom:.6rem;">Please accept the terms to submit.</div>
 
-                        <button id="submitBtn" class="btn btn-success" style="width:100%;" onclick="submitBooking()">
+                        <button type="button" id="submitBtnSummary" class="btn btn-success submit-booking-btn" style="width:100%;" onclick="submitBooking()">
                             <i class="fas fa-paper-plane"></i> Submit Booking Request
                         </button>
                     </div>
@@ -1637,6 +1661,7 @@ function goToStep(n) {
     });
 
     currentStep = n;
+    document.getElementById('currentStepHidden').value = n;
     if (n === 4) populateConfirm();
     window.scrollTo({top: 0, behavior: 'smooth'});
 }
@@ -2213,11 +2238,10 @@ function submitBooking() {
     if (!terms || !terms.checked) { if (err) err.style.display = 'block'; return; }
     if (err) err.style.display = 'none';
 
-    const btn = document.getElementById('submitBtn');
-    if (btn) {
+    document.querySelectorAll('.submit-booking-btn').forEach(btn => {
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting…';
-    }
+    });
 
     // Add final_submit flag to indicate this is the actual form submission
     const finalSubmitField = document.createElement('input');
@@ -2235,6 +2259,21 @@ function submitBooking() {
 
 /* ─── Init ───────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
+    // Set current step from POST data
+    currentStep = parseInt('<?php echo $_POST['current_step'] ?? 1; ?>');
+
+    // Populate form fields from POST data
+    document.getElementById('clientName').value = '<?php echo htmlspecialchars($_POST['client_name'] ?? ''); ?>';
+    document.getElementById('clientPhone').value = '<?php echo htmlspecialchars($_POST['client_phone'] ?? ''); ?>';
+    document.getElementById('clientLocation').value = '<?php echo htmlspecialchars($_POST['client_location'] ?? ''); ?>';
+    document.getElementById('serviceDesc').value = '<?php echo htmlspecialchars($_POST['serviceDesc'] ?? ''); ?>';
+    document.getElementById('preferredDate').value = '<?php echo htmlspecialchars($_POST['preferred_date'] ?? ''); ?>';
+    document.getElementById('selectedTime').value = '<?php echo htmlspecialchars($_POST['preferred_time'] ?? ''); ?>';
+    document.getElementById('urgencyLevel').value = '<?php echo htmlspecialchars($_POST['urgency_level'] ?? 'normal'); ?>';
+    <?php if (!empty($_POST['client_proposed_price'])): ?>
+    document.getElementById('clientProposedPrice').value = '<?php echo htmlspecialchars($_POST['client_proposed_price']); ?>';
+    <?php endif; ?>
+
     // Auto-select service if provided via URL parameter
     if (autoServiceId && autoService) {
         // Find the service element and click it to auto-select
@@ -2331,15 +2370,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Live field error clearing
-    ['clientName','clientPhone','clientLocation','serviceDesc'].forEach(id => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.addEventListener('input', () => {
-            const field = el.closest('.field');
-            if (field && el.value.trim()) field.classList.remove('has-error');
-        });
-    });
+    // Go to the current step
+    goToStep(currentStep);
+
 });
 </script>
 </body>

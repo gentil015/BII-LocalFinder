@@ -406,7 +406,10 @@ $social_links = [
 
 // Count active social links
 $active_links = 0;
-foreach ($social_links as $link) {
+foreach ($social_links as $key => $link) {
+    if ($key === 'whatsapp' && !$visibility['show_whatsapp']) {
+        continue;
+    }
     if (!empty($provider[$link['field']])) {
         $active_links++;
     }
@@ -2039,8 +2042,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
                         <div class="meta-item">
                             <i class="fas fa-map-marker-alt"></i>
                             <span>
-                                <?php echo htmlspecialchars($provider['location']); ?>
-                                <?php if ($provider['district']): ?>, <?php echo htmlspecialchars($provider['district']); ?><?php endif; ?>
+                                <?php if ($visibility['show_exact_location']): ?>
+                                    <?php echo htmlspecialchars($provider['location']); ?>
+                                    <?php if ($provider['district']): ?>, <?php echo htmlspecialchars($provider['district']); ?><?php endif; ?>
+                                <?php else: ?>
+                                    <?php echo htmlspecialchars($provider['district'] ?? 'General area'); ?>
+                                <?php endif; ?>
                             </span>
                         </div>
                         

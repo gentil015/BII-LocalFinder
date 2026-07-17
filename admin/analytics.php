@@ -5,7 +5,7 @@ require_once '../includes/functions.php';
 
 // Check admin access
 if (!isLoggedIn() || !isAdmin()) {
-    redirect('../login.php');
+    redirect('login.php');
 }
 
 $db = Database::getInstance()->getConnection();

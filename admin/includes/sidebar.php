@@ -16,7 +16,31 @@ try {
 } catch (Exception $e) {
     // fallback to default name on error
 }
+
+$admin_theme = 'light';
+try {
+    $stmt = $db->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'admin_theme' LIMIT 1");
+    $stmt->execute();
+    $themeValue = $stmt->fetchColumn();
+    if ($themeValue !== false && trim($themeValue) !== '') {
+        $admin_theme = $themeValue;
+    }
+} catch (Exception $e) {
+    // fallback to default theme on error
+}
 ?>
+
+<link rel="stylesheet" href="../assets/css/dark-mode.css">
+<script>
+    (function() {
+        const savedTheme = localStorage.getItem('admin_theme');
+        const theme = savedTheme || '<?php echo addslashes($admin_theme); ?>';
+        document.documentElement.setAttribute('data-theme', theme);
+        if (!savedTheme) {
+            localStorage.setItem('admin_theme', theme);
+        }
+    })();
+</script>
 
 <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">

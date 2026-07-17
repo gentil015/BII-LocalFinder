@@ -26,17 +26,6 @@ $aiHelper = new AIHelper($db);
 $success = '';
 $errors = [];
 
-// Check if AI features are enabled (default to enabled if setting doesn't exist)
-$enable_ai_features = true;
-try {
-    $stmt = $db->prepare("SELECT value FROM platform_settings WHERE setting_key = ?");
-    $stmt->execute(['enable_ai_features']);
-    $result = $stmt->fetch();
-    $enable_ai_features = $result ? ($result['value'] === '1') : true;
-} catch (Exception $e) {
-    $enable_ai_features = true; // Default to enabled if check fails
-}
-
 // Get provider profile
 $stmt = $db->prepare("
     SELECT sp.*, u.email, u.phone, u.profile_image, u.full_name
@@ -46,6 +35,15 @@ $stmt = $db->prepare("
 ");
 $stmt->execute([$_SESSION['user_id']]);
 $provider = $stmt->fetch();
+
+// Check if AI features are enabled for this provider
+$enable_ai_features = false;
+if (!empty($provider['id'])) {
+    $enable_ai_features = isProviderAIEnabled($provider['id']);
+}
+
+// Check if specific AI sub-features are enabled
+$ai_description_improvement_enabled = getProviderSetting($provider['id'], 'ai_features_ai_description_improvement') == '1';
 
 // Get provider social links
 $social_platforms = [
@@ -178,8 +176,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
         }
     }
     
-    // Use AI to improve bio if enabled
-    if ($enable_ai_features && !empty($bio) && strlen($bio) > 20) {
+    // Use AI to improve bio if enabled (and description improvement sub-toggle is on)
+    if ($enable_ai_features && $ai_description_improvement_enabled && !empty($bio) && strlen($bio) > 20) {
         $original_bio = $bio;
         $improved_bio = $aiHelper->improveProfessionalBio($bio, $profession, $experience_years);
         
@@ -569,8 +567,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_section'])) {
                 } elseif (!preg_match('/^\+?[\d\s\-\(\)]{10,}$/', $phone)) {
                     $response['errors'][] = "Please enter a valid phone number";
                 } else {
-                    // Use AI to improve bio if enabled
-                    if ($enable_ai_features && !empty($bio) && strlen($bio) > 20) {
+                    // Use AI to improve bio if enabled (and description improvement sub-toggle is on)
+                    if ($enable_ai_features && $ai_description_improvement_enabled && !empty($bio) && strlen($bio) > 20) {
                         $improved_bio = $aiHelper->improveProfessionalBio($bio, $profession, $experience_years);
                         if ($improved_bio !== $bio && strlen($improved_bio) > strlen($bio) * 0.8) {
                             $bio = $improved_bio;
@@ -751,6 +749,8 @@ $is_profile_complete = $requirements->isComplete();
     <link rel="stylesheet" href="../bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="../assets/css/provider-requirements.css">
+    <!-- Dark Mode CSS -->
+    <link rel="stylesheet" href="../assets/css/dark-mode.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -786,6 +786,33 @@ $is_profile_complete = $requirements->isComplete();
             --shadow-sm:     0 2px 8px rgba(0,0,0,0.07);
             --shadow-md:     0 4px 16px rgba(0,0,0,0.09);
             --transition:    all 0.18s cubic-bezier(0.4,0,0.2,1);
+        }
+
+        /* Dark Mode Variables */
+        [data-theme="dark"] {
+            --accent:        #3b82f6;
+            --accent-dark:   #2563eb;
+            --accent-light:  #1e3a8a;
+            --success:       #10b981;
+            --success-light: #064e3b;
+            --danger:        #ef4444;
+            --danger-light:  #7f1d1d;
+            --warning:       #f59e0b;
+            --warning-light: #78350f;
+            --info:          #06b6d4;
+            --info-light:    #164e63;
+            --purple:        #8b5cf6;
+            --purple-light:  #2d1b69;
+            --surface:       #0f172a;
+            --surface-2:     #1e293b;
+            --border:        #334155;
+            --border-subtle: #475569;
+            --text-primary:  #f8fafc;
+            --text-secondary:#cbd5e1;
+            --text-muted:    #94a3b8;
+            --shadow-xs:     0 1px 3px rgba(0,0,0,0.3);
+            --shadow-sm:     0 2px 8px rgba(0,0,0,0.4);
+            --shadow-md:     0 4px 16px rgba(0,0,0,0.5);
         }
 
         body {
@@ -1211,6 +1238,13 @@ $is_profile_complete = $requirements->isComplete();
     <?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
 </head>
 <body>
+    <script>
+        // Initialize theme from localStorage
+        (function() {
+            const theme = localStorage.getItem('provider_theme') || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
     <!-- Mobile Menu Toggle -->
     <button class="mobile-menu-toggle" id="mobileToggle">
         <i class="fas fa-bars"></i>

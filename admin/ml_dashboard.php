@@ -4,7 +4,7 @@ require_once '../config/database.php';
 require_once '../includes/functions.php';
 
 if (!isLoggedIn() || !isAdmin()) {
-    redirect('../login.php');
+    redirect('login.php');
 }
 
 $db = Database::getInstance()->getConnection();
@@ -138,34 +138,187 @@ $chartAvgScores = array_column($predictionsOverTime, 'avg_score');
             --sidebar-width: 250px;
         }
         body {
-            margin: 0;
+            background-color: #f5f7fb;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f5f7fb;
+            margin: 0;
+            padding: 0;
             color: #212529;
         }
-        .admin-wrapper { display: flex; min-height: 100vh; }
-        .main-content { margin-left: var(--sidebar-width); padding: 1rem 2rem; width: calc(100% - var(--sidebar-width)); }
-        .page-header { background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 16px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
-        .page-header h1 { margin: 0; font-size: 1.9rem; }
-        .page-header p { margin: .4rem 0 0; color: var(--secondary); }
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem; }
-        .stat-card { background: white; border-radius: 14px; padding: 1.5rem; box-shadow: 0 2px 18px rgba(0,0,0,0.06); border-left: 5px solid var(--primary); }
-        .stat-card .label { display: block; color: var(--secondary); margin-bottom: .75rem; font-weight: 600; }
-        .stat-card .value { font-size: 2.2rem; font-weight: 700; margin-bottom: .5rem; }
-        .stat-card .tag { display: inline-flex; align-items: center; gap: .35rem; padding: .35rem .8rem; border-radius: 999px; font-size: .85rem; font-weight: 600; }
+        .admin-wrapper {
+            display: flex;
+            min-height: 100vh;
+        }
+        .main-content {
+            margin-left: var(--sidebar-width);
+            padding: 1rem 2rem;
+            min-height: 100vh;
+            width: calc(100% - var(--sidebar-width));
+        }
+        .page-header {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+        .page-header h1 {
+            color: var(--dark);
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+        .page-header p {
+            color: var(--secondary);
+            margin: 0;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            border-left: 4px solid var(--primary);
+            transition: all 0.3s ease;
+            text-align: center;
+            position: relative;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.12);
+        }
+        .stat-card .label {
+            display: block;
+            color: var(--secondary);
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+        }
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 0;
+            color: var(--dark);
+        }
+        .stat-card .tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.35rem 0.8rem;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
         .stat-primary { border-left-color: var(--primary); }
         .stat-success { border-left-color: var(--success); }
         .stat-warning { border-left-color: var(--warning); }
         .stat-info { border-left-color: var(--info); }
-        .card { background: white; border: none; border-radius: 14px; box-shadow: 0 2px 18px rgba(0,0,0,0.06); margin-bottom: 1.5rem; }
-        .card h3 { margin-top: 0; font-size: 1.2rem; font-weight: 700; }
-        .table th, .table td { vertical-align: middle; }
-        .filter-panel { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; margin-bottom: 1.5rem; }
-        .filter-panel label { font-weight: 600; color: var(--secondary); }
-        @media(max-width: 900px) { .main-content { margin-left: 0; width: 100%; padding: 1rem; } }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            border: none;
+            margin-bottom: 1.5rem;
+        }
+        .card h3 {
+            margin: 0 0 1.5rem 0;
+            color: var(--dark);
+            font-weight: 600;
+            font-size: 1.3rem;
+        }
+        .table-responsive {
+            overflow-x: auto;
+            border-radius: 8px;
+        }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 0;
+        }
+        .table th {
+            background-color: #f8f9fa;
+            color: var(--dark);
+            font-weight: 600;
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 2px solid #dee2e6;
+        }
+        .table td {
+            padding: 1rem;
+            border-bottom: 1px solid #dee2e6;
+            vertical-align: middle;
+        }
+        .table tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+        .filter-panel {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            align-items: flex-end;
+            margin-bottom: 1.5rem;
+        }
+        .filter-panel label {
+            font-weight: 600;
+            color: var(--secondary);
+        }
+        .mobile-menu-toggle {
+            display: none;
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 1100;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            width: 45px;
+            height: 45px;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+        }
+        .overlay.active {
+            display: block;
+        }
+        .alert {
+            border-radius: 8px;
+            border: none;
+            margin-bottom: 1.5rem;
+        }
+        @media (max-width: 900px) {
+            .main-content {
+                margin-left: 0;
+                width: 100%;
+                padding: 1rem;
+            }
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            .mobile-menu-toggle {
+                display: flex;
+            }
+        }
     </style>
 </head>
 <body>
+    <button class="mobile-menu-toggle" id="mobileToggle">
+        <i class="fas fa-bars"></i>
+    </button>
+    <div class="overlay" id="overlay"></div>
     <div class="admin-wrapper">
         <?php include 'includes/sidebar.php'; ?>
         <div class="main-content">
@@ -386,6 +539,22 @@ $chartAvgScores = array_column($predictionsOverTime, 'avg_score');
                 plugins: {legend: {display: false}},
                 scales: {y: {beginAtZero: true, max: 100}}
             }
+        });
+    </script>
+    <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const mobileToggle = document.getElementById('mobileToggle');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('overlay');
+
+        mobileToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('mobile-open');
+            overlay.classList.toggle('active');
+        });
+
+        overlay.addEventListener('click', () => {
+            sidebar.classList.remove('mobile-open');
+            overlay.classList.remove('active');
         });
     </script>
 </body>

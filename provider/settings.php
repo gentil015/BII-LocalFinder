@@ -24,7 +24,7 @@ $db = Database::getInstance()->getConnection();
 
 // Get settings section from URL (default to 'identity')
 $settings_section = isset($_GET['section']) ? sanitize($_GET['section']) : 'identity';
-$valid_settings_sections = ['identity', 'visibility', 'pricing', 'availability', 'location', 'ai', 'payment', 'communication', 'notifications', 'reviews', 'security', 'analytics', 'account', 'requirements', 'language'];
+$valid_settings_sections = ['identity', 'visibility', 'pricing', 'availability', 'location', 'ai', 'ai_features', 'payment', 'communication', 'notifications', 'reviews', 'security', 'analytics', 'account', 'requirements', 'language'];
 if (!in_array($settings_section, $valid_settings_sections)) {
     $settings_section = 'identity';
 }
@@ -56,7 +56,9 @@ $providerSettings = [
     'pricing' => [],
     'location' => [],
     'availability' => [],
-    'reviews' => []
+    'reviews' => [],
+    'appearance' => [], // Add appearance settings
+    'language' => [] // Add language settings
 ];
 
 // Load all provider settings
@@ -66,11 +68,18 @@ $settingsData = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
 // Parse settings
 foreach ($settingsData as $key => $value) {
-    $parts = explode('_', $key);
-    $section = $parts[0];
-    $setting = implode('_', array_slice($parts, 1));
+    // Check for multi-word sections first (ai_features)
+    if (strpos($key, 'ai_features_') === 0) {
+        $section = 'ai_features';
+        $setting = substr($key, strlen('ai_features_'));
+    } else {
+        // For single-word sections, split by first underscore
+        $parts = explode('_', $key, 2);
+        $section = $parts[0];
+        $setting = $parts[1] ?? '';
+    }
     
-    if (isset($providerSettings[$section])) {
+    if (isset($providerSettings[$section]) && $setting) {
         $providerSettings[$section][$setting] = $value;
     }
 }
@@ -184,6 +193,11 @@ foreach ($stmt->fetchAll(PDO::FETCH_KEY_PAIR) as $key => $value) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $section = sanitize($_POST['section'] ?? '');
     
+    // Normalize 'ai' to 'ai_features' for routing
+    if ($section === 'ai') {
+        $section = 'ai_features';
+    }
+    
     try {
         $db->beginTransaction();
         
@@ -292,9 +306,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $db->prepare("
                         INSERT INTO provider_settings (provider_id, setting_key, setting_value)
                         VALUES (?, ?, ?)
-                        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+                        ON DUPLICATE KEY UPDATE setting_value = ?
                     ");
-                    $stmt->execute([$provider['id'], "visibility_" . $key, $value]);
+                    $stmt->execute([$provider['id'], "visibility_" . $key, $value, $value]);
                 }
                 $success = "Visibility settings updated successfully!";
                 break;
@@ -317,9 +331,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $db->prepare("
                         INSERT INTO provider_settings (provider_id, setting_key, setting_value)
                         VALUES (?, ?, ?)
-                        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+                        ON DUPLICATE KEY UPDATE setting_value = ?
                     ");
-                    $stmt->execute([$provider['id'], "communication_" . $key, $value]);
+                    $stmt->execute([$provider['id'], "communication_" . $key, $value, $value]);
                 }
                 $success = "Communication settings updated successfully!";
                 break;
@@ -355,9 +369,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $db->prepare("
                         INSERT INTO provider_settings (provider_id, setting_key, setting_value)
                         VALUES (?, ?, ?)
-                        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+                        ON DUPLICATE KEY UPDATE setting_value = ?
                     ");
-                    $stmt->execute([$provider['id'], "pricing_" . $key, $value]);
+                    $stmt->execute([$provider['id'], "pricing_" . $key, $value, $value]);
                 }
                 $success = "Pricing settings updated successfully!";
                 break;
@@ -402,27 +416,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt->execute([$exception_id, $provider['id']]);
                     $success = "Availability exception removed.";
                 } else {
-                    $settings = [
-                        'working_days' => isset($_POST['working_days']) ? implode(',', $_POST['working_days']) : '',
-                        'working_hours_start' => sanitize($_POST['working_hours_start'] ?? '08:00'),
-                        'working_hours_end' => sanitize($_POST['working_hours_end'] ?? '17:00'),
-                        'break_start' => sanitize($_POST['break_start'] ?? ''),
-                        'break_end' => sanitize($_POST['break_end'] ?? ''),
-                        'max_jobs_per_day' => intval($_POST['max_jobs_per_day'] ?? 5),
+                    // Update service_providers table directly for availability settings
+                    $stmt = $db->prepare("
+                        UPDATE service_providers SET 
+                            working_days = ?,
+                            working_hours_start = ?,
+                            working_hours_end = ?,
+                            break_start = ?,
+                            break_end = ?,
+                            max_daily_bookings = ?,
+                            buffer_time = ?
+                        WHERE id = ?
+                    ");
+                    
+                    $working_days = isset($_POST['working_days']) ? implode(',', $_POST['working_days']) : '';
+                    $working_hours_start = sanitize($_POST['working_hours_start'] ?? '08:00');
+                    $working_hours_end = sanitize($_POST['working_hours_end'] ?? '17:00');
+                    $break_start = sanitize($_POST['break_start'] ?? '');
+                    $break_end = sanitize($_POST['break_end'] ?? '');
+                    $max_jobs_per_day = intval($_POST['max_jobs_per_day'] ?? 5);
+                    $buffer_time = intval($_POST['buffer_time'] ?? 15);
+                    
+                    $stmt->execute([
+                        $working_days,
+                        $working_hours_start,
+                        $working_hours_end,
+                        $break_start,
+                        $break_end,
+                        $max_jobs_per_day,
+                        $buffer_time,
+                        $provider['id']
+                    ]);
+                    
+                    // Save other settings to provider_settings
+                    $other_settings = [
                         'auto_accept_bookings' => isset($_POST['auto_accept_bookings']) ? 1 : 0,
-                        'buffer_time' => intval($_POST['buffer_time'] ?? 15),
                         'google_calendar_sync' => isset($_POST['google_calendar_sync']) ? 1 : 0,
                         'calendar_conflict_prevention' => isset($_POST['calendar_conflict_prevention']) ? 1 : 0
                     ];
                     
-                    foreach ($settings as $key => $value) {
+                    foreach ($other_settings as $key => $value) {
                         $stmt = $db->prepare("
-                        INSERT INTO provider_settings (provider_id, setting_key, setting_value)
-                        VALUES (?, ?, ?)
-                        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
-                    ");
-                        $stmt->execute([$provider['id'], "availability_" . $key, $value]);
+                            INSERT INTO provider_settings (provider_id, setting_key, setting_value)
+                            VALUES (?, ?, ?)
+                            ON DUPLICATE KEY UPDATE setting_value = ?
+                        ");
+                        $stmt->execute([$provider['id'], "availability_" . $key, $value, $value]);
                     }
+                    
                     $success = "Availability settings updated successfully!";
                 }
                 break;
@@ -466,9 +507,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $db->prepare("
                         INSERT INTO provider_settings (provider_id, setting_key, setting_value)
                         VALUES (?, ?, ?)
-                        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+                        ON DUPLICATE KEY UPDATE setting_value = ?
                     ");
-                    $stmt->execute([$provider['id'], "location_" . $key, $value]);
+                    $stmt->execute([$provider['id'], "location_" . $key, $value, $value]);
                 }
                 $success = "Location settings updated successfully!";
                 break;
@@ -491,15 +532,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $db->prepare("
                         INSERT INTO provider_settings (provider_id, setting_key, setting_value)
                         VALUES (?, ?, ?)
-                        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+                        ON DUPLICATE KEY UPDATE setting_value = ?
                     ");
-                    $stmt->execute([$provider['id'], "ai_" . $key, $value]);
+                    $stmt->execute([$provider['id'], "ai_features_" . $key, $value, $value]);
                 }
                 $success = "AI features updated successfully!";
                 break;
-                
+
             case 'payment':
-                // Update payment methods
                 if (isset($_POST['payment_methods']) && is_array($_POST['payment_methods'])) {
                     $stmt = $db->prepare("
                         INSERT INTO provider_payment_methods (provider_id, method_type, account_name, account_number, bank_name, is_default, is_active)
@@ -539,9 +579,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $db->prepare("
                         INSERT INTO provider_settings (provider_id, setting_key, setting_value)
                         VALUES (?, ?, ?)
-                        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+                        ON DUPLICATE KEY UPDATE setting_value = ?
                     ");
-                    $stmt->execute([$provider['id'], "payment_" . $key, $value]);
+                    $stmt->execute([$provider['id'], "payment_" . $key, $value, $value]);
                 }
                 $success = "Payment settings updated successfully!";
                 break;
@@ -569,9 +609,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $db->prepare("
                         INSERT INTO provider_settings (provider_id, setting_key, setting_value)
                         VALUES (?, ?, ?)
-                        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+                        ON DUPLICATE KEY UPDATE setting_value = ?
                     ");
-                    $stmt->execute([$provider['id'], "notifications_" . $key, $value]);
+                    $stmt->execute([$provider['id'], "notifications_" . $key, $value, $value]);
                 }
                 $success = "Notification settings updated successfully!";
                 break;
@@ -589,9 +629,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $db->prepare("
                         INSERT INTO provider_settings (provider_id, setting_key, setting_value)
                         VALUES (?, ?, ?)
-                        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+                        ON DUPLICATE KEY UPDATE setting_value = ?
                     ");
-                    $stmt->execute([$provider['id'], "reviews_" . $key, $value]);
+                    $stmt->execute([$provider['id'], "reviews_" . $key, $value, $value]);
                 }
                 $success = "Review settings updated successfully!";
                 break;
@@ -612,9 +652,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $db->prepare("
                         INSERT INTO provider_settings (provider_id, setting_key, setting_value)
                         VALUES (?, ?, ?)
-                        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+                        ON DUPLICATE KEY UPDATE setting_value = ?
                     ");
-                    $stmt->execute([$provider['id'], "security_" . $key, $value]);
+                    $stmt->execute([$provider['id'], "security_" . $key, $value, $value]);
                 }
                 
                 // Handle password change
@@ -728,49 +768,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         break;
                 }
                 break;
+
+            case 'requirements':
+                // Requirements is view-only, no update needed
+                $success = "Requirements information saved!";
+                break;
         }
         
         $db->commit();
 
-        // Remember which section was saved so we can notify other pages/tabs
-        $lastSavedSection = $section;
-        
-        // Refresh settings
-        $stmt = $db->prepare("SELECT setting_key, setting_value FROM provider_settings WHERE provider_id = ?");
-        $stmt->execute([$provider['id']]);
-        $settingsData = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
-        
-        // Re-parse settings
-        $providerSettings = [
-            'visibility' => [], 'communication' => [], 'notifications' => [],
-            'ai_features' => [], 'payment' => [], 'security' => [],
-            'pricing' => [], 'location' => [], 'availability' => [], 'reviews' => []
-        ];
-        
-        foreach ($settingsData as $key => $value) {
-            $parts = explode('_', $key);
-            $section = $parts[0];
-            $setting = implode('_', array_slice($parts, 1));
+        // Reload settings from database to show updated values
+        if (!empty($success)) {
+            $stmt = $db->prepare("SELECT setting_key, setting_value FROM provider_settings WHERE provider_id = ?");
+            $stmt->execute([$provider['id']]);
+            $settingsData = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
+            // Re-parse settings into sections
+            $providerSettings = [
+                'visibility' => [], 'communication' => [], 'notifications' => [],
+                'ai_features' => [], 'payment' => [], 'security' => [],
+                'pricing' => [], 'location' => [], 'availability' => [], 'reviews' => [],
+                'appearance' => [], 'language' => []
+            ];
             
-            if (isset($providerSettings[$section])) {
-                $providerSettings[$section][$setting] = $value;
+            foreach ($settingsData as $key => $value) {
+                // Check for multi-word sections first (ai_features)
+                if (strpos($key, 'ai_features_') === 0) {
+                    $section = 'ai_features';
+                    $setting = substr($key, strlen('ai_features_'));
+                } else {
+                    // For single-word sections, split by first underscore
+                    $parts = explode('_', $key, 2);
+                    $section = $parts[0];
+                    $setting = $parts[1] ?? '';
+                }
+                
+                if (isset($providerSettings[$section]) && $setting) {
+                    $providerSettings[$section][$setting] = $value;
+                }
             }
         }
-        
-        // Refresh provider data
-        $stmt = $db->prepare("
-            SELECT sp.*, u.email, u.phone, u.profile_image, u.full_name, 
-                   u.is_verified as email_verified, u.is_active, u.created_at as join_date,
-                   u.two_factor_enabled, u.login_notifications
-            FROM service_providers sp
-            JOIN users u ON sp.user_id = u.id
-            WHERE sp.user_id = ?
-        ");
-        $stmt->execute([$_SESSION['user_id']]);
-        $provider = $stmt->fetch();
-        // clear section var for later use
-        $section = $section ?? '';
-        
     } catch (Exception $e) {
         $db->rollBack();
         $errors[] = "Failed to update settings: " . $e->getMessage();
@@ -849,8 +886,8 @@ function getSetting($section, $key, $default = '') {
 }
 
 // Get working days array
-$workingDays = !empty(getSetting('availability', 'working_days')) ? 
-    explode(',', getSetting('availability', 'working_days')) : [1,2,3,4,5];
+$workingDays = !empty($provider['working_days']) ? 
+    explode(',', $provider['working_days']) : [1,2,3,4,5];
 
 // Get enabled payment methods
 $enabledPaymentMethods = !empty(getSetting('payment', 'payment_methods')) ? 
@@ -883,6 +920,8 @@ $is_profile_complete = $requirements->isComplete();
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <!-- Provider Requirements Checklist CSS -->
     <link rel="stylesheet" href="../assets/css/provider-requirements.css">
+    <!-- Dark Mode CSS -->
+    <link rel="stylesheet" href="../assets/css/dark-mode.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -916,6 +955,31 @@ $is_profile_complete = $requirements->isComplete();
             --shadow-sm:     0 2px 8px rgba(0,0,0,0.07);
             --shadow-md:     0 4px 16px rgba(0,0,0,0.08);
             --transition:    all 0.18s cubic-bezier(0.4,0,0.2,1);
+        }
+
+        /* Dark Mode Variables */
+        [data-theme="dark"] {
+            --accent:        #3b82f6;
+            --accent-dark:   #2563eb;
+            --accent-light:  #1e3a8a;
+            --success:       #10b981;
+            --success-light: #064e3b;
+            --danger:        #ef4444;
+            --danger-light:  #7f1d1d;
+            --warning:       #f59e0b;
+            --warning-light: #78350f;
+            --info:          #06b6d4;
+            --info-light:    #164e63;
+            --surface:       #0f172a;
+            --surface-2:     #1e293b;
+            --border:        #334155;
+            --border-subtle: #475569;
+            --text-primary:  #f8fafc;
+            --text-secondary:#cbd5e1;
+            --text-muted:    #94a3b8;
+            --shadow-xs:     0 1px 3px rgba(0,0,0,0.3);
+            --shadow-sm:     0 2px 8px rgba(0,0,0,0.4);
+            --shadow-md:     0 4px 16px rgba(0,0,0,0.5);
         }
 
         body {
@@ -1618,9 +1682,74 @@ $is_profile_complete = $requirements->isComplete();
         }
 
         .settings-progress-bar { height: 20px; border-radius: 99px; }
+
+        /* AI Toggle Real-time Feedback Styles */
+        .ai-toggle {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .ai-toggle:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .setting-card {
+            transition: background-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .setting-card.saving {
+            background-color: var(--info-light);
+            opacity: 0.8;
+        }
+
+        /* Success animation for toggle save */
+        @keyframes saveSuccess {
+            0% {
+                background-color: var(--success-light);
+                box-shadow: 0 0 20px rgba(22, 163, 74, 0.3);
+            }
+            100% {
+                background-color: var(--surface);
+                box-shadow: none;
+            }
+        }
+
+        .setting-card.save-success {
+            animation: saveSuccess 0.5s ease-out;
+        }
+
+        /* Loading spinner for toggles */
+        .toggle-switch.loading::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--accent);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        @keyframes spin {
+            to { transform: translateY(-50%) rotate(360deg); }
+        }
     </style>
 </head>
 <body>
+    <script>
+        // Initialize theme from database/localStorage
+        (function() {
+            const dbTheme = '<?php echo $providerSettings['appearance']['theme'] ?? 'light'; ?>';
+            const localTheme = localStorage.getItem('provider_theme');
+            const theme = localTheme || dbTheme || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('provider_theme', theme);
+        })();
+    </script>
     <!-- Mobile Menu Toggle -->
     <button class="mobile-menu-toggle" id="mobileToggle">
         <i class="fas fa-bars"></i>
@@ -1747,6 +1876,23 @@ $is_profile_complete = $requirements->isComplete();
                     </a>
 
                     <div class="settings-nav-group-label">Preferences</div>
+
+                    <!-- Dark Mode Toggle -->
+                    <div class="dark-mode-toggle" style="padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-subtle); margin-bottom: 0.5rem;">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div class="d-flex align-items-center gap-3">
+                                <span class="nav-icon"><i class="fas fa-moon"></i></span>
+                                <div>
+                                    <div class="fw-600 text-sm">Dark Mode</div>
+                                    <div class="text-muted text-xs">Modern dark theme</div>
+                                </div>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="darkModeToggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
 
                     <a href="?section=language" class="<?php echo $settings_section === 'language' ? 'active' : ''; ?>">
                         <span class="nav-icon"><i class="fas fa-language"></i></span>
@@ -2425,7 +2571,7 @@ $is_profile_complete = $requirements->isComplete();
                                     <div class="form-group">
                                         <label class="form-label">Start Time</label>
                                         <input type="time" class="form-control" name="working_hours_start" 
-                                               value="<?php echo getSetting('availability', 'working_hours_start', '08:00'); ?>" required>
+                                               value="<?php echo $provider['working_hours_start'] ?? '08:00'; ?>" required>
                                     </div>
                                 </div>
                                 
@@ -2433,7 +2579,7 @@ $is_profile_complete = $requirements->isComplete();
                                     <div class="form-group">
                                         <label class="form-label">End Time</label>
                                         <input type="time" class="form-control" name="working_hours_end" 
-                                               value="<?php echo getSetting('availability', 'working_hours_end', '17:00'); ?>" required>
+                                               value="<?php echo $provider['working_hours_end'] ?? '17:00'; ?>" required>
                                     </div>
                                 </div>
                             </div>
@@ -2450,7 +2596,7 @@ $is_profile_complete = $requirements->isComplete();
                                     <div class="form-group">
                                         <label class="form-label">Break Start (Optional)</label>
                                         <input type="time" class="form-control" name="break_start" 
-                                               value="<?php echo getSetting('availability', 'break_start', ''); ?>">
+                                               value="<?php echo $provider['break_start'] ?? ''; ?>">
                                     </div>
                                 </div>
                                 
@@ -2458,7 +2604,7 @@ $is_profile_complete = $requirements->isComplete();
                                     <div class="form-group">
                                         <label class="form-label">Break End (Optional)</label>
                                         <input type="time" class="form-control" name="break_end" 
-                                               value="<?php echo getSetting('availability', 'break_end', ''); ?>">
+                                               value="<?php echo $provider['break_end'] ?? ''; ?>">
                                     </div>
                                 </div>
                             </div>
@@ -2471,7 +2617,7 @@ $is_profile_complete = $requirements->isComplete();
                             <div class="form-group">
                                 <label class="form-label">Maximum Jobs Per Day</label>
                                 <input type="number" class="form-control" name="max_jobs_per_day" 
-                                       value="<?php echo getSetting('availability', 'max_jobs_per_day', 5); ?>" min="1" max="20" step="1">
+                                       value="<?php echo $provider['max_daily_bookings'] ?? 5; ?>" min="1" max="20" step="1">
                                 <p class="form-text">Maximum number of jobs you can accept per day</p>
                             </div>
                         </div>
@@ -2500,7 +2646,7 @@ $is_profile_complete = $requirements->isComplete();
                             <div class="form-group">
                                 <label class="form-label">Buffer Time Between Jobs (minutes)</label>
                                 <input type="number" class="form-control" name="buffer_time" 
-                                       value="<?php echo getSetting('availability', 'buffer_time', 15); ?>" min="0" max="120" step="5">
+                                       value="<?php echo $provider['buffer_time'] ?? 15; ?>" min="0" max="120" step="5">
                                 <p class="form-text">Time between appointments for travel/preparation</p>
                             </div>
                         </div>
@@ -2911,7 +3057,7 @@ $is_profile_complete = $requirements->isComplete();
         <?php endif; ?>
 
         <!-- 🤖 AI & Smart Features -->
-        <?php if ($settings_section === 'ai'): ?>
+        <?php if ($settings_section === 'ai' || $settings_section === 'ai_features'): ?>
         <div class="settings-section active">
             <h2 class="section-title"><i class="fas fa-robot"></i> 6. AI & Smart Features (Advanced)</h2>
             
@@ -2923,6 +3069,18 @@ $is_profile_complete = $requirements->isComplete();
                     <strong>AI Assistant:</strong> Enable AI features to automate tasks, improve responses, and optimize your business. 
                     These features use artificial intelligence to help you work smarter, not harder.
                 </div>
+                
+                <?php 
+                // Check if main toggle is OFF and show notice
+                $ai_main_enabled = getSetting('ai_features', 'enable_ai_assistant', 0) ? true : false;
+                if (!$ai_main_enabled): 
+                ?>
+                <div class="alert alert-warning" style="margin-bottom: 1.5rem;">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>AI Features are Currently Disabled</strong><br>
+                    <small>Enable the <strong>"Enable AI Assistant"</strong> toggle below to activate AI features. Once enabled, all AI-powered tools will be available across your profile and services.</small>
+                </div>
+                <?php endif; ?>
                 
                 <h4 class="mb-3">🤖 AI Assistance Controls</h4>
                 
@@ -2936,6 +3094,8 @@ $is_profile_complete = $requirements->isComplete();
                                 </div>
                                 <div class="toggle-switch">
                                     <input type="checkbox" name="enable_ai_assistant" id="enable_ai_assistant" 
+                                           data-section="ai_features" data-key="enable_ai_assistant"
+                                           class="ai-toggle"
                                            <?php echo getSetting('ai_features', 'enable_ai_assistant', 0) ? 'checked' : ''; ?>>
                                     <span class="toggle-slider"></span>
                                 </div>
@@ -2950,6 +3110,8 @@ $is_profile_complete = $requirements->isComplete();
                                 </div>
                                 <div class="toggle-switch">
                                     <input type="checkbox" name="ai_auto_reply" id="ai_auto_reply" 
+                                           data-section="ai_features" data-key="ai_auto_reply"
+                                           class="ai-toggle"
                                            <?php echo getSetting('ai_features', 'ai_auto_reply', 0) ? 'checked' : ''; ?>>
                                     <span class="toggle-slider"></span>
                                 </div>
@@ -2964,6 +3126,8 @@ $is_profile_complete = $requirements->isComplete();
                                 </div>
                                 <div class="toggle-switch">
                                     <input type="checkbox" name="ai_description_improvement" id="ai_description_improvement" 
+                                           data-section="ai_features" data-key="ai_description_improvement"
+                                           class="ai-toggle"
                                            <?php echo getSetting('ai_features', 'ai_description_improvement', 0) ? 'checked' : ''; ?>>
                                     <span class="toggle-slider"></span>
                                 </div>
@@ -2978,6 +3142,8 @@ $is_profile_complete = $requirements->isComplete();
                                 </div>
                                 <div class="toggle-switch">
                                     <input type="checkbox" name="ai_pricing_suggestions" id="ai_pricing_suggestions" 
+                                           data-section="ai_features" data-key="ai_pricing_suggestions"
+                                           class="ai-toggle"
                                            <?php echo getSetting('ai_features', 'ai_pricing_suggestions', 0) ? 'checked' : ''; ?>>
                                     <span class="toggle-slider"></span>
                                 </div>
@@ -2994,6 +3160,8 @@ $is_profile_complete = $requirements->isComplete();
                                 </div>
                                 <div class="toggle-switch">
                                     <input type="checkbox" name="ai_availability_optimization" id="ai_availability_optimization" 
+                                           data-section="ai_features" data-key="ai_availability_optimization"
+                                           class="ai-toggle"
                                            <?php echo getSetting('ai_features', 'ai_availability_optimization', 0) ? 'checked' : ''; ?>>
                                     <span class="toggle-slider"></span>
                                 </div>
@@ -3008,6 +3176,8 @@ $is_profile_complete = $requirements->isComplete();
                                 </div>
                                 <div class="toggle-switch">
                                     <input type="checkbox" name="ai_fraud_protection" id="ai_fraud_protection" 
+                                           data-section="ai_features" data-key="ai_fraud_protection"
+                                           class="ai-toggle"
                                            <?php echo getSetting('ai_features', 'ai_fraud_protection', 0) ? 'checked' : ''; ?>>
                                     <span class="toggle-slider"></span>
                                 </div>
@@ -3035,6 +3205,8 @@ $is_profile_complete = $requirements->isComplete();
                                     </div>
                                     <div class="toggle-switch">
                                         <input type="checkbox" name="ai_auto_select_service" id="ai_auto_select_service" 
+                                               data-section="ai_features" data-key="ai_auto_select_service"
+                                               class="ai-toggle"
                                                <?php echo getSetting('ai_features', 'ai_auto_select_service', 0) ? 'checked' : ''; ?>>
                                         <span class="toggle-slider"></span>
                                     </div>
@@ -3051,6 +3223,8 @@ $is_profile_complete = $requirements->isComplete();
                                     </div>
                                     <div class="toggle-switch">
                                         <input type="checkbox" name="ai_auto_schedule" id="ai_auto_schedule" 
+                                               data-section="ai_features" data-key="ai_auto_schedule"
+                                               class="ai-toggle"
                                                <?php echo getSetting('ai_features', 'ai_auto_schedule', 0) ? 'checked' : ''; ?>>
                                         <span class="toggle-slider"></span>
                                     </div>
@@ -3067,6 +3241,8 @@ $is_profile_complete = $requirements->isComplete();
                                     </div>
                                     <div class="toggle-switch">
                                         <input type="checkbox" name="ai_auto_quote" id="ai_auto_quote" 
+                                               data-section="ai_features" data-key="ai_auto_quote"
+                                               class="ai-toggle"
                                                <?php echo getSetting('ai_features', 'ai_auto_quote', 0) ? 'checked' : ''; ?>>
                                         <span class="toggle-slider"></span>
                                     </div>
@@ -3083,6 +3259,8 @@ $is_profile_complete = $requirements->isComplete();
                             </div>
                             <div class="toggle-switch">
                                 <input type="checkbox" name="smart_booking_by_prompt" id="smart_booking_by_prompt" 
+                                       data-section="ai_features" data-key="smart_booking_by_prompt"
+                                       class="ai-toggle"
                                        <?php echo getSetting('ai_features', 'smart_booking_by_prompt', 0) ? 'checked' : ''; ?>>
                                 <span class="toggle-slider"></span>
                             </div>
@@ -5230,6 +5408,65 @@ $is_profile_complete = $requirements->isComplete();
             container.appendChild(newMethod);
             paymentMethodCount++;
         }
+
+        // Real-time AI Toggle Saving
+        document.querySelectorAll('.ai-toggle').forEach(toggle => {
+            toggle.addEventListener('change', async function() {
+                const section = this.getAttribute('data-section');
+                const key = this.getAttribute('data-key');
+                const value = this.checked ? 1 : 0;
+                
+                // Show loading state
+                const label = this.closest('.toggle-switch');
+                label.style.opacity = '0.6';
+                label.style.pointerEvents = 'none';
+                
+                try {
+                    const response = await fetch('../api/save_provider_setting.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            section: section,
+                            key: key,
+                            value: value
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // Show success feedback
+                        const toggleSwitch = this.closest('.toggle-switch');
+                        const card = toggleSwitch.closest('.setting-card');
+                        const originalBg = card.style.backgroundColor;
+                        
+                        card.style.backgroundColor = '#d4edda';
+                        card.style.transition = 'background-color 0.3s ease';
+                        
+                        setTimeout(() => {
+                            card.style.backgroundColor = originalBg;
+                        }, 2000);
+                        
+                        console.log('Setting saved:', data.message);
+                    } else {
+                        // Revert toggle on error
+                        this.checked = !this.checked;
+                        alert('Error saving setting: ' + data.message);
+                    }
+                } catch (error) {
+                    // Revert toggle on error
+                    this.checked = !this.checked;
+                    console.error('Error:', error);
+                    alert('Failed to save setting. Please try again.');
+                } finally {
+                    // Remove loading state
+                    label.style.opacity = '1';
+                    label.style.pointerEvents = 'auto';
+                }
+            });
+        });
         
         function removePaymentMethod(button) {
             const methodCard = button.closest('.payment-method-card');
@@ -5249,7 +5486,7 @@ $is_profile_complete = $requirements->isComplete();
                         <div class="alert alert-success">
                             <i class="fas fa-check-circle me-2"></i>
                             ${file.name} (${(file.size / 1024).toFixed(2)} KB)
-                            <img src="${e.target.result}" class="img-thumbnail mt-2" class="img-thumbnail mt-2" style="max-height:80px;">
+                            <img src="${e.target.result}" class="img-thumbnail mt-2" style="max-height:80px;">
                         </div>
                     `;
                 };
@@ -5388,6 +5625,69 @@ $is_profile_complete = $requirements->isComplete();
         if (window.history.replaceState) {
             window.history.replaceState(null, null, window.location.href);
         }
+
+        // Dark Mode Functionality
+        class DarkModeManager {
+            constructor() {
+                this.toggle = document.getElementById('darkModeToggle');
+                this.init();
+            }
+
+            init() {
+                // Get current theme
+                const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+                
+                // Set toggle state
+                this.toggle.checked = currentTheme === 'dark';
+
+                // Update toggle appearance
+                this.updateToggleAppearance(currentTheme);
+
+                // Add event listener
+                this.toggle.addEventListener('change', (e) => {
+                    const theme = e.target.checked ? 'dark' : 'light';
+                    this.setTheme(theme);
+                    this.saveTheme(theme);
+                });
+            }
+
+            setTheme(theme) {
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('provider_theme', theme);
+                this.updateToggleAppearance(theme);
+            }
+
+            updateToggleAppearance(theme) {
+                const icon = this.toggle.closest('.dark-mode-toggle').querySelector('.nav-icon i');
+                const label = this.toggle.closest('.dark-mode-toggle').querySelector('.fw-600');
+                const sublabel = this.toggle.closest('.dark-mode-toggle').querySelector('.text-xs');
+
+                icon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+                label.textContent = theme === 'dark' ? 'Light Mode' : 'Dark Mode';
+                sublabel.textContent = theme === 'dark' ? 'Switch to light theme' : 'Modern dark theme';
+            }
+
+            saveTheme(theme) {
+                // Save to database via AJAX
+                fetch('../api/save_theme_preference.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        theme: theme,
+                        provider_id: <?php echo $provider['id']; ?>
+                    })
+                }).catch(err => {
+                    console.warn('Failed to save theme preference:', err);
+                });
+            }
+        }
+
+        // Initialize dark mode when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            new DarkModeManager();
+        });
     </script>
 </body>
 </html>

@@ -1,0 +1,302 @@
+[
+  {
+    "text": "I need a plumber to fix my pipes",
+    "label": "plumber",
+    "language": "en"
+  },
+  {
+    "text": "My sink is leaking, can I get a plumber?",
+    "label": "plumber",
+    "language": "en"
+  },
+  {
+    "text": "I need someone to fix the bathroom plumbing",
+    "label": "plumber",
+    "language": "en"
+  },
+  {
+    "text": "My water pipe burst, I need a plumber urgently",
+    "label": "plumber",
+    "language": "en"
+  },
+  {
+    "text": "Can you send a plumber to install a new tap",
+    "label": "plumber",
+    "language": "en"
+  },
+  {
+    "text": "Ndashaka umuntu yishyura inzira z'amazi",
+    "label": "plumber",
+    "language": "rw"
+  },
+  {
+    "text": "Inzira y'amazi ikomoka, ndashaka umuntu yishyura",
+    "label": "plumber",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka plumber kugeza amatangi hamwe na lavabo",
+    "label": "plumber",
+    "language": "rw"
+  },
+  {
+    "text": "Inzira y'amazi ifungiye, ndashaka umuntu yishyura vite",
+    "label": "plumber",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka umuntu yishyura inzira z'amazi",
+    "label": "plumber",
+    "language": "rw"
+  },
+  {
+    "text": "I need an electrician to rewire my house",
+    "label": "electrician",
+    "language": "en"
+  },
+  {
+    "text": "Can you send an electrician to fix my lights",
+    "label": "electrician",
+    "language": "en"
+  },
+  {
+    "text": "I need someone to install electrical outlets",
+    "label": "electrician",
+    "language": "en"
+  },
+  {
+    "text": "My power socket is not working, I need an electrician",
+    "label": "electrician",
+    "language": "en"
+  },
+  {
+    "text": "I need an electrician to do the wiring for my new room",
+    "label": "electrician",
+    "language": "en"
+  },
+  {
+    "text": "Ndashaka umuntu yishyura umuyoboro w'amashanyalaze",
+    "label": "electrician",
+    "language": "rw"
+  },
+  {
+    "text": "Ineza ry'amashanyalaze iratakaza ubwenge, ndashaka umuntu",
+    "label": "electrician",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka electrician kubishyura amasiniya y'amashanyalaze",
+    "label": "electrician",
+    "language": "rw"
+  },
+  {
+    "text": "Umwanya w'amashanyalaze ntikigira agaciro, ndashaka umuntu",
+    "label": "electrician",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka umuntu yishyura imirongo y'amashanyalaze",
+    "label": "electrician",
+    "language": "rw"
+  },
+  {
+    "text": "I need someone to clean my house",
+    "label": "cleaner",
+    "language": "en"
+  },
+  {
+    "text": "Can you send a cleaner for deep cleaning",
+    "label": "cleaner",
+    "language": "en"
+  },
+  {
+    "text": "I need help with house cleaning and laundry",
+    "label": "cleaner",
+    "language": "en"
+  },
+  {
+    "text": "I need a professional cleaner for my office",
+    "label": "cleaner",
+    "language": "en"
+  },
+  {
+    "text": "Can you find someone to clean my apartment weekly",
+    "label": "cleaner",
+    "language": "en"
+  },
+  {
+    "text": "Ndashaka umuntu yomurika inzu",
+    "label": "cleaner",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka umuntu yomurika inzu cyane cyane",
+    "label": "cleaner",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka umuntu yomurika inzu n'irembo",
+    "label": "cleaner",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka umuntu yomurika ikigo cyanjye buri cyumweru",
+    "label": "cleaner",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka umuntu yomurika",
+    "label": "cleaner",
+    "language": "rw"
+  },
+  {
+    "text": "I need a carpenter to build shelves",
+    "label": "carpenter",
+    "language": "en"
+  },
+  {
+    "text": "Can you send a carpenter for furniture repairs",
+    "label": "carpenter",
+    "language": "en"
+  },
+  {
+    "text": "I need someone to make custom cabinets",
+    "label": "carpenter",
+    "language": "en"
+  },
+  {
+    "text": "I need a carpenter to fix my door frame",
+    "label": "carpenter",
+    "language": "en"
+  },
+  {
+    "text": "Can a carpenter build a deck for my garden",
+    "label": "carpenter",
+    "language": "en"
+  },
+  {
+    "text": "Ndashaka umuntu yamakazi akazi ka giti",
+    "label": "carpenter",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka shamwana kubibuza igikeri",
+    "label": "carpenter",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka umuntu yamakazi akazi ka giti kuguheza ibidambi",
+    "label": "carpenter",
+    "language": "rw"
+  },
+  {
+    "text": "Umurango w'uru nywa wafashe, ndashaka umuntu yishyura",
+    "label": "carpenter",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka umuntu yamakazi akazi ka giti",
+    "label": "carpenter",
+    "language": "rw"
+  },
+  {
+    "text": "I need a painter to paint my walls",
+    "label": "painter",
+    "language": "en"
+  },
+  {
+    "text": "Can you find a painter for interior painting",
+    "label": "painter",
+    "language": "en"
+  },
+  {
+    "text": "I need someone to paint my house exterior",
+    "label": "painter",
+    "language": "en"
+  },
+  {
+    "text": "Can a painter help with ceiling and wall painting",
+    "label": "painter",
+    "language": "en"
+  },
+  {
+    "text": "I need a professional painter for my office",
+    "label": "painter",
+    "language": "en"
+  },
+  {
+    "text": "Ndashaka umuntu yamakazi ry'iboya",
+    "label": "painter",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka umuntu yiboya neza neza",
+    "label": "painter",
+    "language": "rw"
+  },
+  {
+    "text": "Inzu yandje ikenera iboya, ndashaka umuntu",
+    "label": "painter",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka umuntu yiboya ikiriba nu muhanda",
+    "label": "painter",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka umuntu yamakazi ry'iboya neza",
+    "label": "painter",
+    "language": "rw"
+  },
+  {
+    "text": "I need a handyman for general repairs",
+    "label": "handyman",
+    "language": "en"
+  },
+  {
+    "text": "Can you send a handyman to fix multiple things",
+    "label": "handyman",
+    "language": "en"
+  },
+  {
+    "text": "I need someone for maintenance work",
+    "label": "handyman",
+    "language": "en"
+  },
+  {
+    "text": "Can a handyman help with hanging shelves",
+    "label": "handyman",
+    "language": "en"
+  },
+  {
+    "text": "I need a handyman to fix various household issues",
+    "label": "handyman",
+    "language": "en"
+  },
+  {
+    "text": "Ndashaka umuntu yamakazi yambere",
+    "label": "handyman",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka umuntu yishyura ikintu cyinshi",
+    "label": "handyman",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka umuntu kugeza ibintu byinshi mu nzu",
+    "label": "handyman",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka umuntu yamakazi yambere mu nzu",
+    "label": "handyman",
+    "language": "rw"
+  },
+  {
+    "text": "Ndashaka umuntu yishyura bikintu byinshi",
+    "label": "handyman",
+    "language": "rw"
+  }
+]

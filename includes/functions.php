@@ -5,6 +5,7 @@
 
 // Database connection (if not already in config/database.php)
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/validation.php';
 require_once __DIR__ . '/NotificationEngine.php';
 require_once __DIR__ . '/sms.php';
 
@@ -214,6 +215,87 @@ if (!function_exists('getSetting')) {
             // Log and return default on error (prevents fatal on missing table/DB issues)
             error_log('getSetting error: ' . $e->getMessage());
             return $default;
+        }
+    }
+
+    /**
+     * Get a provider-specific setting value.
+     *
+     * @param int $providerId
+     * @param string $key
+     * @param mixed $default
+     * @return mixed
+     */
+    function getProviderSetting(int $providerId, string $key, $default = '') {
+        if ($providerId <= 0) {
+            return $default;
+        }
+
+        try {
+            $db = Database::getInstance()->getConnection();
+            $stmt = $db->prepare("SELECT setting_value FROM provider_settings WHERE provider_id = ? AND setting_key = ? LIMIT 1");
+            $stmt->execute([$providerId, $key]);
+            $result = $stmt->fetch(PDO::FETCH_COLUMN);
+            return $result !== false ? $result : $default;
+        } catch (Throwable $e) {
+            error_log('getProviderSetting error: ' . $e->getMessage());
+            return $default;
+        }
+    }
+
+    /**
+     * Determine whether AI features are enabled for a provider.
+     *
+     * @param int $providerId
+     * @return bool
+     */
+    function isProviderAIEnabled(int $providerId): bool {
+        return getProviderSetting($providerId, 'ai_features_enable_ai_assistant', '0') === '1';
+    }
+
+    /**
+     * Ensure provider_settings table has the expected schema required by provider settings APIs.
+     * This is a safe migration helper for older installs.
+     *
+     * @param PDO $db
+     * @return void
+     */
+    function ensureProviderSettingsSchema(PDO $db): void {
+        try {
+            $columns = $db->query("SHOW COLUMNS FROM provider_settings")->fetchAll(PDO::FETCH_ASSOC);
+            $hasId = false;
+            $hasCreatedAt = false;
+            $hasUpdatedAt = false;
+            $hasAutoIncrement = false;
+            foreach ($columns as $column) {
+                if ($column['Field'] === 'id') {
+                    $hasId = true;
+                    if (stripos($column['Extra'], 'auto_increment') !== false) {
+                        $hasAutoIncrement = true;
+                    }
+                }
+                if ($column['Field'] === 'created_at') {
+                    $hasCreatedAt = true;
+                }
+                if ($column['Field'] === 'updated_at') {
+                    $hasUpdatedAt = true;
+                }
+            }
+
+            if ($hasId && !$hasAutoIncrement) {
+                $db->exec("ALTER TABLE provider_settings MODIFY COLUMN id INT NOT NULL AUTO_INCREMENT PRIMARY KEY");
+            }
+
+            if (!$hasUpdatedAt) {
+                $db->exec("ALTER TABLE provider_settings ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at");
+            }
+
+            $indexes = $db->query("SHOW INDEX FROM provider_settings WHERE Key_name = 'unique_setting'")->fetchAll(PDO::FETCH_ASSOC);
+            if (count($indexes) === 0) {
+                $db->exec("ALTER TABLE provider_settings ADD UNIQUE KEY unique_setting (provider_id, setting_key)");
+            }
+        } catch (Throwable $e) {
+            error_log('ensureProviderSettingsSchema error: ' . $e->getMessage());
         }
     }
 }

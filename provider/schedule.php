@@ -332,6 +332,8 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- FullCalendar CSS -->
     <link href='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css' rel='stylesheet' />
+    <!-- Dark Mode CSS -->
+    <link rel="stylesheet" href="../assets/css/dark-mode.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -365,6 +367,31 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
             --shadow-sm:     0 2px 8px rgba(0,0,0,0.07);
             --shadow-md:     0 4px 16px rgba(0,0,0,0.09);
             --transition:    all 0.18s cubic-bezier(0.4,0,0.2,1);
+        }
+
+        /* Dark Mode Variables */
+        [data-theme="dark"] {
+            --accent:        #3b82f6;
+            --accent-dark:   #2563eb;
+            --accent-light:  #1e3a8a;
+            --success:       #10b981;
+            --success-light: #064e3b;
+            --danger:        #ef4444;
+            --danger-light:  #7f1d1d;
+            --warning:       #f59e0b;
+            --warning-light: #78350f;
+            --info:          #06b6d4;
+            --info-light:    #164e63;
+            --surface:       #0f172a;
+            --surface-2:     #1e293b;
+            --border:        #334155;
+            --border-subtle: #475569;
+            --text-primary:  #f8fafc;
+            --text-secondary:#cbd5e1;
+            --text-muted:    #94a3b8;
+            --shadow-xs:     0 1px 3px rgba(0,0,0,0.3);
+            --shadow-sm:     0 2px 8px rgba(0,0,0,0.4);
+            --shadow-md:     0 4px 16px rgba(0,0,0,0.5);
         }
 
         body {
@@ -649,6 +676,13 @@ $google_authenticated = $google_auth_status['authenticated'] ?? false;
     </style>
 </head>
 <body>
+    <script>
+        // Initialize theme from localStorage
+        (function() {
+            const theme = localStorage.getItem('provider_theme') || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
     <!-- Mobile Menu Toggle -->
     <button class="mobile-menu-toggle" id="mobileToggle">
         <i class="fas fa-bars"></i>

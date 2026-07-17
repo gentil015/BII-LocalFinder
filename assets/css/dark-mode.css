@@ -1,0 +1,270 @@
+/* Dark Mode CSS Variables for Provider Pages */
+[data-theme="dark"] {
+    --primary: #3b82f6;
+    --secondary: #64748b;
+    --success: #10b981;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --info: #06b6d4;
+    --light: #1e293b;
+    --dark: #f1f5f9;
+    --surface: #0f172a;
+    --surface-2: #1e293b;
+    --border: #334155;
+    --border-subtle: #475569;
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --accent: #3b82f6;
+    --accent-dark: #2563eb;
+    --accent-light: rgba(59,130,246,0.12);
+    --sidebar-bg: #0f172a;
+    --card-bg: #1e293b;
+    --hover-bg: #334155;
+}
+
+/* Dark mode body adjustments */
+[data-theme="dark"] body {
+    background-color: var(--surface, #0f172a);
+    color: var(--text-primary, #f8fafc);
+}
+
+/* Dark mode card adjustments */
+[data-theme="dark"] .card {
+    background-color: var(--card-bg, #1e293b);
+    border-color: var(--border, #334155);
+    color: var(--text-primary, #f8fafc);
+}
+
+[data-theme="dark"] .card-header {
+    background-color: var(--surface-2, #1e293b);
+    border-bottom-color: var(--border, #334155);
+    color: var(--text-primary, #f8fafc);
+}
+
+[data-theme="dark"] .card-body {
+    background-color: var(--card-bg, #1e293b);
+    color: var(--text-primary, #f8fafc);
+}
+
+/* Dark mode table adjustments */
+[data-theme="dark"] .table {
+    color: var(--text-primary, #f8fafc);
+}
+
+[data-theme="dark"] .table th {
+    background-color: var(--surface-2, #1e293b);
+    border-color: var(--border, #334155);
+    color: var(--text-primary, #f8fafc);
+}
+
+[data-theme="dark"] .table td {
+    background-color: var(--card-bg, #1e293b);
+    border-color: var(--border, #334155);
+    color: var(--text-secondary, #cbd5e1);
+}
+
+/* Dark mode form adjustments */
+[data-theme="dark"] .form-control {
+    background-color: var(--surface-2, #1e293b);
+    border-color: var(--border, #334155);
+    color: var(--text-primary, #f8fafc);
+}
+
+[data-theme="dark"] .form-control:focus {
+    background-color: var(--surface-2, #1e293b);
+    border-color: var(--accent, #3b82f6);
+    color: var(--text-primary, #f8fafc);
+}
+
+[data-theme="dark"] .form-select {
+    background-color: var(--surface-2, #1e293b);
+    border-color: var(--border, #334155);
+    color: var(--text-primary, #f8fafc);
+}
+
+/* Dark mode button adjustments */
+[data-theme="dark"] .btn-outline-primary {
+    border-color: var(--accent, #3b82f6);
+    color: var(--accent, #3b82f6);
+}
+
+[data-theme="dark"] .btn-outline-primary:hover {
+    background-color: var(--accent, #3b82f6);
+    border-color: var(--accent, #3b82f6);
+    color: white;
+}
+
+/* Dark mode alert adjustments */
+[data-theme="dark"] .alert {
+    background-color: var(--surface-2, #1e293b);
+    border-color: var(--border, #334155);
+    color: var(--text-primary, #f8fafc);
+}
+
+/* Dark mode modal adjustments */
+[data-theme="dark"] .modal-content {
+    background-color: var(--card-bg, #1e293b);
+    border-color: var(--border, #334155);
+    color: var(--text-primary, #f8fafc);
+}
+
+[data-theme="dark"] .modal-header {
+    border-bottom-color: var(--border, #334155);
+}
+
+/* Dark mode badge adjustments */
+[data-theme="dark"] .badge {
+    background-color: var(--accent, #3b82f6);
+    color: white;
+}
+
+/* Dark mode nav adjustments */
+[data-theme="dark"] .nav-tabs .nav-link {
+    background-color: transparent;
+    border-color: var(--border, #334155);
+    color: var(--text-secondary, #cbd5e1);
+}
+
+[data-theme="dark"] .nav-tabs .nav-link.active {
+    background-color: var(--accent, #3b82f6);
+    border-color: var(--accent, #3b82f6);
+    color: white;
+}
+
+/* Admin dashboard and card-specific dark mode overrides */
+[data-theme="dark"] .main-content,
+[data-theme="dark"] .page-header,
+[data-theme="dark"] .stat-card,
+[data-theme="dark"] .card,
+[data-theme="dark"] .health-item,
+[data-theme="dark"] .table-responsive,
+[data-theme="dark"] .table,
+[data-theme="dark"] .table th,
+[data-theme="dark"] .table td,
+[data-theme="dark"] .table tbody tr:hover {
+    background-color: var(--card-bg, #1e293b) !important;
+    border-color: var(--border, #334155) !important;
+    color: var(--text-primary, #f8fafc) !important;
+}
+
+[data-theme="dark"] .page-header {
+    background-color: var(--surface-2, #1e293b) !important;
+}
+
+[data-theme="dark"] .stat-card h3,
+[data-theme="dark"] .card h3,
+[data-theme="dark"] .table th,
+[data-theme="dark"] .table td,
+[data-theme="dark"] .stat-card p,
+[data-theme="dark"] .health-item .stat-label {
+    color: var(--text-primary, #f8fafc) !important;
+}
+
+[data-theme="dark"] .table th {
+    background-color: rgba(15, 23, 42, 0.9) !important;
+}
+
+[data-theme="dark"] .table tbody tr:hover {
+    background-color: rgba(255,255,255,0.04) !important;
+}
+
+[data-theme="dark"] .health-item.warn,
+[data-theme="dark"] .health-item.warning,
+[data-theme="dark"] .health-item.danger {
+    background-color: var(--surface-2, #1e293b) !important;
+}
+
+/* Utility overrides for Bootstrap and inline text colors */
+[data-theme="dark"] .text-dark,
+[data-theme="dark"] .text-black,
+[data-theme="dark"] .text-body,
+[data-theme="dark"] .text-gray-900,
+[data-theme="dark"] .text-gray-800,
+[data-theme="dark"] .text-gray-700 {
+    color: var(--text-primary, #f8fafc) !important;
+}
+
+[data-theme="dark"] .text-muted,
+[data-theme="dark"] .text-secondary,
+[data-theme="dark"] .text-gray-600,
+[data-theme="dark"] .text-gray-500 {
+    color: var(--text-muted, #94a3b8) !important;
+}
+
+[data-theme="dark"] .bg-white {
+    background-color: var(--surface, #0f172a) !important;
+    color: var(--text-primary, #f8fafc) !important;
+}
+
+[data-theme="dark"] .bg-light,
+[data-theme="dark"] .bg-secondary {
+    background-color: var(--surface-2, #1e293b) !important;
+    color: var(--text-primary, #f8fafc) !important;
+}
+
+[data-theme="dark"] .border-white,
+[data-theme="dark"] .border-light {
+    border-color: var(--border, #334155) !important;
+}
+
+[data-theme="dark"] .page-header,
+[data-theme="dark"] .stats-overview,
+[data-theme="dark"] .filters-card,
+[data-theme="dark"] .review-card,
+[data-theme="dark"] .review-content,
+[data-theme="dark"] .response-section,
+[data-theme="dark"] .response-form,
+[data-theme="dark"] .empty-state,
+[data-theme="dark"] .page-btn,
+[data-theme="dark"] .rating-bar,
+[data-theme="dark"] .rating-bar-fill,
+[data-theme="dark"] .service-info,
+[data-theme="dark"] .client-details,
+[data-theme="dark"] .client-details p,
+[data-theme="dark"] .review-date,
+[data-theme="dark"] .card,
+[data-theme="dark"] .table-responsive,
+[data-theme="dark"] .form-check,
+[data-theme="dark"] .form-control,
+[data-theme="dark"] .form-select,
+[data-theme="dark"] .input-group-text,
+[data-theme="dark"] .dropdown-menu,
+[data-theme="dark"] .modal-content {
+    background-color: var(--surface-2, #1e293b) !important;
+    border-color: var(--border, #334155) !important;
+    color: var(--text-primary, #f8fafc) !important;
+}
+
+[data-theme="dark"] .review-card {
+    box-shadow: 0 2px 18px rgba(0,0,0,0.45) !important;
+}
+
+[data-theme="dark"] label,
+[data-theme="dark"] legend,
+[data-theme="dark"] span,
+[data-theme="dark"] p,
+[data-theme="dark"] h1,
+[data-theme="dark"] h2,
+[data-theme="dark"] h3,
+[data-theme="dark"] h4,
+[data-theme="dark"] h5,
+[data-theme="dark"] h6,
+[data-theme="dark"] a,
+[data-theme="dark"] button,
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] select,
+[data-theme="dark"] option,
+[data-theme="dark"] summary,
+[data-theme="dark"] .form-label,
+[data-theme="dark"] .input-group-text,
+[data-theme="dark"] .page-header p,
+[data-theme="dark"] .page-header h1 {
+    color: inherit !important;
+}
+
+/* Smooth transitions for theme changes */
+* {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}

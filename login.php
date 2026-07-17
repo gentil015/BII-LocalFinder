@@ -50,20 +50,28 @@ $ip = getClientIP();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Debug: indicate POST request received
     error_log("POST request received to login.php");
+
+    if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+        $errors[] = 'Invalid form submission. Please refresh and try again.';
+    }
     
     // Check if IP is blocked
     if (isIPBlocked($ip)) {
         $errors[] = 'Access denied. Your IP address has been blocked.';
     }
 
-    $email = isset($_POST['email']) ? sanitize($_POST['email']) : '';
-    $password = isset($_POST['password']) ? $_POST['password'] : '';
+    $email = getRequestValue('email', '', 'POST');
+    $password = $_POST['password'] ?? '';
 
     // Debug: log the POST data
     error_log("Login attempt: email=$email, password=" . (empty($password) ? 'empty' : 'provided'));
 
-    if (empty($email) || empty($password)) {
-        $errors[] = 'Please enter both email and password.';
+    if (!validateEmailField($email, 'email', $errors)) {
+        // error already added
+    }
+
+    if (trim((string) $password) === '') {
+        $errors[] = 'Please enter your password.';
     }
 
     if (empty($errors)) {
@@ -100,8 +108,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$user) {
                     $errors[] = 'Invalid email or password.';
                 } else {
+                    // Admin accounts must login through admin/login.php
+                    if ($user['user_type'] === 'admin') {
+                        $errors[] = 'Unauthorized access. Admin accounts are not permitted to use this login form.';
+                    }
                     // Check if user is active
-                    if (!$user['is_active']) {
+                    elseif (!$user['is_active']) {
                         $errors[] = 'Your account has been deactivated. Please contact support.';
                     }
                     // Check if provider is banned
@@ -186,10 +198,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             if ($user['user_type'] === 'provider') {
                                 header('Location: provider/dashboard.php');
                                 exit;
-                            } elseif ($user['user_type'] === 'admin') {
-                                header('Location: admin/dashboard.php');
-                                exit;
                             } else {
+                                // Default for client user type
                                 header('Location: client/dashboard.php');
                                 exit;
                             }
@@ -216,9 +226,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // preserve incoming next param for form and processing
 $nextParam = '';
 if (isset($_REQUEST['next'])) {
-    // do not sanitize/comment out here; store raw encoded path and validate before redirect
     $nextParam = $_REQUEST['next'];
 }
+
+$csrf_token = ensureCsrfToken();
 ?>
 
 <!DOCTYPE html>
@@ -714,6 +725,7 @@ if (isset($_REQUEST['next'])) {
                     <?php endif; ?>
 
                     <form method="POST" id="loginForm" novalidate>
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                         <input type="hidden" name="next" value="<?php echo isset($_GET['next']) ? htmlspecialchars($_GET['next']) : (isset($nextParam) ? htmlspecialchars($nextParam) : ''); ?>">
 
                         <!-- Email -->

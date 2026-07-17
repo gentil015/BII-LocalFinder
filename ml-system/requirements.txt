@@ -1,6 +1,7 @@
 # ML System Python Dependencies
 # Install: pip install -r requirements.txt
 
+# Core ML/NLP
 fastapi
 uvicorn[standard]
 pydantic
@@ -8,7 +9,18 @@ scikit-learn
 pandas
 numpy
 joblib
-mysql-connector-python
-python-dotenv
 matplotlib
 seaborn
+
+# Hugging Face & PyTorch (for NLU)
+torch>=2.0.0
+transformers>=4.30.0
+tokenizers>=0.13.0
+
+# Database & Config
+mysql-connector-python
+python-dotenv
+
+# Additional utilities
+tqdm
+requests

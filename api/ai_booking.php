@@ -16,6 +16,7 @@ if (!is_dir(__DIR__ . '/../logs')) {
 
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+require_once '../includes/validation.php';
 require_once '../includes/ai_booking.php';
 
 // Check if user is logged in
@@ -65,7 +66,7 @@ try {
                 throw new Exception('Method not allowed');
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
+            $input = getJsonInput();
             $providerId = intval($input['provider_id'] ?? 0);
             $extractedData = $input['extracted_data'] ?? null;
             
@@ -88,8 +89,8 @@ try {
                 throw new Exception('Method not allowed');
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
-            $text = trim($input['text'] ?? '');
+            $input = getJsonInput();
+            $text = trim((string) ($input['text'] ?? ''));
             $type = $input['type'] ?? 'all'; // service, location, date, time, all
             
             if (empty($text)) {
@@ -123,7 +124,7 @@ try {
                 throw new Exception('Method not allowed');
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
+            $input = getJsonInput();
             $service = $input['service'] ?? null;
             $location = $input['location'] ?? null;
             
@@ -151,7 +152,7 @@ try {
                 throw new Exception('Method not allowed');
             }
             
-            $input = json_decode(file_get_contents('php://input'), true);
+            $input = getJsonInput();
             $errors = [];
             
             if (empty($input['service'])) {

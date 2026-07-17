@@ -270,6 +270,13 @@ function sendAudioMessage(int $sender_id, int $receiver_id, string $file_path, i
         $db = Database::getInstance()->getConnection();
         ensureMessagesAudioColumnsExist();
 
+        // Verify file actually exists on disk before saving to DB
+        $fullPath = __DIR__ . '/../' . $file_path;
+        if (!file_exists($fullPath) || !is_file($fullPath)) {
+            error_log("Audio file does not exist at path: " . $fullPath);
+            return false;
+        }
+
         error_log("Inserting audio message: sender=$sender_id, receiver=$receiver_id, file=$file_path, size=$file_size, duration=$duration");
 
         $sql = "INSERT INTO messages (sender_id, receiver_id, message, message_type, file_path, file_size, audio_duration) VALUES (?, ?, ?, ?, ?, ?, ?)";
@@ -292,6 +299,18 @@ function sendAudioMessage(int $sender_id, int $receiver_id, string $file_path, i
         error_log('sendAudioMessage error: ' . $e->getMessage());
         return false;
     }
+}
+
+/**
+ * Validate if a file path exists for a message
+ */
+function isMessageFileValid(string $file_path): bool
+{
+    if (empty($file_path)) {
+        return false;
+    }
+    $fullPath = __DIR__ . '/../' . $file_path;
+    return file_exists($fullPath) && is_file($fullPath) && is_readable($fullPath);
 }
 
 /**

@@ -186,6 +186,8 @@ $rating_required = isRatingRequiredAfterCompletion();
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="../bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Dark Mode CSS -->
+    <link rel="stylesheet" href="../assets/css/dark-mode.css">
     <style>
         :root {
             --primary: #0d6efd;
@@ -198,10 +200,28 @@ $rating_required = isRatingRequiredAfterCompletion();
             --dark: #212529;
             --sidebar-width: 250px;
         }
-        
+
+        /* Dark Mode Variables */
+        [data-theme="dark"] {
+            --primary: #3b82f6;
+            --secondary: #64748b;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --info: #06b6d4;
+            --light: #1e293b;
+            --dark: #f1f5f9;
+        }
+
+        [data-theme="dark"] body {
+            background-color: #0f172a;
+            color: #f1f5f9;
+        }
+
         body {
             background-color: #f5f7fb;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text-primary, #0f1117);
         }
         
         /* Maintenance Warning */
@@ -696,6 +716,13 @@ $rating_required = isRatingRequiredAfterCompletion();
     </style>
 </head>
 <body>
+    <script>
+        // Initialize theme from localStorage
+        (function() {
+            const theme = localStorage.getItem('provider_theme') || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
     <!-- Mobile Menu Toggle -->
     <button class="mobile-menu-toggle" id="mobileToggle">
         <i class="fas fa-bars"></i>
