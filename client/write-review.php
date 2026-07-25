@@ -1175,24 +1175,6 @@ $is_review_mandatory = $system_settings['require_rating_after_completion'] && $b
             textarea.focus();
         }
 
-        // Sidebar toggle functionality
-        const sidebarToggle = document.getElementById('sidebarToggle');
-        const sidebar = document.getElementById('clientSidebar');
-        if (sidebarToggle) {
-            sidebarToggle.addEventListener('click', function() {
-                sidebar.classList.toggle('collapsed');
-            });
-        }
-
-        // Mobile menu handling
-        if (window.innerWidth < 768) {
-            const menuLinks = document.querySelectorAll('.sidebar-menu a');
-            menuLinks.forEach(link => {
-                link.addEventListener('click', function() {
-                    sidebar.classList.remove('mobile-open');
-                });
-            });
-        }
     </script>
 <?php client_header_render_scripts(); ?>
 </body>
