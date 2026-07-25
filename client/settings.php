@@ -2,6 +2,8 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+require_once __DIR__ . '/includes/client_header.php';
+require_once '../controllers/pages/client/ClientSettingsController.php';
 
 if (!isLoggedIn()) {
     redirect('login.php');
@@ -15,6 +17,9 @@ $db = Database::getInstance()->getConnection();
 $success = '';
 $errors = [];
 
+$controller = new ClientSettingsController();
+$viewData = $controller->index($db, (int) $_SESSION['user_id'], isset($_GET['section']) ? sanitize($_GET['section']) : 'account');
+
 // Get settings section from URL
 $settings_section = isset($_GET['section']) ? sanitize($_GET['section']) : 'account';
 $valid_sections = ['account', 'profile', 'preferences', 'bookings', 'security', 'control'];
@@ -23,64 +28,11 @@ if (!in_array($settings_section, $valid_sections)) {
 }
 
 // Get user data
-$stmt = $db->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$user = $stmt->fetch();
-
-// Load system settings
-function getSetting($db, $key, $default = '') {
-    $stmt = $db->prepare("SELECT setting_value FROM system_settings WHERE setting_key = ?");
-    $stmt->execute([$key]);
-    $result = $stmt->fetch(PDO::FETCH_COLUMN);
-    return $result !== false ? $result : $default;
-}
-
-$system_settings = [
-    'platform_name' => getSetting($db, 'platform_name', 'BII LocalFinder'),
-    'contact_email' => getSetting($db, 'contact_email', 'support@biilocalfinder.com'),
-    'contact_phone' => getSetting($db, 'contact_phone', '+250 788 123 456'),
-    'timezone' => getSetting($db, 'timezone', 'Africa/Kigali'),
-    'email_verification' => getSetting($db, 'email_verification', '1'),
-    'phone_verification' => getSetting($db, 'phone_verification', '0'),
-    'min_password_length' => intval(getSetting($db, 'min_password_length', '8')),
-    'require_special_chars' => getSetting($db, 'require_special_chars', '0'),
-    'enable_email_notifications' => getSetting($db, 'enable_email_notifications', '1'),
-    'enable_sms_notifications' => getSetting($db, 'enable_sms_notifications', '0'),
-    'max_pending_time' => intval(getSetting($db, 'max_pending_time', '15')),
-    'allow_booking_editing' => getSetting($db, 'allow_booking_editing', '1'),
-    'max_cancellations_per_month' => intval(getSetting($db, 'max_cancellations_per_month', '3')),
-    'allow_account_deletion' => getSetting($db, 'allow_account_deletion', '1'),
-    'archive_deleted_accounts' => getSetting($db, 'archive_deleted_accounts', '1'),
-    'data_retention_days' => intval(getSetting($db, 'data_retention_days', '30'))
-];
-
-// Get user notification preferences
-function getUserSetting($db, $user_id, $key, $default = '') {
-    $stmt = $db->prepare("SELECT setting_value FROM user_settings WHERE user_id = ? AND setting_key = ?");
-    $stmt->execute([$user_id, $key]);
-    $result = $stmt->fetch(PDO::FETCH_COLUMN);
-    return $result !== false ? $result : $default;
-}
-
-$user_notifications = [
-    'email_notifications' => getUserSetting($db, $_SESSION['user_id'], 'email_notifications', '1'),
-    'sms_notifications' => getUserSetting($db, $_SESSION['user_id'], 'sms_notifications', '0'),
-    'booking_notifications' => getUserSetting($db, $_SESSION['user_id'], 'booking_notifications', '1'),
-    'review_notifications' => getUserSetting($db, $_SESSION['user_id'], 'review_notifications', '1'),
-    'marketing_notifications' => getUserSetting($db, $_SESSION['user_id'], 'marketing_notifications', '0'),
-];
-
-$user_privacy = [
-    'profile_visibility' => getUserSetting($db, $_SESSION['user_id'], 'profile_visibility', 'public'),
-    'show_contact_info' => getUserSetting($db, $_SESSION['user_id'], 'show_contact_info', '1'),
-    'data_sharing' => getUserSetting($db, $_SESSION['user_id'], 'data_sharing', '0'),
-];
-
-$user_booking_prefs = [
-    'auto_confirm_bookings' => getUserSetting($db, $_SESSION['user_id'], 'auto_confirm_bookings', '0'),
-    'advance_booking_days' => intval(getUserSetting($db, $_SESSION['user_id'], 'advance_booking_days', '7')),
-    'preferred_notice_hours' => intval(getUserSetting($db, $_SESSION['user_id'], 'preferred_notice_hours', '24')),
-];
+$user = $viewData['user'] ?? [];
+$system_settings = $viewData['system_settings'] ?? [];
+$user_notifications = $viewData['user_notifications'] ?? [];
+$user_privacy = $viewData['user_privacy'] ?? [];
+$user_booking_prefs = $viewData['user_booking_prefs'] ?? [];
 
 // Handle POST requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -204,22 +156,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$needs_email_verification = $system_settings['email_verification'] && !$user['email_verified'];
-$needs_phone_verification = $system_settings['phone_verification'] && !$user['phone_verified'];
-
-// Get booking statistics
-$stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE client_id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$stats = $stmt->fetch();
-$total_bookings = $stats['total'] ?? 0;
-
-$stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE client_id = ? AND status = 'completed'");
-$stmt->execute([$_SESSION['user_id']]);
-$completed_bookings = $stmt->fetch()['total'] ?? 0;
-
-$stmt = $db->prepare("SELECT COUNT(*) as total FROM reviews WHERE client_id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$total_reviews = $stmt->fetch()['total'] ?? 0;
+$needs_email_verification = $viewData['needs_email_verification'] ?? false;
+$needs_phone_verification = $viewData['needs_phone_verification'] ?? false;
+$total_bookings = (int) ($viewData['total_bookings'] ?? 0);
+$completed_bookings = (int) ($viewData['completed_bookings'] ?? 0);
+$total_reviews = (int) ($viewData['total_reviews'] ?? 0);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -564,18 +505,10 @@ $total_reviews = $stmt->fetch()['total'] ?? 0;
             z-index: 999;
         }
     </style>
+<?php client_header_render_styles(); ?>
 </head>
 <body>
-    <!-- Mobile Menu Toggle -->
-    <button class="mobile-menu-toggle" id="mobileToggle">
-        <i class="fas fa-bars"></i>
-    </button>
-
-    <!-- Mobile Overlay -->
-    <div class="overlay" id="overlay"></div>
-
-    <!-- Sidebar -->
-    <?php include __DIR__ . '/includes/sidebar.php'; ?>
+    <?php client_header_render_markup(basename($_SERVER['PHP_SELF'])); ?>
 
     <!-- Main Content -->
     <div class="main-content">
@@ -999,12 +932,6 @@ $total_reviews = $stmt->fetch()['total'] ?? 0;
 
     <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Mobile menu toggle
-        document.getElementById('mobileToggle').addEventListener('click', () => {
-            document.getElementById('sidebar').classList.toggle('mobile-open');
-            document.getElementById('overlay').classList.toggle('active');
-        });
-
         // Auto-dismiss alerts after 5 seconds
         setTimeout(() => {
             document.querySelectorAll('.alert').forEach(alert => {
@@ -1012,5 +939,6 @@ $total_reviews = $stmt->fetch()['total'] ?? 0;
             });
         }, 5000);
     </script>
+<?php client_header_render_scripts(); ?>
 </body>
 </html>

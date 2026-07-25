@@ -2,6 +2,7 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+require_once __DIR__ . '/includes/client_header.php';
 
 if (!isLoggedIn()) {
     redirect('../login.php');
@@ -595,13 +596,10 @@ $payment_label = $payment_labels[$service['payment_type']] ?? 'Per Service';
             .other-services-grid { grid-template-columns: 1fr; }
         }
     </style>
+<?php client_header_render_styles(); ?>
 </head>
 <body>
-
-<button class="mobile-menu-toggle" id="mobileToggle"><i class="fas fa-bars"></i></button>
-<div class="overlay" id="overlay"></div>
-
-<?php include __DIR__ . '/includes/sidebar.php'; ?>
+    <?php client_header_render_markup(basename($_SERVER['PHP_SELF'])); ?>
 
 <div class="main-content">
 
@@ -1019,26 +1017,6 @@ $payment_label = $payment_labels[$service['payment_type']] ?? 'Per Service';
 <?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
 <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
 <script>
-    // ── Mobile sidebar ─────────────────────────────────────────────────────
-    const mobileToggle = document.getElementById('mobileToggle');
-    const sidebar       = document.querySelector('.sidebar');
-    const overlay       = document.getElementById('overlay');
-
-    if (mobileToggle && sidebar) {
-        mobileToggle.addEventListener('click', () => {
-            sidebar.classList.toggle('mobile-open');
-            overlay.classList.toggle('active');
-            document.body.style.overflow = sidebar.classList.contains('mobile-open') ? 'hidden' : '';
-        });
-    }
-    if (overlay) {
-        overlay.addEventListener('click', () => {
-            sidebar && sidebar.classList.remove('mobile-open');
-            overlay.classList.remove('active');
-            document.body.style.overflow = '';
-        });
-    }
-
     // ── Toast helper ───────────────────────────────────────────────────────
     function showToast(msg, type = 'success') {
         const colors = { success:'#16a34a', danger:'#dc2626', info:'#0891b2', warning:'#d97706' };
@@ -1131,5 +1109,6 @@ $payment_label = $payment_labels[$service['payment_type']] ?? 'Per Service';
         .catch(() => showToast('Network error. Please try again.', 'danger'));
     }
 </script>
+<?php client_header_render_scripts(); ?>
 </body>
 </html>

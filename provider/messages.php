@@ -7,6 +7,10 @@ require_once '../includes/functions.php';
 require_once '../includes/live_location.php';
 require_once '../includes/chat.php';
 require_once '../includes/mailer.php';
+require_once '../controllers/pages/provider/ProviderMessagesController.php';
+
+$db = Database::getInstance()->getConnection();
+$controller = new ProviderMessagesController();
 
 // API poll endpoint for live update
 if (isset($_GET['action']) && $_GET['action'] === 'poll') {
@@ -15,20 +19,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'poll') {
     
     try {
         $me = isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : 0;
-        $with = isset($_GET['with']) ? intval($_GET['with']) : 0;
-        
-        if ($me > 0 && $with > 0) {
-            $messages = getConversationMessages($me, $with);
-            $bookingTimelineData = [];
-            $booking_id = isset($_GET['booking_id']) ? intval($_GET['booking_id']) : 0;
-            if ($booking_id > 0) {
-                $bookingTimelineData = getBookingTimeline($booking_id);
-            }
-            echo json_encode(['success' => true, 'messages' => $messages, 'booking_timeline' => $bookingTimelineData]);
-        } else {
-            http_response_code(400);
-            echo json_encode(['success' => false, 'message' => 'Invalid session or conversation']);
-        }
+        $response = $controller->poll($db, $me, $_GET);
+        echo json_encode($response);
     } catch (Throwable $e) {
         http_response_code(500);
         error_log('Poll error: ' . $e->getMessage());
@@ -269,207 +261,38 @@ function saveChatAttachment(array $file): ?string
 
 // handle new message form
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['receiver_id']) && (isset($_POST['message']) || !empty($_FILES['attachment']['name']) || isset($_POST['message_type']))) {
-    $receiver_id = intval($_POST['receiver_id']);
-    $msg = sanitize($_POST['message'] ?? '');
-    $booking_id = isset($_POST['booking_id']) ? intval($_POST['booking_id']) : 0;
-    $messageType = sanitize($_POST['message_type'] ?? 'text');
-    $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || (isset($_POST['ajax']) && $_POST['ajax'] == '1');
+    $result = $controller->handleSubmit($db, $me, $_POST, $_FILES, $_SERVER);
 
-    $attachmentPath = null;
-    $attachmentType = null;
-    $offerInfo = null;
-    $serviceInfo = null;
-    
-    // Handle file attachment
-    if (!empty($_FILES['attachment']['name'])) {
-        $attachmentPath = saveChatAttachment($_FILES['attachment']);
-        if ($attachmentPath !== null) {
-            $ext = strtolower(pathinfo($attachmentPath, PATHINFO_EXTENSION));
-            if (in_array($ext, ['webm','ogg','mp3','wav'], true)) {
-                $attachmentType = 'audio';
-            } elseif (in_array($ext, ['jpg','jpeg','png','gif'], true)) {
-                $attachmentType = 'image';
-            } else {
-                $attachmentType = 'file';
-            }
-        }
-    }
-
-    $result = false;
-    
-    // Handle service offer message
-    if ($messageType === 'service_offer' && isset($_POST['offer_service_id'])) {
-        $serviceId = intval($_POST['offer_service_id']);
-        $isNegotiable = isset($_POST['offer_negotiable']) && $_POST['offer_negotiable'] === '1';
-        
-        // Get provider ID first
-        $stmt = $db->prepare("SELECT id FROM service_providers WHERE user_id = ? LIMIT 1");
-        $stmt->execute([$me]);
-        $provider = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($provider) {
-            // Get service details from provider_services
-            $stmt = $db->prepare("SELECT id, name as service_name, description as service_description, price, min_price, max_price, negotiable FROM provider_services WHERE id = ? AND provider_id = ? LIMIT 1");
-            $stmt->execute([$serviceId, $provider['id']]);
-            $service = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if ($service) {
-                $offerInfo = [
-                    'service_name' => $service['service_name'],
-                    'description' => $service['service_description'],
-                    'price' => $service['price'],
-                    'min_price' => $service['min_price'],
-                    'max_price' => $service['max_price'],
-                    'negotiable' => $isNegotiable,
-                    'service_id' => $serviceId
-                ];
-                
-                // Send offer message with JSON data
-                $offerData = json_encode($offerInfo);
-                $result = sendMessage($me, $receiver_id, $offerData, null, null, 'service_offer');
-            }
-        }
-    }
-    // Handle service message
-    elseif ($messageType === 'service' && isset($_POST['service_id'])) {
-        $serviceId = intval($_POST['service_id']);
-        
-        // Get provider ID first
-        $stmt = $db->prepare("SELECT id FROM service_providers WHERE user_id = ? LIMIT 1");
-        $stmt->execute([$me]);
-        $provider = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($provider) {
-            // Get service details from provider_services
-            $stmt = $db->prepare("SELECT id, name as service_name, description as service_description, price FROM provider_services WHERE id = ? AND provider_id = ? LIMIT 1");
-            $stmt->execute([$serviceId, $provider['id']]);
-            $service = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if ($service) {
-                $serviceInfo = [
-                    'service_name' => $service['service_name'],
-                    'description' => $service['service_description'],
-                    'price' => $service['price'],
-                    'service_id' => $serviceId
-                ];
-                
-                // Send service message with JSON data
-                $serviceData = json_encode($serviceInfo);
-                $result = sendMessage($me, $receiver_id, $serviceData, null, null, 'service');
-            }
-        }
-    }
-    // Handle regular message with optional attachment
-    elseif ($msg !== '' || $attachmentPath !== null) {
-        $result = sendMessage($me, $receiver_id, $msg, $attachmentPath, $attachmentType);
-
-        // optionally notify provider via email/push/sms
-        if ($result && $attachmentPath === null) {
-            if (Mailer::isProviderNotificationEnabled($receiver_id, 'chat_message_email')) {
-                $stmt = $db->prepare("SELECT email FROM users WHERE id = ?");
-                $stmt->execute([$receiver_id]);
-                $prov = $stmt->fetch(PDO::FETCH_ASSOC);
-                if ($prov && !empty($prov['email'])) {
-                    $clientStmt = $db->prepare("SELECT full_name FROM users WHERE id = ?");
-                    $clientStmt->execute([$me]);
-                    $client = $clientStmt->fetch(PDO::FETCH_ASSOC);
-                    $clientName = $client['full_name'] ?? 'A client';
-
-                    $serviceText = 'General inquiry';
-                    if ($booking_id) {
-                        $bstmt = $db->prepare("SELECT service_description FROM bookings WHERE id = ?");
-                        $bstmt->execute([$booking_id]);
-                        $booking = $bstmt->fetch(PDO::FETCH_ASSOC);
-                        if ($booking) {
-                            $serviceText = trim($booking['service_description']) ?: 'Booked service';
-                        }
-                    }
-
-                    $body = "Hello,\n\n";
-                    $body .= "You have received a new message from {$clientName}.\n";
-                    $body .= "Service: {$serviceText}.\n\n";
-                    $body .= "Message:\n{$msg}\n\n";
-                    $body .= "Please log in to BII LocalFinder to reply.\n";
-
-                    Mailer::send(
-                        $prov['email'],
-                        "New message from {$clientName}",
-                        $body,
-                        false
-                    );
-                }
-            }
-        }
-    }
-
-    if ($isAjax) {
+    if ($result['is_ajax']) {
         header('Content-Type: application/json');
-        $messageData = null;
-        if ($result) {
-            $messageData = [
-                'sender_id' => $me,
-                'receiver_id' => $receiver_id,
-                'message' => $msg,
-                'attachment_path' => $attachmentPath,
-                'attachment_type' => $attachmentType,
-                'created_at' => date('Y-m-d H:i:s'),
-                'message_type' => $messageType
-            ];
-            if ($offerInfo) {
-                $messageData['offer_info'] = $offerInfo;
-            }
-            if ($serviceInfo) {
-                $messageData['service_info'] = $serviceInfo;
-            }
-        }
         echo json_encode([
-            'success' => $result,
-            'message' => $messageData
+            'success' => $result['success'],
+            'message' => $result['message'] ?? null,
+            'errors' => $result['errors'] ?? []
         ]);
         exit;
     }
 
-    // redirect to avoid form resubmission
-    redirect('messages.php?with=' . $receiver_id . ($booking_id ? '&booking_id=' . $booking_id : ''));
-}
-
-// determine active conversation partner
-$with = isset($_GET['with']) ? intval($_GET['with']) : 0;
-$booking_id = isset($_GET['booking_id']) ? intval($_GET['booking_id']) : 0;
-
-try {
-    $convs = getConversationList($me) ?: [];
-    if (!is_array($convs)) {
-        $convs = [];
+    if ($result['success']) {
+        redirect($result['redirect']);
     }
-} catch (Throwable $e) {
-    error_log('getConversationList error: ' . $e->getMessage());
-    $convs = [];
+
+    $errors = $result['errors'] ?? [];
 }
 
-$messages = [];
-$otherUser = null;
-$bookingTimeline = [];
-if ($with) {
-    // fetch other user info
-    $stmt = $db->prepare("SELECT id, full_name, profile_image FROM users WHERE id = ?");
-    $stmt->execute([$with]);
-    $otherUser = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($otherUser) {
-        // link provider profile for client page, or client profile for provider page
-        $profileHref = isProvider() ? '../client/profile.php?id=' . $with : '../provider/profile.php?id=' . $with;
-        // mark incoming as read
-        markMessagesRead($with, $me);
-        // load conversation
-        $messages = getConversationMessages($me, $with);
-        if ($booking_id) {
-            $bookingTimeline = getBookingTimeline($booking_id);
-        }
-    } else {
-        $with = 0; // invalid user
-    }
+$viewData = $controller->index($db, $me, $_GET);
+$with = $viewData['with'] ?? 0;
+$booking_id = $viewData['booking_id'] ?? 0;
+$messages = $viewData['messages'] ?? [];
+$otherUser = $viewData['otherUser'] ?? null;
+$bookingTimeline = $viewData['bookingTimeline'] ?? [];
+$profileHref = isProvider() ? '../client/profile.php?id=' . $with : '../provider/profile.php?id=' . $with;
+
+if (!$otherUser) {
+    $with = 0;
 }
 
+$convs = $viewData['convs'] ?? [];
 ?>
 <!DOCTYPE html>
 <html lang="en">

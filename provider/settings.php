@@ -4,6 +4,7 @@ require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once '../includes/provider_requirements.php';
 require_once '../includes/language.php';
+require_once '../controllers/pages/provider/ProviderSettingsController.php';
 
 requireProvider();
 
@@ -22,164 +23,24 @@ if (isMaintenanceMode() && !isAdmin()) {
 
 $db = Database::getInstance()->getConnection();
 
+$controller = new ProviderSettingsController();
+$viewData = $controller->index($db, (int) $_SESSION['user_id'], isset($_GET['section']) ? sanitize($_GET['section']) : 'identity');
+
 // Get settings section from URL (default to 'identity')
 $settings_section = isset($_GET['section']) ? sanitize($_GET['section']) : 'identity';
 $valid_settings_sections = ['identity', 'visibility', 'pricing', 'availability', 'location', 'ai', 'ai_features', 'payment', 'communication', 'notifications', 'reviews', 'security', 'analytics', 'account', 'requirements', 'language'];
-if (!in_array($settings_section, $valid_settings_sections)) {
-    $settings_section = 'identity';
-}
-
-$success = '';
-$errors = [];
-$warning = '';
-
-// Get provider profile
-$stmt = $db->prepare("
-    SELECT sp.*, u.email, u.phone, u.profile_image, u.full_name, 
-           u.is_verified as email_verified, u.is_active, u.created_at as join_date,
-           u.two_factor_enabled, u.login_notifications
-    FROM service_providers sp
-    JOIN users u ON sp.user_id = u.id
-    WHERE sp.user_id = ?
-");
-$stmt->execute([$_SESSION['user_id']]);
-$provider = $stmt->fetch();
-
-// Get provider settings
-$providerSettings = [
-    'visibility' => [],
-    'communication' => [],
-    'notifications' => [],
-    'ai_features' => [],
-    'payment' => [],
-    'security' => [],
-    'pricing' => [],
-    'location' => [],
-    'availability' => [],
-    'reviews' => [],
-    'appearance' => [], // Add appearance settings
-    'language' => [] // Add language settings
-];
-
-// Load all provider settings
-$stmt = $db->prepare("SELECT setting_key, setting_value FROM provider_settings WHERE provider_id = ?");
-$stmt->execute([$provider['id']]);
-$settingsData = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
-
-// Parse settings
-foreach ($settingsData as $key => $value) {
-    // Check for multi-word sections first (ai_features)
-    if (strpos($key, 'ai_features_') === 0) {
-        $section = 'ai_features';
-        $setting = substr($key, strlen('ai_features_'));
-    } else {
-        // For single-word sections, split by first underscore
-        $parts = explode('_', $key, 2);
-        $section = $parts[0];
-        $setting = $parts[1] ?? '';
-    }
-    
-    if (isset($providerSettings[$section]) && $setting) {
-        $providerSettings[$section][$setting] = $value;
-    }
-}
-
-// Get verification documents
-$stmt = $db->prepare("
-    SELECT * FROM verification_documents 
-    WHERE provider_id = ? 
-    ORDER BY uploaded_at DESC
-");
-$stmt->execute([$provider['id']]);
-$verificationDocs = $stmt->fetchAll();
-
-// Get bank accounts/payment methods
-$stmt = $db->prepare("
-    SELECT * FROM provider_payment_methods 
-    WHERE provider_id = ? AND is_active = 1
-    ORDER BY is_default DESC
-");
-$stmt->execute([$provider['id']]);
-$paymentMethods = $stmt->fetchAll();
-
-// Get service categories
-$stmt = $db->prepare("
-    SELECT c.id, c.name, c.icon, pc.category_id as selected
-    FROM categories c
-    LEFT JOIN provider_categories pc ON c.id = pc.category_id AND pc.provider_id = ?
-    WHERE c.is_active = 1
-    ORDER BY c.name
-");
-$stmt->execute([$provider['id']]);
-$allCategories = $stmt->fetchAll();
-
-// Get selected categories
-$stmt = $db->prepare("
-    SELECT category_id FROM provider_categories WHERE provider_id = ?
-");
-$stmt->execute([$provider['id']]);
-$selectedCategories = $stmt->fetchAll(PDO::FETCH_COLUMN);
-
-// Get service areas
-$stmt = $db->prepare("
-    SELECT * FROM provider_service_areas 
-    WHERE provider_id = ? 
-    ORDER BY is_primary DESC
-");
-$stmt->execute([$provider['id']]);
-$serviceAreas = $stmt->fetchAll();
-
-// Get analytics data - CORRECTED VERSION (without rating)
-$stmt = $db->prepare("
-    SELECT 
-        COUNT(DISTINCT DATE(created_at)) as active_days,
-        COUNT(*) as total_jobs,
-        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_jobs,
-        COUNT(DISTINCT client_id) as unique_clients,
-        COUNT(DISTINCT CASE WHEN status = 'cancelled' THEN id END) as cancelled_jobs,
-        COUNT(DISTINCT CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN id END) as weekly_bookings
-    FROM bookings 
-    WHERE provider_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-");
-$stmt->execute([$provider['id']]);
-$analytics = $stmt->fetch();
-
-// Compute average rating separately (avoid undefined key)
-$ratingStmt = $db->prepare("SELECT AVG(rating) as avg_rating FROM reviews WHERE provider_id = ?");
-$ratingStmt->execute([$provider['id']]);
-$ratingRow = $ratingStmt->fetch(PDO::FETCH_ASSOC);
-$analytics['avg_rating'] = isset($ratingRow['avg_rating']) && $ratingRow['avg_rating'] !== null ? floatval($ratingRow['avg_rating']) : 0;
-
-// Get session history
-$stmt = $db->prepare("
-    SELECT device, ip_address, login_time, logout_time, user_agent
-    FROM user_sessions 
-    WHERE user_id = ? 
-    ORDER BY login_time DESC 
-    LIMIT 10
-");
-$stmt->execute([$_SESSION['user_id']]);
-$sessionHistory = $stmt->fetchAll();
-
-// Get recent reviews
-$stmt = $db->prepare("
-    SELECT r.*, u.full_name as client_name, u.profile_image as client_image
-    FROM reviews r
-    JOIN users u ON r.client_id = u.id
-    WHERE r.provider_id = ?
-    ORDER BY r.created_at DESC
-    LIMIT 5
-");
-$stmt->execute([$provider['id']]);
-$recentReviews = $stmt->fetchAll();
-
-// Get wallet balance
-$stmt = $db->prepare("
-    SELECT COALESCE(SUM(amount), 0) as balance
-    FROM transactions
-    WHERE provider_id = ? AND status = 'completed'
-");
-$stmt->execute([$provider['id']]);
+$provider = $viewData['provider'] ?? [];
+$providerSettings = $viewData['providerSettings'] ?? [];
+$verificationDocs = $viewData['verificationDocs'] ?? [];
+$paymentMethods = $viewData['paymentMethods'] ?? [];
+$allCategories = $viewData['allCategories'] ?? [];
+$selectedCategories = $viewData['selectedCategories'] ?? [];
+$serviceAreas = $viewData['serviceAreas'] ?? [];
+$analytics = $viewData['analytics'] ?? [];
+$sessionHistory = $viewData['sessionHistory'] ?? [];
+$recentReviews = $viewData['recentReviews'] ?? [];
+$platformSettings = $viewData['platformSettings'] ?? [];
+$walletBalance = 0;
 $walletBalance = 0; // Wallets/withdrawals not supported on this platform
 
 // Get platform settings

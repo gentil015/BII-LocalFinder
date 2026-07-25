@@ -6,6 +6,7 @@ require_once '../includes/language.php';
 require_once '../includes/ai_helpers.php';
 require_once '../includes/provider_requirements.php';
 require_once '../includes/profession_titles.php';
+require_once '../controllers/pages/provider/ProviderProfileController.php';
 
 requireProvider();
 
@@ -15,6 +16,7 @@ if (isMaintenanceMode() && !isAdmin()) {
 }
 
 $db = Database::getInstance()->getConnection();
+$controller = new ProviderProfileController();
 
 // Get section from URL (default to 'basic')
 $section = isset($_GET['section']) ? sanitize($_GET['section']) : 'basic';
@@ -26,15 +28,21 @@ $aiHelper = new AIHelper($db);
 $success = '';
 $errors = [];
 
-// Get provider profile
-$stmt = $db->prepare("
-    SELECT sp.*, u.email, u.phone, u.profile_image, u.full_name
-    FROM service_providers sp
-    JOIN users u ON sp.user_id = u.id
-    WHERE sp.user_id = ?
-");
-$stmt->execute([$_SESSION['user_id']]);
-$provider = $stmt->fetch();
+$viewData = $controller->index($db, $_SESSION['user_id'], $section);
+$provider = $viewData['provider'] ?? null;
+$social_platforms = $viewData['social_platforms'] ?? [];
+$provider_categories = $viewData['provider_categories'] ?? [];
+$provider_category_ids = $viewData['provider_category_ids'] ?? [];
+$all_categories = $viewData['all_categories'] ?? [];
+$districts = $viewData['districts'] ?? [];
+$portfolio_images = $viewData['portfolio_images'] ?? [];
+$portfolio_video = $viewData['portfolio_video'] ?? null;
+$has_portfolio_video = $viewData['has_portfolio_video'] ?? false;
+$portfolio_count = $viewData['portfolio_count'] ?? 0;
+$max_portfolio_images = $viewData['max_portfolio_images'] ?? 6;
+$portfolio_enabled = $viewData['portfolio_enabled'] ?? true;
+$enable_ai_features = $viewData['enable_ai_features'] ?? false;
+$ai_description_improvement_enabled = $viewData['ai_description_improvement_enabled'] ?? false;
 
 // Check if AI features are enabled for this provider
 $enable_ai_features = false;
@@ -117,619 +125,31 @@ try {
 
 // Handle profile update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
-    $full_name = sanitize($_POST['full_name']);
-    $phone = sanitize($_POST['phone']);
-    $professional_title = sanitize($_POST['professional_title']);
-    $profession = sanitize($_POST['profession']);
-    $bio = sanitize($_POST['bio']);
-    $location = sanitize($_POST['location']);
-    $district = sanitize($_POST['district']);
-    $sector = sanitize($_POST['sector']);
-    $experience_years = intval($_POST['experience_years']);
-    $selected_categories = $_POST['categories'] ?? [];
-    
-    // Handle social media links
-    $social_links_data = [
-        'website' => sanitize($_POST['website'] ?? ''),
-        'facebook' => sanitize($_POST['facebook'] ?? ''),
-        'twitter' => sanitize($_POST['twitter'] ?? ''),
-        'instagram' => sanitize($_POST['instagram'] ?? ''),
-        'linkedin' => sanitize($_POST['linkedin'] ?? ''),
-        'youtube' => sanitize($_POST['youtube'] ?? ''),
-        'whatsapp' => sanitize($_POST['whatsapp'] ?? ''),
-        'tiktok' => sanitize($_POST['tiktok'] ?? ''),
-        'other_social' => sanitize($_POST['other_social'] ?? ''),
-        'other_social_label' => sanitize($_POST['other_social_label'] ?? '')
-    ];
-    
-    // Validation
-    if (empty($full_name) || empty($phone) || empty($profession) || empty($professional_title) || empty($location)) {
-        $errors[] = "Please fill all required fields";
-    }
-    
-    // Validate profession and professional title
-    if (!isValidProfession($profession)) {
-        $errors[] = "Invalid profession selected";
-    }
-    
-    if (!isValidProfessionalTitle($profession, $professional_title)) {
-        $errors[] = "Invalid professional title selected for this profession";
-    }
-    
-    if (empty($selected_categories)) {
-        $errors[] = "Please select at least one service category";
-    }
-    
-    // Validate phone number format
-    if (!empty($phone) && !preg_match('/^\+?[\d\s\-\(\)]{10,}$/', $phone)) {
-        $errors[] = "Please enter a valid phone number";
-    }
-    
-    // hourly_rate removed: service prices will be used from provider services
-    
-    // Validate social media URLs if provided
-    foreach ($social_links_data as $platform => $url) {
-        if (!empty($url) && $platform !== 'whatsapp' && $platform !== 'other_social_label') {
-            if (!filter_var($url, FILTER_VALIDATE_URL)) {
-                $errors[] = "Invalid URL for $platform";
-            }
-        }
-    }
-    
-    // Use AI to improve bio if enabled (and description improvement sub-toggle is on)
-    if ($enable_ai_features && $ai_description_improvement_enabled && !empty($bio) && strlen($bio) > 20) {
-        $original_bio = $bio;
-        $improved_bio = $aiHelper->improveProfessionalBio($bio, $profession, $experience_years);
-        
-        // Only use AI version if it's significantly better
-        if ($improved_bio !== $bio && strlen($improved_bio) > strlen($bio) * 0.8) {
-            $bio = $improved_bio;
-            $_SESSION['ai_improved_bio'] = true;
-        }
-    }
-    
-    // Handle profile image upload
-    $profile_image = $provider['profile_image'];
-    if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] === UPLOAD_ERR_OK) {
-        $allowed_types = getAllowedFileTypes();
-        $max_file_size = getMaxFileSize() * 1024 * 1024;
-        
-        $file_type = $_FILES['profile_image']['type'];
-        $file_size = $_FILES['profile_image']['size'];
-        $file_extension = strtolower(pathinfo($_FILES['profile_image']['name'], PATHINFO_EXTENSION));
-        
-        if (!in_array($file_extension, $allowed_types) && !in_array($file_type, ['image/jpeg', 'image/png', 'image/jpg', 'image/gif'])) {
-            $errors[] = "Invalid image type. Please upload JPG, PNG, or GIF files only.";
-        } elseif ($file_size > $max_file_size) {
-            $errors[] = "Image size must be less than " . getMaxFileSize() . "MB";
-        } else {
-            $new_filename = 'profile_' . $_SESSION['user_id'] . '_' . time() . '.' . $file_extension;
-            $upload_path = '../uploads/profiles/' . $new_filename;
-            
-            if (!is_dir('../uploads/profiles')) {
-                mkdir('../uploads/profiles', 0755, true);
-            }
-            
-            if (move_uploaded_file($_FILES['profile_image']['tmp_name'], $upload_path)) {
-                if ($profile_image && file_exists('../uploads/profiles/' . $profile_image)) {
-                    unlink('../uploads/profiles/' . $profile_image);
-                }
-                $profile_image = $new_filename;
-            } else {
-                $errors[] = "Failed to upload image. Please try again.";
-            }
-        }
-    }
-    
-    // Handle portfolio image uploads
-    $uploaded_portfolio_files = $_FILES['portfolio_images'] ?? [];
-    $portfolio_titles = $_POST['portfolio_titles'] ?? [];
-    $portfolio_descriptions = $_POST['portfolio_descriptions'] ?? [];
-    
-    if (!empty($uploaded_portfolio_files['name'][0]) && $portfolio_enabled) {
-        $uploaded_count = 0;
-        
-        foreach ($uploaded_portfolio_files['name'] as $index => $name) {
-            if ($portfolio_count + $uploaded_count >= $max_portfolio_images) {
-                $errors[] = "Maximum $max_portfolio_images portfolio images allowed";
-                break;
-            }
-            
-            if ($uploaded_portfolio_files['error'][$index] === UPLOAD_ERR_OK) {
-                $file_type = $uploaded_portfolio_files['type'][$index];
-                $file_size = $uploaded_portfolio_files['size'][$index];
-                $file_extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-                
-                // Validate file
-                if (!in_array($file_extension, $allowed_types) && 
-                    !in_array($file_type, ['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp'])) {
-                    $errors[] = "Invalid image type for portfolio image: " . htmlspecialchars($name);
-                    continue;
-                }
-                
-                if ($file_size > $max_file_size) {
-                    $errors[] = "Portfolio image too large: " . htmlspecialchars($name) . 
-                               " (Max: " . getMaxFileSize() . "MB)";
-                    continue;
-                }
-                
-                // Generate unique filename
-                $new_filename = 'portfolio_' . $provider['id'] . '_' . time() . '_' . $index . '.' . $file_extension;
-                $upload_path = '../uploads/portfolio/' . $new_filename;
-                
-                // Create directory if needed
-                if (!is_dir('../uploads/portfolio')) {
-                    mkdir('../uploads/portfolio', 0755, true);
-                }
-                
-                if (move_uploaded_file($uploaded_portfolio_files['tmp_name'][$index], $upload_path)) {
-                    $title = sanitize($portfolio_titles[$index] ?? '');
-                    $description = sanitize($portfolio_descriptions[$index] ?? '');
-                    
-                    $stmt = $db->prepare("
-                        INSERT INTO portfolio_images (provider_id, image_path, title, description, display_order)
-                        VALUES (?, ?, ?, ?, ?)
-                    ");
-                    $stmt->execute([
-                        $provider['id'],
-                        $new_filename,
-                        $title,
-                        $description,
-                        $portfolio_count + $uploaded_count
-                    ]);
-                    
-                    $uploaded_count++;
-                }
-            }
-        }
-    }
-    
-    // Handle portfolio image deletions
-    $deleted_portfolio_ids = $_POST['deleted_portfolio'] ?? [];
-    if (!empty($deleted_portfolio_ids) && $portfolio_enabled) {
-        foreach ($deleted_portfolio_ids as $image_id) {
-            $image_id = intval($image_id);
-            
-            // Get image path before deleting
-            $stmt = $db->prepare("SELECT image_path FROM portfolio_images WHERE id = ? AND provider_id = ?");
-            $stmt->execute([$image_id, $provider['id']]);
-            $image_data = $stmt->fetch();
-            
-            if ($image_data) {
-                // Delete from database
-                $stmt = $db->prepare("DELETE FROM portfolio_images WHERE id = ? AND provider_id = ?");
-                $stmt->execute([$image_id, $provider['id']]);
-                
-                // Delete file
-                $file_path = '../uploads/portfolio/' . $image_data['image_path'];
-                if (file_exists($file_path)) {
-                    unlink($file_path);
-                }
-            }
-        }
-    }
-    
-    // Handle portfolio image updates (titles/descriptions)
-    $existing_portfolio_ids = $_POST['existing_portfolio_ids'] ?? [];
-    $existing_portfolio_titles = $_POST['existing_portfolio_titles'] ?? [];
-    $existing_portfolio_descriptions = $_POST['existing_portfolio_descriptions'] ?? [];
-    
-    if (!empty($existing_portfolio_ids) && $portfolio_enabled) {
-        foreach ($existing_portfolio_ids as $index => $image_id) {
-            $image_id = intval($image_id);
-            $title = sanitize($existing_portfolio_titles[$index] ?? '');
-            $description = sanitize($existing_portfolio_descriptions[$index] ?? '');
-            
-            $stmt = $db->prepare("
-                UPDATE portfolio_images 
-                SET title = ?, description = ?
-                WHERE id = ? AND provider_id = ?
-            ");
-            $stmt->execute([$title, $description, $image_id, $provider['id']]);
-        }
-    }
-    
-    // Handle portfolio video uploads (single video per provider)
-    $uploaded_portfolio_videos = $_FILES['portfolio_videos'] ?? [];
-    $portfolio_video_titles = $_POST['portfolio_video_titles'] ?? [];
-    $portfolio_video_descriptions = $_POST['portfolio_video_descriptions'] ?? [];
-    
-    if (!empty($uploaded_portfolio_videos['name'][0]) && $portfolio_enabled) {
-        foreach ($uploaded_portfolio_videos['name'] as $index => $name) {
-            if ($uploaded_portfolio_videos['error'][$index] === UPLOAD_ERR_OK) {
-                $file_type = $uploaded_portfolio_videos['type'][$index];
-                $file_size = $uploaded_portfolio_videos['size'][$index];
-                $file_extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-                
-                // Validate video file
-                $allowed_video_formats = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv', 'ogv'];
-                $max_video_size = getMaxFileSize() * 2 * 1024 * 1024; // 2x image size for videos
-                
-                if (!in_array($file_extension, $allowed_video_formats)) {
-                    $errors[] = "Invalid video format. Allowed formats: " . implode(', ', $allowed_video_formats);
-                    continue;
-                }
-                
-                if ($file_size > $max_video_size) {
-                    $errors[] = "Video file size must be less than " . (getMaxFileSize() * 2) . "MB";
-                    continue;
-                }
-                
-                // If provider already has a video, delete the old one
-                if ($has_portfolio_video) {
-                    $stmt = $db->prepare("SELECT video_path FROM portfolio_videos WHERE provider_id = ? AND is_active = 1");
-                    $stmt->execute([$provider['id']]);
-                    $old_video = $stmt->fetch();
-                    
-                    if ($old_video) {
-                        // Delete old video file
-                        $old_file_path = '../uploads/portfolio/' . $old_video['video_path'];
-                        if (file_exists($old_file_path)) {
-                            unlink($old_file_path);
-                        }
-                        
-                        // Mark old video as inactive
-                        $stmt = $db->prepare("UPDATE portfolio_videos SET is_active = 0 WHERE provider_id = ?");
-                        $stmt->execute([$provider['id']]);
-                    }
-                }
-                
-                // Generate unique filename
-                $new_filename = 'portfolio_video_' . $provider['id'] . '_' . time() . '.' . $file_extension;
-                $upload_path = '../uploads/portfolio/' . $new_filename;
-                
-                // Create directory if needed
-                if (!is_dir('../uploads/portfolio')) {
-                    mkdir('../uploads/portfolio', 0755, true);
-                }
-                
-                if (move_uploaded_file($uploaded_portfolio_videos['tmp_name'][$index], $upload_path)) {
-                    $title = sanitize($portfolio_video_titles[$index] ?? 'Portfolio Video');
-                    $description = sanitize($portfolio_video_descriptions[$index] ?? '');
-                    
-                    $stmt = $db->prepare("
-                        INSERT INTO portfolio_videos (provider_id, video_path, title, description, is_active)
-                        VALUES (?, ?, ?, ?, 1)
-                    ");
-                    $stmt->execute([
-                        $provider['id'],
-                        $new_filename,
-                        $title,
-                        $description
-                    ]);
-                    
-                    $has_portfolio_video = true;
-                    break; // Only one video allowed
-                } else {
-                    $errors[] = "Failed to upload video. Please try again.";
-                }
-            }
-        }
-    }
-    
-    // Handle portfolio video deletion
-    $delete_portfolio_video = isset($_POST['delete_portfolio_video']) && $_POST['delete_portfolio_video'] == '1';
-    if ($delete_portfolio_video && $has_portfolio_video && $portfolio_enabled) {
-        $stmt = $db->prepare("SELECT video_path FROM portfolio_videos WHERE provider_id = ? AND is_active = 1");
-        $stmt->execute([$provider['id']]);
-        $video_data = $stmt->fetch();
-        
-        if ($video_data) {
-            // Delete from database
-            $stmt = $db->prepare("DELETE FROM portfolio_videos WHERE provider_id = ?");
-            $stmt->execute([$provider['id']]);
-            
-            // Delete file
-            $file_path = '../uploads/portfolio/' . $video_data['video_path'];
-            if (file_exists($file_path)) {
-                unlink($file_path);
-            }
-            
-            $has_portfolio_video = false;
-        }
-    }
-    
-    if (empty($errors)) {
-        try {
-            $db->beginTransaction();
-            
-            // Update users table
-            $stmt = $db->prepare("
-                UPDATE users 
-                SET full_name = ?, phone = ?, profile_image = ?, updated_at = NOW()
-                WHERE id = ?
-            ");
-            $stmt->execute([$full_name, $phone, $profile_image, $_SESSION['user_id']]);
-            
-            // Update service_providers table with social links
-            $stmt = $db->prepare("
-                UPDATE service_providers 
-                SET profession = ?, bio = ?, location = ?, district = ?, 
-                    sector = ?, experience_years = ?,
-                    website = ?, facebook = ?, twitter = ?, instagram = ?,
-                    linkedin = ?, youtube = ?, whatsapp = ?, tiktok = ?,
-                    other_social = ?, other_social_label = ?, updated_at = NOW()
-                WHERE user_id = ?
-            ");
-            $stmt->execute([
-                $profession, $bio, $location, $district, 
-                $sector, $experience_years,
-                $social_links_data['website'], $social_links_data['facebook'], 
-                $social_links_data['twitter'], $social_links_data['instagram'],
-                $social_links_data['linkedin'], $social_links_data['youtube'], 
-                $social_links_data['whatsapp'], $social_links_data['tiktok'],
-                $social_links_data['other_social'], $social_links_data['other_social_label'],
-                $_SESSION['user_id']
-            ]);
-            
-            // Update provider -> category mapping (use provider_categories table)
-            $stmt = $db->prepare("DELETE FROM provider_categories WHERE provider_id = ?");
-            $stmt->execute([$provider['id']]);
-            
-            $stmt = $db->prepare("INSERT INTO provider_categories (provider_id, category_id) VALUES (?, ?)");
-            foreach ($selected_categories as $category_id) {
-                $stmt->execute([$provider['id'], intval($category_id)]);
-            }
-            
-            $db->commit();
-            
-            $_SESSION['user_name'] = $full_name;
-            $success = "Profile updated successfully!";
-            
-            // Refresh provider data
-            $stmt = $db->prepare("
-                SELECT sp.*, u.email, u.phone, u.profile_image, u.full_name
-                FROM service_providers sp
-                JOIN users u ON sp.user_id = u.id
-                WHERE sp.user_id = ?
-            ");
-            $stmt->execute([$_SESSION['user_id']]);
-            $provider = $stmt->fetch();
-            
-            // Refresh social links
-            $social_platforms = [
-                'website' => $provider['website'] ?? '',
-                'facebook' => $provider['facebook'] ?? '',
-                'twitter' => $provider['twitter'] ?? '',
-                'instagram' => $provider['instagram'] ?? '',
-                'linkedin' => $provider['linkedin'] ?? '',
-                'youtube' => $provider['youtube'] ?? '',
-                'whatsapp' => $provider['whatsapp'] ?? '',
-                'tiktok' => $provider['tiktok'] ?? '',
-                'other_social' => $provider['other_social'] ?? '',
-                'other_social_label' => $provider['other_social_label'] ?? ''
-            ];
-            
-            // Refresh categories
-            $stmt = $db->prepare("
-                SELECT c.* 
-                FROM categories c
-                JOIN provider_categories pc ON c.id = pc.category_id
-                WHERE pc.provider_id = ?
-            ");
-            $stmt->execute([$provider['id']]);
-            $provider_categories = $stmt->fetchAll();
-            $provider_category_ids = array_column($provider_categories, 'id');
-            
-            // Refresh portfolio images
-            $stmt = $db->prepare("
-                SELECT * FROM portfolio_images 
-                WHERE provider_id = ? AND is_active = 1 
-                ORDER BY display_order, uploaded_at DESC
-            ");
-            $stmt->execute([$provider['id']]);
-            $portfolio_images = $stmt->fetchAll();
-            $portfolio_count = count($portfolio_images);
-            
-            // Refresh portfolio videos
-            $stmt = $db->prepare("
-                SELECT * FROM portfolio_videos 
-                WHERE provider_id = ? AND is_active = 1 
-                ORDER BY uploaded_at DESC
-                LIMIT 1
-            ");
-            $stmt->execute([$provider['id']]);
-            $portfolio_video = $stmt->fetch();
-            $has_portfolio_video = !empty($portfolio_video);
-            
-        } catch (Exception $e) {
-            $db->rollBack();
-            $errors[] = "Failed to update profile. Please try again.";
-            error_log("Profile update error: " . $e->getMessage());
-        }
-    }
+    $result = $controller->handleSubmit($db, $_SESSION['user_id'], $_POST, $_FILES, $_SERVER);
+    $success = $result['success'] ?? '';
+    $errors = $result['errors'] ?? [];
+    $viewData = $result['viewData'] ?? [];
+
+    $provider = $viewData['provider'] ?? null;
+    $social_platforms = $viewData['social_platforms'] ?? [];
+    $provider_categories = $viewData['provider_categories'] ?? [];
+    $provider_category_ids = $viewData['provider_category_ids'] ?? [];
+    $all_categories = $viewData['all_categories'] ?? [];
+    $districts = $viewData['districts'] ?? [];
+    $portfolio_images = $viewData['portfolio_images'] ?? [];
+    $portfolio_video = $viewData['portfolio_video'] ?? null;
+    $has_portfolio_video = $viewData['has_portfolio_video'] ?? false;
+    $portfolio_count = $viewData['portfolio_count'] ?? 0;
+    $max_portfolio_images = $viewData['max_portfolio_images'] ?? 6;
+    $portfolio_enabled = $viewData['portfolio_enabled'] ?? true;
+    $enable_ai_features = $viewData['enable_ai_features'] ?? false;
+    $ai_description_improvement_enabled = $viewData['ai_description_improvement_enabled'] ?? false;
 }
 
 // Handle AJAX section updates
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_section'])) {
     header('Content-Type: application/json');
-    $section = sanitize($_POST['ajax_section']);
-    $response = ['success' => false, 'message' => 'Unknown error', 'errors' => []];
-    
-    try {
-        $db->beginTransaction();
-        
-        switch ($section) {
-            case 'basic_info':
-                $full_name = sanitize($_POST['full_name'] ?? '');
-                $phone = sanitize($_POST['phone'] ?? '');
-                $profession = sanitize($_POST['profession'] ?? '');
-                $professional_title = sanitize($_POST['professional_title'] ?? '');
-                $bio = sanitize($_POST['bio'] ?? '');
-                $experience_years = intval($_POST['experience_years'] ?? 0);
-                
-                if (empty($full_name) || empty($phone) || empty($profession) || empty($professional_title)) {
-                    $response['errors'][] = "Please fill all required fields";
-                } elseif (!isValidProfession($profession)) {
-                    $response['errors'][] = "Invalid profession selected";
-                } elseif (!isValidProfessionalTitle($profession, $professional_title)) {
-                    $response['errors'][] = "Invalid professional title for selected profession";
-                } elseif (!preg_match('/^\+?[\d\s\-\(\)]{10,}$/', $phone)) {
-                    $response['errors'][] = "Please enter a valid phone number";
-                } else {
-                    // Use AI to improve bio if enabled (and description improvement sub-toggle is on)
-                    if ($enable_ai_features && $ai_description_improvement_enabled && !empty($bio) && strlen($bio) > 20) {
-                        $improved_bio = $aiHelper->improveProfessionalBio($bio, $profession, $experience_years);
-                        if ($improved_bio !== $bio && strlen($improved_bio) > strlen($bio) * 0.8) {
-                            $bio = $improved_bio;
-                        }
-                    }
-                    
-                    $stmt = $db->prepare("UPDATE users SET full_name = ?, phone = ?, updated_at = NOW() WHERE id = ?");
-                    $stmt->execute([$full_name, $phone, $_SESSION['user_id']]);
-                    
-                    $stmt = $db->prepare("UPDATE service_providers SET profession = ?, bio = ?, experience_years = ?, updated_at = NOW() WHERE user_id = ?");
-                    $stmt->execute([$profession, $bio, $experience_years, $_SESSION['user_id']]);
-                    
-                    $response['success'] = true;
-                    $response['message'] = "Basic information updated successfully!";
-                }
-                break;
-                
-            case 'location_info':
-                $location = sanitize($_POST['location'] ?? '');
-                $district = sanitize($_POST['district'] ?? '');
-                $sector = sanitize($_POST['sector'] ?? '');
-                
-                if (empty($location) || empty($district)) {
-                    $response['errors'][] = "Please fill all required location fields";
-                } else {
-                    $stmt = $db->prepare("UPDATE service_providers SET location = ?, district = ?, sector = ?, updated_at = NOW() WHERE user_id = ?");
-                    $stmt->execute([$location, $district, $sector, $_SESSION['user_id']]);
-                    
-                    $response['success'] = true;
-                    $response['message'] = "Location information updated successfully!";
-                }
-                break;
-                
-            case 'services':
-                $selected_categories = $_POST['categories'] ?? [];
-                
-                if (empty($selected_categories)) {
-                    $response['errors'][] = "Please select at least one service category";
-                } else {
-                    $stmt = $db->prepare("DELETE FROM provider_categories WHERE provider_id = ?");
-                    $stmt->execute([$provider['id']]);
-                    
-                    $stmt = $db->prepare("INSERT INTO provider_categories (provider_id, category_id) VALUES (?, ?)");
-                    foreach ($selected_categories as $category_id) {
-                        $stmt->execute([$provider['id'], intval($category_id)]);
-                    }
-                    
-                    $response['success'] = true;
-                    $response['message'] = "Services updated successfully!";
-                }
-                break;
-                
-            case 'social_media':
-                $social_links_data = [
-                    'website' => sanitize($_POST['website'] ?? ''),
-                    'facebook' => sanitize($_POST['facebook'] ?? ''),
-                    'twitter' => sanitize($_POST['twitter'] ?? ''),
-                    'instagram' => sanitize($_POST['instagram'] ?? ''),
-                    'linkedin' => sanitize($_POST['linkedin'] ?? ''),
-                    'youtube' => sanitize($_POST['youtube'] ?? ''),
-                    'whatsapp' => sanitize($_POST['whatsapp'] ?? ''),
-                    'tiktok' => sanitize($_POST['tiktok'] ?? ''),
-                    'other_social' => sanitize($_POST['other_social'] ?? ''),
-                    'other_social_label' => sanitize($_POST['other_social_label'] ?? '')
-                ];
-                
-                // Validate URLs
-                foreach ($social_links_data as $platform => $url) {
-                    if (!empty($url) && $platform !== 'whatsapp' && $platform !== 'other_social_label') {
-                        if (!filter_var($url, FILTER_VALIDATE_URL)) {
-                            $response['errors'][] = "Invalid URL for $platform";
-                        }
-                    }
-                }
-                
-                if (empty($response['errors'])) {
-                    $stmt = $db->prepare("
-                        UPDATE service_providers 
-                        SET website = ?, facebook = ?, twitter = ?, instagram = ?, 
-                            linkedin = ?, youtube = ?, whatsapp = ?, tiktok = ?,
-                            other_social = ?, other_social_label = ?, updated_at = NOW()
-                        WHERE user_id = ?
-                    ");
-                    $stmt->execute([
-                        $social_links_data['website'], $social_links_data['facebook'],
-                        $social_links_data['twitter'], $social_links_data['instagram'],
-                        $social_links_data['linkedin'], $social_links_data['youtube'],
-                        $social_links_data['whatsapp'], $social_links_data['tiktok'],
-                        $social_links_data['other_social'], $social_links_data['other_social_label'],
-                        $_SESSION['user_id']
-                    ]);
-                    
-                    $response['success'] = true;
-                    $response['message'] = "Social media links updated successfully!";
-                }
-                break;
-                
-            case 'portfolio':
-                // Handle portfolio image updates (titles/descriptions and deletions)
-                $existing_portfolio_ids = $_POST['existing_portfolio_ids'] ?? [];
-                $existing_portfolio_titles = $_POST['existing_portfolio_titles'] ?? [];
-                $existing_portfolio_descriptions = $_POST['existing_portfolio_descriptions'] ?? [];
-                $deleted_portfolio_ids = $_POST['deleted_portfolio'] ?? [];
-                
-                // Delete items marked for deletion
-                if (!empty($deleted_portfolio_ids)) {
-                    foreach ($deleted_portfolio_ids as $image_id) {
-                        $image_id = intval($image_id);
-                        
-                        // Get image path before deleting
-                        $stmt = $db->prepare("SELECT image_path FROM portfolio_images WHERE id = ? AND provider_id = ?");
-                        $stmt->execute([$image_id, $provider['id']]);
-                        $image_data = $stmt->fetch();
-                        
-                        if ($image_data) {
-                            // Delete from database
-                            $stmt = $db->prepare("DELETE FROM portfolio_images WHERE id = ? AND provider_id = ?");
-                            $stmt->execute([$image_id, $provider['id']]);
-                            
-                            // Delete file
-                            $file_path = '../uploads/portfolio/' . $image_data['image_path'];
-                            if (file_exists($file_path)) {
-                                unlink($file_path);
-                            }
-                        }
-                    }
-                }
-                
-                // Update titles and descriptions for existing images
-                if (!empty($existing_portfolio_ids)) {
-                    foreach ($existing_portfolio_ids as $index => $image_id) {
-                        $image_id = intval($image_id);
-                        $title = sanitize($existing_portfolio_titles[$index] ?? '');
-                        $description = sanitize($existing_portfolio_descriptions[$index] ?? '');
-                        
-                        $stmt = $db->prepare("
-                            UPDATE portfolio_images 
-                            SET title = ?, description = ?
-                            WHERE id = ? AND provider_id = ?
-                        ");
-                        $stmt->execute([$title, $description, $image_id, $provider['id']]);
-                    }
-                }
-                
-                $response['success'] = true;
-                $response['message'] = "Portfolio updated successfully!";
-                break;
-        }
-        
-        if ($response['success']) {
-            $db->commit();
-        } else {
-            $db->rollBack();
-        }
-        
-    } catch (Exception $e) {
-        $db->rollBack();
-        error_log("AJAX update error: " . $e->getMessage());
-        $response['errors'][] = "Failed to update. Please try again.";
-    }
-    
+    $response = $controller->handleAjaxSection($db, $_SESSION['user_id'], $_POST, $_FILES, $_SERVER);
     echo json_encode($response);
     exit;
 }

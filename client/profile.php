@@ -2,6 +2,8 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+require_once __DIR__ . '/includes/client_header.php';
+require_once '../controllers/pages/client/ClientProfileController.php';
 
 // Check if user is logged in and is a client
 if (!isLoggedIn()) {
@@ -13,6 +15,7 @@ if (isProvider()) {
 }
 
 $db = Database::getInstance()->getConnection();
+$controller = new ClientProfileController();
 $success = '';
 $errors = [];
 
@@ -24,127 +27,41 @@ function getSetting($db, $key, $default = '') {
     return $result !== false ? $result : $default;
 }
 
-// Get all system settings
 $system_settings = [
     'platform_name' => getSetting($db, 'platform_name', 'BII LocalFinder'),
     'contact_email' => getSetting($db, 'contact_email', 'support@biilocalfinder.com'),
     'contact_phone' => getSetting($db, 'contact_phone', '+250 788 123 456'),
-    
-    // File upload settings
     'allowed_file_types' => getSetting($db, 'allowed_file_types', 'jpg,jpeg,png,pdf,doc,docx'),
     'max_file_size' => intval(getSetting($db, 'max_file_size', '10')),
-    
-    // Verification settings
     'email_verification' => getSetting($db, 'email_verification', '1'),
     'phone_verification' => getSetting($db, 'phone_verification', '0'),
-    
-    // Security settings
     'enable_2fa' => getSetting($db, 'enable_2fa', '0'),
 ];
 
-// Get client information
-$stmt = $db->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$client = $stmt->fetch();
+$viewData = $controller->index($db, $_SESSION['user_id'], $system_settings);
+$client = $viewData['client'] ?? null;
+$total_bookings = $viewData['total_bookings'] ?? 0;
+$total_reviews = $viewData['total_reviews'] ?? 0;
+$recent_activities = $viewData['recent_activities'] ?? [];
+$needs_email_verification = $viewData['needs_email_verification'] ?? false;
+$needs_phone_verification = $viewData['needs_phone_verification'] ?? false;
 
 // Handle profile update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
-    $full_name = sanitize($_POST['full_name']);
-    $phone = sanitize($_POST['phone']);
-    
-    // Validation
-    if (empty($full_name) || empty($phone)) {
-        $errors[] = "All fields are required";
-    }
-    
-    // Handle profile image upload
-    $profile_image = $client['profile_image'];
-    if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] === UPLOAD_ERR_OK) {
-        $allowed_types = explode(',', $system_settings['allowed_file_types']);
-        $allowed_mime_types = [];
-        foreach ($allowed_types as $type) {
-            $type = trim($type);
-            if ($type === 'jpg' || $type === 'jpeg') $allowed_mime_types[] = 'image/jpeg';
-            if ($type === 'png') $allowed_mime_types[] = 'image/png';
-            if ($type === 'gif') $allowed_mime_types[] = 'image/gif';
-        }
-        
-        $file_type = $_FILES['profile_image']['type'];
-        $file_size = $_FILES['profile_image']['size'];
-        $max_file_size = $system_settings['max_file_size'] * 1024 * 1024; // Convert to bytes
-        
-        if (!in_array($file_type, $allowed_mime_types)) {
-            $errors[] = "Invalid image type. Allowed types: " . str_replace(',', ', ', $system_settings['allowed_file_types']);
-        } elseif ($file_size > $max_file_size) {
-            $errors[] = "Image size must be less than " . $system_settings['max_file_size'] . "MB";
-        } else {
-            $file_extension = pathinfo($_FILES['profile_image']['name'], PATHINFO_EXTENSION);
-            $new_filename = 'profile_' . $_SESSION['user_id'] . '_' . time() . '.' . $file_extension;
-            $upload_path = '../uploads/' . $new_filename;
-            
-            if (move_uploaded_file($_FILES['profile_image']['tmp_name'], $upload_path)) {
-                // Delete old image if exists
-                if ($profile_image && file_exists('../uploads/' . $profile_image)) {
-                    unlink('../uploads/' . $profile_image);
-                }
-                $profile_image = $new_filename;
-            } else {
-                $errors[] = "Failed to upload image";
-            }
-        }
-    }
-    
-    if (empty($errors)) {
-        try {
-            $stmt = $db->prepare("
-                UPDATE users 
-                SET full_name = ?, phone = ?, profile_image = ?, updated_at = NOW()
-                WHERE id = ?
-            ");
-            $stmt->execute([$full_name, $phone, $profile_image, $_SESSION['user_id']]);
-            
-            // Update session
-            $_SESSION['user_name'] = $full_name;
-            
-            $success = "Profile updated successfully!";
-            
-            // Log activity
-            logActivity($db, $_SESSION['user_id'], 'profile_update', 'Updated profile information');
-            
-            // Refresh client data
-            $stmt = $db->prepare("SELECT * FROM users WHERE id = ?");
-            $stmt->execute([$_SESSION['user_id']]);
-            $client = $stmt->fetch();
-            
-        } catch (Exception $e) {
-            $errors[] = "Failed to update profile. Please try again.";
-            error_log($e->getMessage());
-        }
+    $result = $controller->handleSubmit($db, $_SESSION['user_id'], $_POST, $_FILES, $system_settings);
+    $success = $result['success'];
+    $errors = $result['errors'];
+
+    if (!empty($success)) {
+        $viewData = $controller->index($db, $_SESSION['user_id'], $system_settings);
+        $client = $viewData['client'] ?? null;
+        $total_bookings = $viewData['total_bookings'] ?? 0;
+        $total_reviews = $viewData['total_reviews'] ?? 0;
+        $recent_activities = $viewData['recent_activities'] ?? [];
+        $needs_email_verification = $viewData['needs_email_verification'] ?? false;
+        $needs_phone_verification = $viewData['needs_phone_verification'] ?? false;
     }
 }
-
-// Get client statistics
-$stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE client_id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$total_bookings = $stmt->fetch()['total'];
-
-$stmt = $db->prepare("SELECT COUNT(*) as total FROM reviews WHERE client_id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$total_reviews = $stmt->fetch()['total'];
-
-// Get recent activity
-$stmt = $db->prepare("
-    SELECT * FROM user_activities 
-    WHERE user_id = ? 
-    ORDER BY created_at DESC 
-    LIMIT 5
-");
-$stmt->execute([$_SESSION['user_id']]);
-$recent_activities = $stmt->fetchAll();
-
-// Check verification status
-$needs_email_verification = $system_settings['email_verification'] && !$client['email_verified'];
-$needs_phone_verification = $system_settings['phone_verification'] && !$client['phone_verified'];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -699,18 +616,10 @@ $needs_phone_verification = $system_settings['phone_verification'] && !$client['
             display: block;
         }
     </style>
+<?php client_header_render_styles(); ?>
 </head>
 <body>
-    <!-- Mobile Menu Toggle -->
-    <button class="mobile-menu-toggle" id="mobileToggle">
-        <i class="fas fa-bars"></i>
-    </button>
-
-    <!-- Mobile Overlay -->
-    <div class="overlay" id="overlay"></div>
-
-    <!-- Sidebar -->
-    <?php include __DIR__ . '/includes/sidebar.php'; ?>
+    <?php client_header_render_markup(basename($_SERVER['PHP_SELF'])); ?>
 
     <!-- Main Content -->
     <div class="main-content">
@@ -939,41 +848,6 @@ $needs_phone_verification = $system_settings['phone_verification'] && !$client['
     <!-- Bootstrap JS -->
     <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Sidebar collapse toggle
-        const sidebarToggle = document.getElementById('sidebarToggle');
-        const clientSidebar = document.getElementById('clientSidebar');
-        
-        if (sidebarToggle && clientSidebar) {
-            // Load sidebar state from localStorage
-            const sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-            if (sidebarCollapsed) {
-                clientSidebar.classList.add('collapsed');
-            }
-            
-            // Toggle sidebar on button click
-            sidebarToggle.addEventListener('click', () => {
-                clientSidebar.classList.toggle('collapsed');
-                localStorage.setItem('sidebarCollapsed', clientSidebar.classList.contains('collapsed'));
-            });
-        }
-
-        // Mobile sidebar toggle (guarded)
-        const mobileToggle = document.getElementById('mobileToggle');
-        const sidebar = document.getElementById('clientSidebar');
-        const overlay = document.getElementById('overlay');
-        
-        if (mobileToggle && sidebar && overlay) {
-            mobileToggle.addEventListener('click', () => {
-                sidebar.classList.toggle('mobile-open');
-                overlay.classList.toggle('active');
-            });
-            
-            overlay.addEventListener('click', () => {
-                sidebar.classList.remove('mobile-open');
-                overlay.classList.remove('active');
-            });
-        }
-        
         // Preview image before upload
         document.getElementById('profileImage')?.addEventListener('change', function(e) {
             const file = e.target.files[0];
@@ -1006,5 +880,6 @@ $needs_phone_verification = $system_settings['phone_verification'] && !$client['
             }
         });
     </script>
+<?php client_header_render_scripts(); ?>
 </body>
 </html>

@@ -4,6 +4,7 @@ require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once '../includes/notifications.php';
 require_once '../includes/language.php';
+require_once '../controllers/pages/provider/ProviderDashboardController.php';
 
 requireProvider();
 
@@ -12,221 +13,72 @@ if (isMaintenanceMode() && !isAdmin()) {
 }
 
 $db = Database::getInstance()->getConnection();
+$controller = new ProviderDashboardController();
+$viewData = $controller->index($db, (int)$_SESSION['user_id']);
 
-// Check if AI features are enabled for this provider
-$provider_ai_enabled = false;
-$stmt = $db->prepare("SELECT user_id FROM service_providers WHERE user_id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-if ($provider_stmt = $stmt->fetch()) {
-    $provider_ai_enabled = isProviderAIEnabled((int)$_SESSION['user_id']);
-}
+// Map view model to template variables
+$provider = $viewData['provider'] ?? [];
+$provider_ai_enabled = $viewData['provider_ai_enabled'] ?? false;
+$stats = $viewData['stats'] ?? [];
 
-// ── Provider base data ────────────────────────────────────────────────────
-$stmt = $db->prepare("
-    SELECT sp.*, u.email, u.phone, u.profile_image, u.full_name
-    FROM service_providers sp
-    JOIN users u ON sp.user_id = u.id
-    WHERE sp.user_id = ?
-");
-$stmt->execute([$_SESSION['user_id']]);
-$provider = $stmt->fetch();
+// Extract stats
+$total_bookings = (int)($stats['total_bookings'] ?? 0);
+$pending_bookings = (int)($stats['pending_bookings'] ?? 0);
+$total_reviews = (int)($stats['total_reviews'] ?? 0);
+$completed_bookings = (int)($stats['completed_bookings'] ?? 0);
+$total_views = (int)($stats['total_views'] ?? 0);
 
-$pid = (int)$provider['id'];
+// ML & health
+$ml_score = (int)($viewData['ml_score'] ?? 0);
+$ml_api_healthy = (bool)($viewData['ml_api_healthy'] ?? false);
 
-// ── Core stats ────────────────────────────────────────────────────────────
-$stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE provider_id = ?");
-$stmt->execute([$pid]); $total_bookings = (int)$stmt->fetch()['total'];
+// Insights & AI
+$insights = $viewData['insights'] ?? [];
 
-$stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE provider_id = ? AND status = 'pending'");
-$stmt->execute([$pid]); $pending_bookings = (int)$stmt->fetch()['total'];
+// Chart data
+$chart_labels = $viewData['chart']['labels'] ?? [];
+$chart_views = $viewData['chart']['views'] ?? [];
+$chart_clicks = $viewData['chart']['clicks'] ?? [];
 
-$stmt = $db->prepare("SELECT COUNT(*) as total FROM reviews WHERE provider_id = ?");
-$stmt->execute([$pid]); $total_reviews = (int)$stmt->fetch()['total'];
+// Ranking & suggestions
+$rank_factors = $viewData['rank_factors'] ?? [];
+$suggestions = $viewData['suggestions'] ?? [];
 
-$stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE provider_id = ? AND status = 'completed'");
-$stmt->execute([$pid]); $completed_bookings = (int)$stmt->fetch()['total'];
+// Bookings
+$recent_bookings = $viewData['recent_bookings'] ?? [];
+$today_bookings = (int)($viewData['today_bookings'] ?? 0);
 
-// ── Step 1: ML Hire Probability ───────────────────────────────────────────
-$ml_score = 0;
-$ml_api_healthy = false;
-try {
-    if (file_exists('../includes/MultiModelRecommender.php')) {
-        require_once '../includes/MultiModelRecommender.php';
-        $recommender = new MultiModelRecommender($db);
-        $ml_api_healthy = $recommender->isApiHealthy();
-        if (!$ml_api_healthy && method_exists($recommender, 'getLastError')) {
-            $mlError = $recommender->getLastError();
-            if ($mlError) {
-                error_log('[dashboard.php] ML health check failed: ' . $mlError);
-            }
-        }
-        if ($ml_api_healthy) {
-            $features = [
-                'views'   => (int)$db->query("SELECT COUNT(*) FROM provider_views WHERE provider_id=$pid")->fetchColumn(),
-                'clicks'  => (int)$db->query("SELECT COUNT(*) FROM click_logs WHERE target_type='provider' AND target_id=$pid")->fetchColumn(),
-                'messages'=> (int)$db->query("SELECT COUNT(*) FROM messages WHERE receiver_id={$provider['user_id']}")->fetchColumn(),
-                'rating'  => (float)($provider['average_rating'] ?? 0),
-                'price'   => (float)($db->query("SELECT AVG(price) FROM provider_services WHERE provider_id=$pid AND is_available=1")->fetchColumn() ?? 0),
-                'avg_response_time' => 24,
-                'user_avg_price' => 0,
-                'user_avg_response_time' => 24,
-                'user_total_bookings' => 0,
-            ];
-            // Normalise to 0-100 probability
-            $raw = (float)($recommender->rankByRecommendation([$provider + ['id'=>$pid]])[0]['ml_score'] ?? 0);
-            $ml_score = min(100, max(0, (int)round($raw * 100)));
-        }
-    }
-} catch (Throwable $e) {
-    error_log('ML score error: ' . $e->getMessage());
-}
-// Fallback: derive from rating + response rate when API is down
-if (!$ml_api_healthy || $ml_score === 0) {
-    $rating_score  = min(100, (float)($provider['average_rating'] ?? 0) / 5 * 40);
-    $booking_score = min(40, $completed_bookings * 2);
-    $review_score  = min(20, $total_reviews);
-    $ml_score = (int)round($rating_score + $booking_score + $review_score);
-}
+// Plan & limits
+$plan_features = $viewData['plan_features'] ?? [];
+$service_count = (int)($viewData['service_count'] ?? 0);
+$photo_count = (int)($viewData['photo_count'] ?? 0);
+$service_usage_pct = (int)($viewData['service_usage_pct'] ?? 0);
+$service_usage_text = $viewData['service_usage_text'] ?? 'Unlimited';
+$photo_usage_pct = (int)($viewData['photo_usage_pct'] ?? 0);
+$photo_usage_text = $viewData['photo_usage_text'] ?? 'Unlimited';
+$upgrade_suggestions = $viewData['upgrade_suggestions'] ?? [];
 
-// ── Step 2: AI Insights ───────────────────────────────────────────────────
-// Weekly views growth
-$views_this_week = (int)$db->query("SELECT COUNT(*) FROM provider_views WHERE provider_id=$pid AND viewed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)")->fetchColumn();
-$views_last_week = (int)$db->query("SELECT COUNT(*) FROM provider_views WHERE provider_id=$pid AND viewed_at BETWEEN DATE_SUB(NOW(), INTERVAL 14 DAY) AND DATE_SUB(NOW(), INTERVAL 7 DAY)")->fetchColumn();
-$views_growth = $views_last_week > 0 ? round((($views_this_week - $views_last_week) / $views_last_week) * 100) : ($views_this_week > 0 ? 100 : 0);
+// Notifications
+$all_notifications = $viewData['all_notifications'] ?? [];
+$unread_count = (int)($viewData['unread_count'] ?? 0);
 
-// Avg response time (hours)
-$avg_response_raw = $db->query("SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, responded_at)) FROM bookings WHERE provider_id=$pid AND responded_at IS NOT NULL")->fetchColumn();
-$avg_response_hours = $avg_response_raw ? round((float)$avg_response_raw, 1) : null;
+// Level/badges
+$level_label = $viewData['level_label'] ?? 'Bronze';
+$level_next = $viewData['level_next'] ?? 'Silver';
+$level_icon = $viewData['level_icon'] ?? 'fas fa-medal';
+$level_color = $viewData['level_color'] ?? '#cd7f32';
+$level_progress = (int)($viewData['level_progress'] ?? 0);
 
-// Conversion: views → hires
-$total_views = (int)$db->query("SELECT COUNT(*) FROM provider_views WHERE provider_id=$pid")->fetchColumn();
-$conversion_rate = $total_views > 0 ? round(($completed_bookings / $total_views) * 100, 1) : 0;
+// Metrics
+$views_growth = (int)($viewData['views_growth'] ?? 0);
+$funnel_views = (int)($viewData['funnel_views'] ?? 0);
+$funnel_clicks = (int)($viewData['funnel_clicks'] ?? 0);
+$funnel_messages = (int)($viewData['funnel_messages'] ?? 0);
+$funnel_hires = (int)($viewData['funnel_hires'] ?? 0);
+$conversion_rate = (float)($viewData['conversion_rate'] ?? 0);
 
-// Build insight messages
-$insights = [];
-if ($views_growth > 0) {
-    $insights[] = ['icon'=>'fas fa-eye', 'color'=>'#10b981', 'text'=>"Profile views <strong>up {$views_growth}%</strong> vs last week — great momentum!", 'type'=>'positive'];
-} elseif ($views_growth < -10) {
-    $insights[] = ['icon'=>'fas fa-eye-slash', 'color'=>'#f59e0b', 'text'=>"Views <strong>dropped {$views_growth}%</strong>. Try updating your profile or adding services.", 'type'=>'warning'];
-}
-if ($avg_response_hours !== null && $avg_response_hours > 4) {
-    $insights[] = ['icon'=>'fas fa-clock', 'color'=>'#f59e0b', 'text'=>"Avg response time is <strong>{$avg_response_hours}h</strong>. Faster replies improve rankings.", 'type'=>'warning'];
-} elseif ($avg_response_hours !== null && $avg_response_hours <= 2) {
-    $insights[] = ['icon'=>'fas fa-bolt', 'color'=>'#10b981', 'text'=>"Lightning-fast <strong>{$avg_response_hours}h</strong> response time — clients love you!", 'type'=>'positive'];
-}
-if ($conversion_rate < 1 && $total_views > 10) {
-    $insights[] = ['icon'=>'fas fa-funnel-dollar', 'color'=>'#ef4444', 'text'=>"Conversion rate is <strong>{$conversion_rate}%</strong>. Consider improving your service descriptions or pricing.", 'type'=>'negative'];
-}
-if ((float)($provider['average_rating'] ?? 0) >= 4.5) {
-    $insights[] = ['icon'=>'fas fa-star', 'color'=>'#f59e0b', 'text'=>"Outstanding <strong>{$provider['average_rating']} ★</strong> rating — you're in the top tier!", 'type'=>'positive'];
-}
-if (empty($insights)) {
-    $insights[] = ['icon'=>'fas fa-chart-line', 'color'=>'#6366f1', 'text'=>"Start getting bookings to unlock personalised AI insights.", 'type'=>'neutral'];
-}
-
-// ── Step 3: Funnel Analytics ──────────────────────────────────────────────
-$funnel_views    = max(1, $total_views);
-$funnel_clicks   = (int)$db->query("SELECT COUNT(*) FROM click_logs WHERE target_type='provider' AND target_id=$pid")->fetchColumn();
-$funnel_messages = (int)$db->query("SELECT COUNT(*) FROM messages WHERE receiver_id={$provider['user_id']}")->fetchColumn();
-$funnel_hires    = $completed_bookings;
-
-// ── Step 4: Chart Data ────────────────────────────────────────────────────
-$chart_labels = [];
-$chart_views  = [];
-$chart_clicks = [];
-for ($i = 6; $i >= 0; $i--) {
-    $date = date('Y-m-d', strtotime("-$i days"));
-    $label = date('D', strtotime($date));
-    $chart_labels[] = $label;
-    $v = (int)$db->query("SELECT COUNT(*) FROM provider_views WHERE provider_id=$pid AND DATE(viewed_at)='$date'")->fetchColumn();
-    $c = (int)$db->query("SELECT COUNT(*) FROM click_logs WHERE target_type='provider' AND target_id=$pid AND DATE(created_at)='$date'")->fetchColumn();
-    $chart_views[]  = $v;
-    $chart_clicks[] = $c;
-}
-
-// ── Step 5: Ranking Explanation ───────────────────────────────────────────
-$rank_factors = [];
-if ((float)($provider['average_rating'] ?? 0) >= 4.0) $rank_factors[] = ['icon'=>'fas fa-star', 'text'=>"High rating ({$provider['average_rating']}★) boosts your visibility", 'good'=>true];
-if ($avg_response_hours !== null && $avg_response_hours <= 3) $rank_factors[] = ['icon'=>'fas fa-bolt', 'text'=>"Fast {$avg_response_hours}h response time puts you ahead", 'good'=>true];
-if ($completed_bookings >= 5) $rank_factors[] = ['icon'=>'fas fa-briefcase', 'text'=>"$completed_bookings completed jobs builds trust signals", 'good'=>true];
-if ((float)($provider['average_rating'] ?? 0) < 4.0) $rank_factors[] = ['icon'=>'fas fa-star-half-alt', 'text'=>"Improve rating to rank higher in search", 'good'=>false];
-if ($avg_response_hours === null || $avg_response_hours > 6) $rank_factors[] = ['icon'=>'fas fa-clock', 'text'=>"Reply faster to boost your search ranking", 'good'=>false];
-if (empty($rank_factors)) $rank_factors[] = ['icon'=>'fas fa-info-circle', 'text'=>"Complete more bookings to improve ranking", 'good'=>false];
-
-// ── Step 6: Auto Optimisation Suggestions ─────────────────────────────────
-$suggestions = [];
-$portfolio_count = (int)$db->query("SELECT COUNT(*) FROM portfolio_images WHERE provider_id=$pid AND is_active=1")->fetchColumn();
-if ($portfolio_count === 0) $suggestions[] = ['icon'=>'fas fa-images', 'text'=>'Add portfolio images to attract more clients', 'priority'=>'high'];
-if ((float)($provider['average_rating'] ?? 0) < 4.0 && $total_reviews > 2) $suggestions[] = ['icon'=>'fas fa-star', 'text'=>'Ask satisfied clients to leave a review', 'priority'=>'high'];
-if ($avg_response_hours !== null && $avg_response_hours > 4) $suggestions[] = ['icon'=>'fas fa-reply', 'text'=>'Enable notifications to respond faster', 'priority'=>'medium'];
-if (empty($provider['bio'])) $suggestions[] = ['icon'=>'fas fa-user-edit', 'text'=>'Write a bio to build client trust', 'priority'=>'medium'];
-$service_count = (int)$db->query("SELECT COUNT(*) FROM provider_services WHERE provider_id=$pid AND is_available=1")->fetchColumn();
-if ($service_count < 2) $suggestions[] = ['icon'=>'fas fa-plus-circle', 'text'=>'Add more services to increase booking chances', 'priority'=>'medium'];
-
-// ── Step 7: Notifications ─────────────────────────────────────────────────
-$all_notifications = getNotifications($_SESSION['user_id'], ['limit' => 8]);
-$unread_count = getUnreadNotificationCount($_SESSION['user_id']);
-
-// ── Step 8: Provider Level ────────────────────────────────────────────────
-$level = 'bronze';
-$level_label = 'Bronze';
-$level_next = 'Silver';
-$level_icon = 'fas fa-medal';
-$level_color = '#cd7f32';
-if ($completed_bookings >= 10 && (float)($provider['average_rating'] ?? 0) >= 4.0) {
-    $level = 'gold'; $level_label = 'Gold'; $level_next = 'Platinum'; $level_icon = 'fas fa-trophy'; $level_color = '#f59e0b';
-} elseif ($completed_bookings >= 3 && (float)($provider['average_rating'] ?? 0) >= 3.5) {
-    $level = 'silver'; $level_label = 'Silver'; $level_next = 'Gold'; $level_icon = 'fas fa-award'; $level_color = '#6b7280';
-}
-$level_progress = min(100, $level === 'bronze' ? ($completed_bookings / 3) * 100 : ($level === 'silver' ? ($completed_bookings / 10) * 100 : 100));
-
-// ── Recent bookings ───────────────────────────────────────────────────────
-try {
-    $stmt = $db->prepare("
-        SELECT b.*, u.full_name as client_name, s.name as service_name,
-               DATE_FORMAT(b.preferred_date,'%b %d') as fmt_date
-        FROM bookings b JOIN users u ON b.client_id=u.id
-        LEFT JOIN provider_services s ON b.service_id=s.id
-        WHERE b.provider_id=? ORDER BY b.created_at DESC LIMIT 5
-    ");
-    $stmt->execute([$pid]);
-    $recent_bookings = $stmt->fetchAll();
-} catch (Throwable $e) { $recent_bookings = []; }
-
-$today_bookings = (int)$db->query("SELECT COUNT(*) FROM bookings WHERE provider_id=$pid AND DATE(preferred_date)=CURDATE() AND status IN('confirmed','pending')")->fetchColumn();
-
-// ── Step 9: Subscription Plan Data ────────────────────────────────────────
-require_once '../includes/subscription_access.php';
-$plan_features = getPlanFeatures((int)$_SESSION['user_id']);
-$service_count = (int)$db->query("SELECT COUNT(*) FROM provider_services WHERE provider_id=$pid AND is_available=1")->fetchColumn();
-$photo_count = (int)$db->query("SELECT COUNT(*) FROM portfolio_images WHERE provider_id=$pid AND is_active=1")->fetchColumn();
-
-// Calculate service usage percentage
-$service_usage_pct = $plan_features['service_limit'] > 0 
-    ? min(100, round(($service_count / $plan_features['service_limit']) * 100)) 
-    : 0;
-$service_usage_text = $plan_features['service_limit'] === 0 ? 'Unlimited' : "{$service_count}/{$plan_features['service_limit']}";
-
-// Calculate photo usage percentage
-$photo_usage_pct = $plan_features['photo_limit'] > 0 
-    ? min(100, round(($photo_count / $plan_features['photo_limit']) * 100)) 
-    : 0;
-$photo_usage_text = $plan_features['photo_limit'] === 0 ? 'Unlimited' : "{$photo_count}/{$plan_features['photo_limit']}";
-
-// Plan upgrade suggestions
-$upgrade_suggestions = [];
-if ($service_count >= $plan_features['service_limit'] && $plan_features['service_limit'] > 0) {
-    $upgrade_suggestions[] = ['icon'=>'fas fa-plus-circle', 'text'=>'Upgrade to add more services', 'priority'=>'high'];
-}
-if ($photo_count >= $plan_features['photo_limit'] && $plan_features['photo_limit'] > 0) {
-    $upgrade_suggestions[] = ['icon'=>'fas fa-images', 'text'=>'Upgrade to add more photos', 'priority'=>'high'];
-}
-if (!$plan_features['ai_enabled']) {
-    $upgrade_suggestions[] = ['icon'=>'fas fa-robot', 'text'=>'Upgrade to unlock AI tools', 'priority'=>'medium'];
-}
-if ($plan_features['analytics_level'] === 'basic') {
-    $upgrade_suggestions[] = ['icon'=>'fas fa-chart-bar', 'text'=>'Upgrade for better analytics', 'priority'=>'medium'];
-}
+// Legacy avg_response_hours for backward compatibility in template
+$avg_response_hours = null;
 ?>
 <!DOCTYPE html>
 <html lang="en">

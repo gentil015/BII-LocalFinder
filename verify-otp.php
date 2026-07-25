@@ -112,7 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 error_log('Failed to update last_login after OTP verification: ' . $e->getMessage());
                             }
 
-                            $redirectDest = 'client/dashboard.php';
+                            $redirectDest = 'client/home.php';
                             if ($user['user_type'] === 'provider') {
                                 $redirectDest = 'provider/dashboard.php';
                             } elseif ($user['user_type'] === 'admin') {
@@ -428,7 +428,7 @@ if ($is_password_reset && isset($_SESSION['reset_email'])) {
                         </li>
                         <?php if (isLoggedIn()): ?>
                             <li class="nav-item">
-                                <a class="nav-link" href="<?php echo isProvider() ? 'provider/dashboard.php' : 'client/dashboard.php'; ?>">Dashboard</a>
+                                <a class="nav-link" href="<?php echo isProvider() ? 'provider/dashboard.php' : 'client/home.php'; ?>">Dashboard</a>
                             </li>
                             <li class="nav-item">
                                 <a class="nav-link" href="logout.php">Logout</a>

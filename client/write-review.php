@@ -2,6 +2,7 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+require_once __DIR__ . '/includes/client_header.php';
 require_once '../includes/mailer.php';
 
 // Check if user is logged in and is a client
@@ -51,7 +52,7 @@ $provider_id = isset($_GET['provider_id']) ? intval($_GET['provider_id']) : 0;
 $booking_id = isset($_GET['booking_id']) ? intval($_GET['booking_id']) : 0;
 
 if (!$provider_id) {
-    redirect('client/dashboard.php');
+    redirect('client/home.php');
 }
 
 // Get provider details
@@ -65,7 +66,7 @@ $stmt->execute([$provider_id]);
 $provider = $stmt->fetch();
 
 if (!$provider) {
-    redirect('client/dashboard.php');
+    redirect('client/home.php');
 }
 
 // Check if user has already reviewed this provider
@@ -850,10 +851,10 @@ $is_review_mandatory = $system_settings['require_rating_after_completion'] && $b
                 position: relative;
             }
         }
+<?php client_header_render_styles(); ?>
 </head>
 <body>
-    <!-- Sidebar -->
-    <?php include __DIR__ . '/includes/sidebar.php'; ?>
+    <?php client_header_render_markup(basename($_SERVER['PHP_SELF'])); ?>
 
     <!-- Main Content -->
     <div class="main-content">
@@ -1193,5 +1194,6 @@ $is_review_mandatory = $system_settings['require_rating_after_completion'] && $b
             });
         }
     </script>
+<?php client_header_render_scripts(); ?>
 </body>
 </html>

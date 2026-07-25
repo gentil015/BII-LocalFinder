@@ -2,6 +2,7 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+require_once '../controllers/pages/admin/AdminDashboardController.php';
 
 // Check admin access
 if (!isLoggedIn() || !isAdmin()) {
@@ -9,135 +10,33 @@ if (!isLoggedIn() || !isAdmin()) {
 }
 
 $db = Database::getInstance()->getConnection();
+$controller = new AdminDashboardController();
+
+$viewData = [];
 $success = '';
 $errors = [];
 
-// Helper function to fetch counts
-function fetchCount($db, $query, $params = []) {
-    $stmt = $db->prepare($query);
-    $stmt->execute($params);
-    return $stmt->fetchColumn();
-}
-
-// Get system settings
-function getSystemSetting($db, $key, $default = '') {
-    $stmt = $db->prepare("SELECT setting_value FROM system_settings WHERE setting_key = ?");
-    $stmt->execute([$key]);
-    $result = $stmt->fetch(PDO::FETCH_COLUMN);
-    return $result !== false ? $result : $default;
-}
-
-// Fetch platform settings
-$platform_settings = [
-    'platform_name' => getSystemSetting($db, 'platform_name', 'BII LocalFinder'),
-    'maintenance_mode' => getSystemSetting($db, 'maintenance_mode', '0'),
-    'client_registration' => getSystemSetting($db, 'client_registration', '1'),
-    'provider_registration' => getSystemSetting($db, 'provider_registration', '1')
-];
-
-// Fetch data for overview
-$stats = [
-    'total_users' => fetchCount($db, "SELECT COUNT(*) FROM users", []),
-    'total_clients' => fetchCount($db, "SELECT COUNT(*) FROM users WHERE user_type = ?", ['client']),
-    'total_providers' => fetchCount($db, "SELECT COUNT(*) FROM users WHERE user_type = ?", ['provider']),
-    'active_users' => fetchCount($db, "SELECT COUNT(*) FROM users WHERE is_verified = ?", [1]),
-    'pending_users' => fetchCount($db, "SELECT COUNT(*) FROM users WHERE is_verified = ?", [0]),
-    'total_bookings' => fetchCount($db, "SELECT COUNT(*) FROM bookings", []),
-    'pending_bookings' => fetchCount($db, "SELECT COUNT(*) FROM bookings WHERE status = ?", ['pending']),
-    'completed_bookings' => fetchCount($db, "SELECT COUNT(*) FROM bookings WHERE status = ?", ['completed']),
-    'cancelled_bookings' => fetchCount($db, "SELECT COUNT(*) FROM bookings WHERE status = ?", ['cancelled']),
-    'total_reviews' => fetchCount($db, "SELECT COUNT(*) FROM reviews", []),
-    'pending_reports' => fetchCount($db, "SELECT COUNT(*) FROM reports WHERE status = ?", ['pending']),
-    'total_categories' => fetchCount($db, "SELECT COUNT(*) FROM categories WHERE is_active = ?", [1]),
-    'featured_providers' => fetchCount($db, "SELECT COUNT(*) FROM service_providers WHERE is_featured = ?", [1]),
-    'banned_providers' => fetchCount($db, "SELECT COUNT(*) FROM service_providers WHERE is_banned = ?", [1]),
-];
-
-// Recent activity
-$recent_users = $db->query("
-    SELECT * FROM users 
-    ORDER BY created_at DESC 
-    LIMIT 6
-")->fetchAll();
-
-// Recent bookings
-$recent_bookings = $db->query("
-    SELECT b.*, u.full_name as client_name, sp.profession, u2.full_name as provider_name
-    FROM bookings b
-    JOIN users u ON b.client_id = u.id
-    JOIN service_providers sp ON b.provider_id = sp.id
-    JOIN users u2 ON sp.user_id = u2.id
-    ORDER BY b.created_at DESC 
-    LIMIT 5
-")->fetchAll();
-
-// Top providers
-$top_providers = $db->query("
-    SELECT u.full_name, sp.profession, sp.average_rating, sp.total_reviews, sp.location, sp.verification_level
-    FROM service_providers sp
-    JOIN users u ON sp.user_id = u.id
-    WHERE u.is_verified = 1 AND sp.is_banned = 0
-    ORDER BY sp.average_rating DESC, sp.total_reviews DESC
-    LIMIT 5
-")->fetchAll();
-
-// System health check
-$system_health = [
-    'database_size' => $db->query("SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) as size_mb FROM information_schema.tables WHERE table_schema = DATABASE()")->fetchColumn(),
-    'active_sessions' => fetchCount($db, "SELECT COUNT(*) FROM sessions WHERE last_activity > ?", [time() - 3600]),
-    'pending_tasks' => fetchCount($db, "SELECT COUNT(*) FROM bookings WHERE status = ?", ['pending']),
-    'unread_messages' => fetchCount($db, "SELECT COUNT(*) FROM messages WHERE is_read = ?", [0]),
-];
-
-// Handle quick actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['toggle_maintenance'])) {
-        $new_mode = $platform_settings['maintenance_mode'] === '1' ? '0' : '1';
-        try {
-            $stmt = $db->prepare("
-                INSERT INTO system_settings (setting_key, setting_value) 
-                VALUES ('maintenance_mode', ?) 
-                ON DUPLICATE KEY UPDATE setting_value = ?
-            ");
-            $stmt->execute([$new_mode, $new_mode]);
-            $platform_settings['maintenance_mode'] = $new_mode;
-            $success = "Maintenance mode " . ($new_mode === '1' ? 'enabled' : 'disabled');
-        } catch (Exception $e) {
-            $errors[] = "Failed to update maintenance mode";
-        }
-    }
-    
-    if (isset($_POST['clear_cache'])) {
-        try {
-            $cache_files = glob('../cache/*.cache');
-            foreach ($cache_files as $file) {
-                if (is_file($file)) {
-                    unlink($file);
-                }
-            }
-            $success = "Cache cleared successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to clear cache";
-        }
-    }
+    $postResult = $controller->handlePostAction($db, $_POST);
+    $success = $postResult['success'] ?? '';
+    $errors = $postResult['errors'] ?? [];
+    $viewData = $postResult;
 }
 
-// Calculate growth percentages
-$growth = [
-    'users' => calculateGrowth($db, 'users', 'created_at'),
-    'bookings' => calculateGrowth($db, 'bookings', 'created_at'),
-    'revenue' => 0 // You can implement revenue tracking
+$viewData = array_merge($controller->index($db), $viewData);
+
+$platform_settings = $viewData['platform_settings'] ?? [
+    'platform_name' => 'BII LocalFinder',
+    'maintenance_mode' => '0',
+    'client_registration' => '1',
+    'provider_registration' => '1',
 ];
-
-function calculateGrowth($db, $table, $date_column) {
-    $current_month = $db->query("SELECT COUNT(*) FROM $table WHERE $date_column >= DATE_SUB(NOW(), INTERVAL 30 DAY)")->fetchColumn();
-    $previous_month = $db->query("SELECT COUNT(*) FROM $table WHERE $date_column BETWEEN DATE_SUB(NOW(), INTERVAL 60 DAY) AND DATE_SUB(NOW(), INTERVAL 30 DAY)")->fetchColumn();
-    
-    if ($previous_month > 0) {
-        return round((($current_month - $previous_month) / $previous_month) * 100, 1);
-    }
-    return $current_month > 0 ? 100 : 0;
-}
+$stats = $viewData['stats'] ?? [];
+$recent_users = $viewData['recent_users'] ?? [];
+$recent_bookings = $viewData['recent_bookings'] ?? [];
+$top_providers = $viewData['top_providers'] ?? [];
+$system_health = $viewData['system_health'] ?? [];
+$growth = $viewData['growth'] ?? ['users' => 0, 'bookings' => 0, 'revenue' => 0];
 ?>
 <!DOCTYPE html>
 <html lang="en">

@@ -2,6 +2,7 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+require_once __DIR__ . '/includes/client_header.php';
 
 if (!isLoggedIn()) {
     redirect('../login.php');
@@ -515,12 +516,10 @@ $total_cats = (int) $cat_stmt->fetchColumn();
             .hero-stats { gap: 1.25rem; }
         }
     </style>
+<?php client_header_render_styles(); ?>
 </head>
 <body>
-    <button class="mobile-menu-toggle" id="mobileToggle"><i class="fas fa-bars"></i></button>
-    <div class="overlay" id="overlay"></div>
-
-    <?php include __DIR__ . '/includes/sidebar.php'; ?>
+    <?php client_header_render_markup(basename($_SERVER['PHP_SELF'])); ?>
 
     <div class="main-content">
 
@@ -804,26 +803,6 @@ $total_cats = (int) $cat_stmt->fetchColumn();
     <?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
     <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Mobile sidebar
-        const mobileToggle = document.getElementById('mobileToggle');
-        const sidebar       = document.getElementById('providerSidebar') || document.querySelector('.sidebar');
-        const overlay       = document.getElementById('overlay');
-
-        if (mobileToggle && sidebar) {
-            mobileToggle.addEventListener('click', () => {
-                sidebar.classList.toggle('mobile-open');
-                overlay.classList.toggle('active');
-                document.body.style.overflow = sidebar.classList.contains('mobile-open') ? 'hidden' : '';
-            });
-        }
-        if (overlay) {
-            overlay.addEventListener('click', () => {
-                sidebar && sidebar.classList.remove('mobile-open');
-                overlay.classList.remove('active');
-                document.body.style.overflow = '';
-            });
-        }
-
         // Sort dropdown — preserve all current filters
         function applySortChange(sortValue) {
             trackClick('sort_change', 'services_page', 0, { sort: sortValue });
@@ -864,5 +843,6 @@ $total_cats = (int) $cat_stmt->fetchColumn();
             }
         });
     </script>
+<?php client_header_render_scripts(); ?>
 </body>
 </html>

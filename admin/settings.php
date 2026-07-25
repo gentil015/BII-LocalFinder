@@ -2,6 +2,7 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+require_once '../controllers/pages/admin/AdminSettingsController.php';
 
 // Check admin access
 if (!isLoggedIn() || !isAdmin()) {
@@ -9,6 +10,7 @@ if (!isLoggedIn() || !isAdmin()) {
 }
 
 $db = Database::getInstance()->getConnection();
+$controller = new AdminSettingsController();
 $success = '';
 $errors = [];
 
@@ -17,398 +19,97 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // 🔵 1. General System Settings
     if (isset($_POST['update_general_settings'])) {
-        try {
-            $platform_name = sanitize($_POST['platform_name']);
-            $contact_email = sanitize($_POST['contact_email']);
-            $contact_phone = sanitize($_POST['contact_phone']);
-            $platform_description = sanitize($_POST['platform_description']);
-            $copyright_text = sanitize($_POST['copyright_text']);
-            $timezone = sanitize($_POST['timezone']);
-            $maintenance_mode = isset($_POST['maintenance_mode']) ? 1 : 0;
-            
-            // Update settings in database
-            $settings = [
-                'platform_name' => $platform_name,
-                'contact_email' => $contact_email,
-                'contact_phone' => $contact_phone,
-                'platform_description' => $platform_description,
-                'copyright_text' => $copyright_text,
-                'timezone' => $timezone,
-                'maintenance_mode' => $maintenance_mode,
-                'admin_theme' => isset($_POST['admin_theme']) ? 'dark' : 'light'
-            ];
-            
-            foreach ($settings as $key => $value) {
-                $stmt = $db->prepare("
-                    INSERT INTO system_settings (setting_key, setting_value) 
-                    VALUES (?, ?) 
-                    ON DUPLICATE KEY UPDATE setting_value = ?
-                ");
-                $stmt->execute([$key, $value, $value]);
-            }
-            
-            // Handle logo upload
-            if (isset($_FILES['platform_logo']) && $_FILES['platform_logo']['error'] === UPLOAD_ERR_OK) {
-                $upload_dir = '../assets/images/';
-                if (!is_dir($upload_dir)) {
-                    mkdir($upload_dir, 0755, true);
-                }
-                
-                $file_extension = pathinfo($_FILES['platform_logo']['name'], PATHINFO_EXTENSION);
-                $filename = 'logo.' . $file_extension;
-                $file_path = $upload_dir . $filename;
-                
-                if (move_uploaded_file($_FILES['platform_logo']['tmp_name'], $file_path)) {
-                    $stmt = $db->prepare("
-                        INSERT INTO system_settings (setting_key, setting_value) 
-                        VALUES ('platform_logo', ?) 
-                        ON DUPLICATE KEY UPDATE setting_value = ?
-                    ");
-                    $stmt->execute([$filename, $filename]);
-                }
-            }
-            
-            $success = "General settings updated successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to update general settings: " . $e->getMessage();
-        }
+        $result = $controller->updateGeneralSettings($db, $_POST, $_FILES);
+        $success = $result['success'] ?? '';
+        $errors = array_merge($errors, $result['errors'] ?? []);
     }
     
     // 🔴 2. User Account Settings
     if (isset($_POST['update_user_settings'])) {
-        try {
-            $user_settings = [
-                'client_registration' => isset($_POST['client_registration']) ? 1 : 0,
-                'provider_registration' => isset($_POST['provider_registration']) ? 1 : 0,
-                'provider_verification_required' => isset($_POST['provider_verification_required']) ? 1 : 0,
-                'email_verification' => isset($_POST['email_verification']) ? 1 : 0,
-                'phone_verification' => isset($_POST['phone_verification']) ? 1 : 0,
-                'min_password_length' => intval($_POST['min_password_length']),
-                'require_special_chars' => isset($_POST['require_special_chars']) ? 1 : 0,
-                'session_timeout' => intval($_POST['session_timeout'])
-            ];
-            
-            foreach ($user_settings as $key => $value) {
-                $stmt = $db->prepare("
-                    INSERT INTO system_settings (setting_key, setting_value) 
-                    VALUES (?, ?) 
-                    ON DUPLICATE KEY UPDATE setting_value = ?
-                ");
-                $stmt->execute([$key, $value, $value]);
-            }
-            
-            $success = "User account settings updated successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to update user settings: " . $e->getMessage();
-        }
+        $result = $controller->updateUserSettings($db, $_POST);
+        $success = $result['success'] ?? '';
+        $errors = array_merge($errors, $result['errors'] ?? []);
     }
     
     // 🟣 3. Booking System Settings
     if (isset($_POST['update_booking_settings'])) {
-        try {
-            $booking_settings = [
-                'max_pending_time' => intval($_POST['max_pending_time']),
-                'auto_assign_providers' => isset($_POST['auto_assign_providers']) ? 1 : 0,
-                'allow_booking_editing' => isset($_POST['allow_booking_editing']) ? 1 : 0,
-                'allow_provider_rejection' => isset($_POST['allow_provider_rejection']) ? 1 : 0,
-                'auto_cancel_unconfirmed' => isset($_POST['auto_cancel_unconfirmed']) ? 1 : 0,
-                'require_rating_after_completion' => isset($_POST['require_rating_after_completion']) ? 1 : 0,
-                'max_cancellations_per_month' => intval($_POST['max_cancellations_per_month'])
-            ];
-            
-            foreach ($booking_settings as $key => $value) {
-                $stmt = $db->prepare("
-                    INSERT INTO system_settings (setting_key, setting_value) 
-                    VALUES (?, ?) 
-                    ON DUPLICATE KEY UPDATE setting_value = ?
-                ");
-                $stmt->execute([$key, $value, $value]);
-            }
-            
-            $success = "Booking system settings updated successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to update booking settings: " . $e->getMessage();
-        }
+        $result = $controller->updateBookingSettings($db, $_POST);
+        $success = $result['success'] ?? '';
+        $errors = array_merge($errors, $result['errors'] ?? []);
     }
     
     // 🟠 4. Notification Settings
     if (isset($_POST['update_notification_settings'])) {
-        try {
-            $notification_settings = [
-                'enable_email_notifications' => isset($_POST['enable_email_notifications']) ? 1 : 0,
-                'enable_sms_notifications' => isset($_POST['enable_sms_notifications']) ? 1 : 0,
-                'smtp_host' => sanitize($_POST['smtp_host']),
-                'smtp_port' => intval($_POST['smtp_port']),
-                'smtp_username' => sanitize($_POST['smtp_username']),
-                'smtp_password' => sanitize($_POST['smtp_password']),
-                'smtp_encryption' => sanitize($_POST['smtp_encryption']),
-                'sms_provider' => sanitize($_POST['sms_provider']),
-                'sms_api_key' => sanitize($_POST['sms_api_key']),
-                'sms_api_url' => sanitize($_POST['sms_api_url'])
-            ];
-            
-            foreach ($notification_settings as $key => $value) {
-                $stmt = $db->prepare("
-                    INSERT INTO system_settings (setting_key, setting_value) 
-                    VALUES (?, ?) 
-                    ON DUPLICATE KEY UPDATE setting_value = ?
-                ");
-                $stmt->execute([$key, $value, $value]);
-            }
-            
-            $success = "Notification settings updated successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to update notification settings: " . $e->getMessage();
-        }
+        $result = $controller->updateNotificationSettings($db, $_POST);
+        $success = $result['success'] ?? '';
+        $errors = array_merge($errors, $result['errors'] ?? []);
     }
     
     // 🟡 5. Location & Category Management
     if (isset($_POST['add_category'])) {
-        $name = sanitize($_POST['category_name']);
-        $icon = sanitize($_POST['category_icon']);
-        $description = sanitize($_POST['category_description']);
-        $is_premium = isset($_POST['is_premium']) ? 1 : 0;
-        $monthly_fee = floatval($_POST['monthly_fee'] ?? 0);
-        
-        try {
-            $stmt = $db->prepare("
-                INSERT INTO categories (name, icon, description, is_premium, monthly_fee) 
-                VALUES (?, ?, ?, ?, ?)
-            ");
-            $stmt->execute([$name, $icon, $description, $is_premium, $monthly_fee]);
-            $success = "Category added successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to add category: " . $e->getMessage();
-        }
+        $result = $controller->addCategory($db, $_POST);
+        $success = $result['success'] ?? '';
+        $errors = array_merge($errors, $result['errors'] ?? []);
     }
-    
+
     if (isset($_POST['add_district'])) {
-        $name = sanitize($_POST['district_name']);
-        $code = sanitize($_POST['district_code']);
-        
-        try {
-            $stmt = $db->prepare("INSERT INTO districts (name, code) VALUES (?, ?)");
-            $stmt->execute([$name, $code]);
-            $success = "District added successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to add district: " . $e->getMessage();
-        }
+        $result = $controller->addDistrict($db, $_POST);
+        $success = $result['success'] ?? '';
+        $errors = array_merge($errors, $result['errors'] ?? []);
     }
-    
+
     // 🟢 6. Payment & Monetization Settings
     if (isset($_POST['update_payment_settings'])) {
-        try {
-            $payment_settings = [
-                'enable_commission' => isset($_POST['enable_commission']) ? 1 : 0,
-                'enable_subscriptions' => isset($_POST['enable_subscriptions']) ? 1 : 0,
-                'enable_payouts' => isset($_POST['enable_payouts']) ? 1 : 0,
-                'payment_gateway' => sanitize($_POST['payment_gateway']),
-                // New payment gateway settings
-                'payment_enabled' => isset($_POST['payment_enabled']) ? 1 : 0,
-                'default_gateway' => sanitize($_POST['default_gateway'] ?? 'fake'),
-                'mtn_api_key' => sanitize($_POST['mtn_api_key'] ?? ''),
-                'stripe_api_key' => sanitize($_POST['stripe_api_key'] ?? ''),
-                'visa_merchant_id' => sanitize($_POST['visa_merchant_id'] ?? '')
-            ];
-            
-            foreach ($payment_settings as $key => $value) {
-                $stmt = $db->prepare("
-                    INSERT INTO system_settings (setting_key, setting_value) 
-                    VALUES (?, ?) 
-                    ON DUPLICATE KEY UPDATE setting_value = ?
-                ");
-                $stmt->execute([$key, $value, $value]);
-            }
-            
-            $success = "Payment settings updated successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to update payment settings: " . $e->getMessage();
-        }
+        $result = $controller->updatePaymentSettings($db, $_POST);
+        $success = $result['success'] ?? '';
+        $errors = array_merge($errors, $result['errors'] ?? []);
     }
-    
+
     // � 6b. Subscription Plans Management
     if (isset($_POST['add_plan'])) {
-        try {
-            $stmt = $db->prepare("
-                INSERT INTO plans (name, monthly_price, service_limit, photo_limit, analytics_level, ai_enabled) 
-                VALUES (?, ?, ?, ?, ?, ?)
-            ");
-            $stmt->execute([
-                sanitize($_POST['plan_name']),
-                floatval($_POST['plan_price']),
-                intval($_POST['service_limit']),
-                intval($_POST['photo_limit']),
-                sanitize($_POST['analytics_level']),
-                isset($_POST['ai_enabled']) ? 1 : 0
-            ]);
-            $success = "Plan added successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to add plan: " . $e->getMessage();
-        }
+        $result = $controller->addPlan($db, $_POST);
+        $success = $result['success'] ?? '';
+        $errors = array_merge($errors, $result['errors'] ?? []);
     }
-    
+
     if (isset($_POST['update_plan'])) {
-        try {
-            $stmt = $db->prepare("
-                UPDATE plans SET 
-                    name = ?, monthly_price = ?, service_limit = ?, 
-                    photo_limit = ?, analytics_level = ?, ai_enabled = ?
-                WHERE id = ?
-            ");
-            $stmt->execute([
-                sanitize($_POST['plan_name']),
-                floatval($_POST['plan_price']),
-                intval($_POST['service_limit']),
-                intval($_POST['photo_limit']),
-                sanitize($_POST['analytics_level']),
-                isset($_POST['ai_enabled']) ? 1 : 0,
-                intval($_POST['plan_id'])
-            ]);
-            $success = "Plan updated successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to update plan: " . $e->getMessage();
-        }
+        $result = $controller->updatePlan($db, $_POST);
+        $success = $result['success'] ?? '';
+        $errors = array_merge($errors, $result['errors'] ?? []);
     }
-    
+
     if (isset($_POST['delete_plan'])) {
-        try {
-            // Check if plan has active subscriptions
-            $stmt = $db->prepare("SELECT COUNT(*) FROM provider_subscriptions WHERE plan_id = ? AND status = 'active'");
-            $stmt->execute([intval($_POST['plan_id'])]);
-            $active_count = $stmt->fetchColumn();
-            
-            if ($active_count > 0) {
-                $errors[] = "Cannot delete plan with active subscriptions";
-            } else {
-                $stmt = $db->prepare("DELETE FROM plans WHERE id = ?");
-                $stmt->execute([intval($_POST['plan_id'])]);
-                $success = "Plan deleted successfully";
-            }
-        } catch (Exception $e) {
-            $errors[] = "Failed to delete plan: " . $e->getMessage();
-        }
+        $result = $controller->deletePlan($db, $_POST);
+        $success = $result['success'] ?? '';
+        $errors = array_merge($errors, $result['errors'] ?? []);
     }
-    
+
     // �🟤 7. Security & Privacy Settings
     if (isset($_POST['update_security_settings'])) {
-        try {
-            $security_settings = [
-                'allowed_file_types' => sanitize($_POST['allowed_file_types']),
-                'max_file_size' => intval($_POST['max_file_size']),
-                'enable_2fa_admin' => isset($_POST['enable_2fa_admin']) ? 1 : 0,
-                'auto_backup' => isset($_POST['auto_backup']) ? 1 : 0,
-                'backup_frequency' => sanitize($_POST['backup_frequency']),
-                'cookie_consent' => isset($_POST['cookie_consent']) ? 1 : 0
-            ];
-            
-            foreach ($security_settings as $key => $value) {
-                $stmt = $db->prepare("
-                    INSERT INTO system_settings (setting_key, setting_value) 
-                    VALUES (?, ?) 
-                    ON DUPLICATE KEY UPDATE setting_value = ?
-                ");
-                $stmt->execute([$key, $value, $value]);
-            }
-            
-            // Handle IP blocking
-            if (isset($_POST['blocked_ips'])) {
-                $blocked_ips = explode(',', sanitize($_POST['blocked_ips']));
-                $stmt = $db->prepare("DELETE FROM blocked_ips");
-                $stmt->execute();
-                
-                $stmt = $db->prepare("INSERT INTO blocked_ips (ip_address) VALUES (?)");
-                foreach ($blocked_ips as $ip) {
-                    $ip = trim($ip);
-                    if (!empty($ip)) {
-                        $stmt->execute([$ip]);
-                    }
-                }
-            }
-            
-            $success = "Security settings updated successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to update security settings: " . $e->getMessage();
-        }
+        $result = $controller->updateSecuritySettings($db, $_POST);
+        $success = $result['success'] ?? '';
+        $errors = array_merge($errors, $result['errors'] ?? []);
     }
-    
+
     // 🟣 8. Developer / System Configuration
     if (isset($_POST['update_developer_settings'])) {
-        try {
-            $developer_settings = [
-                'debug_mode' => isset($_POST['debug_mode']) ? 1 : 0,
-                'api_rate_limit' => intval($_POST['api_rate_limit']),
-                'cache_duration' => intval($_POST['cache_duration']),
-                'cron_auto_cleanup' => isset($_POST['cron_auto_cleanup']) ? 1 : 0,
-                'cron_notifications' => isset($_POST['cron_notifications']) ? 1 : 0
-            ];
-            
-            foreach ($developer_settings as $key => $value) {
-                $stmt = $db->prepare("
-                    INSERT INTO system_settings (setting_key, setting_value) 
-                    VALUES (?, ?) 
-                    ON DUPLICATE KEY UPDATE setting_value = ?
-                ");
-                $stmt->execute([$key, $value, $value]);
-            }
-            
-            // Handle webhook URLs
-            $webhooks = [
-                'payment_webhook' => sanitize($_POST['payment_webhook'] ?? ''),
-                'sms_webhook' => sanitize($_POST['sms_webhook'] ?? ''),
-                'email_webhook' => sanitize($_POST['email_webhook'] ?? '')
-            ];
-            
-            foreach ($webhooks as $key => $value) {
-                $stmt = $db->prepare("
-                    INSERT INTO system_settings (setting_key, setting_value) 
-                    VALUES (?, ?) 
-                    ON DUPLICATE KEY UPDATE setting_value = ?
-                ");
-                $stmt->execute([$key, $value, $value]);
-            }
-            
-            $success = "Developer settings updated successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to update developer settings: " . $e->getMessage();
-        }
+        $result = $controller->updateDeveloperSettings($db, $_POST);
+        $success = $result['success'] ?? '';
+        $errors = array_merge($errors, $result['errors'] ?? []);
     }
-    
+
     // Database optimization
     if (isset($_POST['optimize_database'])) {
-        try {
-            $tables = $db->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
-            foreach ($tables as $table) {
-                $db->query("OPTIMIZE TABLE `{$table}`");
-            }
-            $success = "Database optimized successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to optimize database: " . $e->getMessage();
-        }
+        $result = $controller->optimizeDatabase($db);
+        $success = $result['success'] ?? '';
+        $errors = array_merge($errors, $result['errors'] ?? []);
     }
-    
+
     // Clear cache
     if (isset($_POST['clear_cache'])) {
-        try {
-            // Clear session files
-            $session_files = glob(session_save_path() . '/*');
-            foreach ($session_files as $file) {
-                if (is_file($file)) {
-                    unlink($file);
-                }
-            }
-            
-            // Clear temporary files
-            $temp_files = glob('../tmp/*');
-            foreach ($temp_files as $file) {
-                if (is_file($file)) {
-                    unlink($file);
-                }
-            }
-            
-            $success = "Cache cleared successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to clear cache: " . $e->getMessage();
-        }
+        $result = $controller->clearCache($db);
+        $success = $result['success'] ?? '';
+        $errors = array_merge($errors, $result['errors'] ?? []);
     }
 }
 

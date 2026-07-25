@@ -2,6 +2,7 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+require_once __DIR__ . '/includes/client_header.php';
 
 // Check if user is logged in and is a client
 if (!isLoggedIn()) {
@@ -639,18 +640,10 @@ try {
             margin-bottom: 1rem;
         }
     </style>
+<?php client_header_render_styles(); ?>
 </head>
 <body>
-    <!-- Mobile Menu Toggle -->
-    <button class="mobile-menu-toggle" id="mobileToggle">
-        <i class="fas fa-bars"></i>
-    </button>
-
-    <!-- Mobile Overlay -->
-    <div class="overlay" id="overlay"></div>
-
-    <!-- Sidebar -->
-    <?php include __DIR__ . '/includes/sidebar.php'; ?>
+    <?php client_header_render_markup(basename($_SERVER['PHP_SELF'])); ?>
 
     <!-- Main Content -->
     <div class="main-content">
@@ -1014,39 +1007,6 @@ try {
     <!-- Bootstrap JS -->
     <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Sidebar collapse toggle
-        const sidebarToggle = document.getElementById('sidebarToggle');
-        const clientSidebar = document.getElementById('clientSidebar');
-        
-        if (sidebarToggle && clientSidebar) {
-            // Load sidebar state from localStorage
-            const sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-            if (sidebarCollapsed) {
-                clientSidebar.classList.add('collapsed');
-            }
-            
-            // Toggle sidebar on button click
-            sidebarToggle.addEventListener('click', () => {
-                clientSidebar.classList.toggle('collapsed');
-                localStorage.setItem('sidebarCollapsed', clientSidebar.classList.contains('collapsed'));
-            });
-        }
-
-        // Mobile sidebar toggle
-        const mobileToggle = document.getElementById('mobileToggle');
-        const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('overlay');
-        
-        mobileToggle.addEventListener('click', () => {
-            sidebar.classList.toggle('mobile-open');
-            overlay.classList.toggle('active');
-        });
-        
-        overlay.addEventListener('click', () => {
-            sidebar.classList.remove('mobile-open');
-            overlay.classList.remove('active');
-        });
-        
         // Auto-dismiss alerts after 5 seconds
         setTimeout(() => {
             const alerts = document.querySelectorAll('.alert');
@@ -1111,5 +1071,6 @@ try {
             });
         }
     </script>
+<?php client_header_render_scripts(); ?>
 </body>
 </html>

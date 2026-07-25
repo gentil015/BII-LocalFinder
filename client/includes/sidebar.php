@@ -41,9 +41,9 @@ $current = basename($_SERVER['PHP_SELF']);
             <li class="nav-section-label">Explore</li>
 
             <li>
-                <a href="dashboard.php" class="<?php echo $current === 'dashboard.php' ? 'active' : ''; ?>">
+                <a href="home.php" class="<?php echo ($current === 'home.php' || $current === 'providers.php') ? 'active' : ''; ?>">
                     <span class="nav-icon"><i class="fas fa-home"></i></span>
-                    <span class="nav-label">Dashboard</span>
+                    <span class="nav-label">Home</span>
                 </a>
             </li>
 

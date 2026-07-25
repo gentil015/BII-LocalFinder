@@ -2,6 +2,7 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+require_once __DIR__ . '/includes/client_header.php';
 require_once '../includes/provider_requirements.php';
 require_once '../includes/service_negotiation.php';
 
@@ -2021,18 +2022,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
     }
 }
     </style>
+<?php client_header_render_styles(); ?>
 </head>
 <body>
-    <!-- Mobile Menu Toggle -->
-    <button class="mobile-menu-toggle" id="mobileToggle">
-        <i class="fas fa-bars"></i>
-    </button>
-
-    <!-- Mobile Overlay -->
-    <div class="overlay" id="overlay"></div>
-
-    <!-- Sidebar -->
-    <?php include __DIR__ . '/includes/sidebar.php'; ?>
+    <?php client_header_render_markup(basename($_SERVER['PHP_SELF'])); ?>
 
     <!-- Main Content -->
     <div class="main-content">
@@ -2933,40 +2926,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_booking'])) {
     <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // Sidebar collapse toggle
-        const sidebarToggle = document.getElementById('sidebarToggle');
-        const clientSidebar = document.getElementById('clientSidebar');
-        
-        if (sidebarToggle && clientSidebar) {
-            // Load sidebar state from localStorage
-            const sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-            if (sidebarCollapsed) {
-                clientSidebar.classList.add('collapsed');
-            }
-            
-            // Toggle sidebar on button click
-            sidebarToggle.addEventListener('click', () => {
-                clientSidebar.classList.toggle('collapsed');
-                localStorage.setItem('sidebarCollapsed', clientSidebar.classList.contains('collapsed'));
-            });
-        }
-
-        // Mobile sidebar toggle
-        const mobileToggle = document.getElementById('mobileToggle');
-        const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('overlay');
-        
-        if (mobileToggle && sidebar && overlay) {
-            mobileToggle.addEventListener('click', () => {
-                sidebar.classList.toggle('mobile-open');
-                overlay.classList.toggle('active');
-            });
-            
-            overlay.addEventListener('click', () => {
-                sidebar.classList.remove('mobile-open');
-                overlay.classList.remove('active');
-            });
-        }
 
         // Service Area Map
         const providerServiceAreas = <?php echo json_encode($serviceAreas); ?>;
@@ -3617,5 +3576,6 @@ function updateStickyPositions() {
             });
         })();
     </script>
+<?php client_header_render_scripts(); ?>
 </body>
 </html>

@@ -15,7 +15,7 @@ if (isLoggedIn()) {
     if (isProvider()) {
         redirect('provider/dashboard.php');
     } elseif (isClient()) {
-        redirect('client/dashboard.php');
+        redirect('client/home.php');
     } elseif (isAdmin()) {
         redirect('admin/dashboard.php');
     }
@@ -200,7 +200,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 exit;
                             } else {
                                 // Default for client user type
-                                header('Location: client/dashboard.php');
+                                header('Location: client/home.php');
                                 exit;
                             }
                         }
@@ -661,7 +661,7 @@ $csrf_token = ensureCsrfToken();
                     <li class="nav-item"><a class="nav-link" href="about.php">About</a></li>
                     <?php if (isLoggedIn()): ?>
                         <li class="nav-item">
-                            <a class="nav-link" href="<?php echo isProvider() ? 'provider/dashboard.php' : 'client/dashboard.php'; ?>">Dashboard</a>
+                            <a class="nav-link" href="<?php echo isProvider() ? 'provider/dashboard.php' : 'client/home.php'; ?>">Dashboard</a>
                         </li>
                         <li class="nav-item"><a class="nav-link" href="logout.php">Logout</a></li>
                     <?php else: ?>

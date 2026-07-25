@@ -8,6 +8,7 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+require_once __DIR__ . '/includes/client_header.php';
 require_once '../payments/PaymentManager.php';
 
 // Verify user is logged in and is a client
@@ -1057,59 +1058,11 @@ function getStatusMessage($booking_mode, $booking_status, $payment_status) {
             }
         }
     </style>
+<?php client_header_render_styles(); ?>
 </head>
 <body>
+    <?php client_header_render_markup(basename($_SERVER['PHP_SELF'])); ?>
     <div class="page-wrapper">
-        <!-- SIDEBAR -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <h3>Bii Finder</h3>
-                <p>Service Booking</p>
-            </div>
-
-            <div class="sidebar-section">
-                <div class="sidebar-section-title">Navigation</div>
-                <a href="my-bookings.php" class="sidebar-item">
-                    <i class="fas fa-list"></i>
-                    <span>My Bookings</span>
-                </a>
-                <a href="dashboard.php" class="sidebar-item">
-                    <i class="fas fa-home"></i>
-                    <span>Dashboard</span>
-                </a>
-                <a href="messages.php" class="sidebar-item">
-                    <i class="fas fa-envelope"></i>
-                    <span>Messages</span>
-                    <span class="sidebar-badge">2</span>
-                </a>
-            </div>
-
-            <div class="sidebar-section">
-                <div class="sidebar-section-title">Quick Actions</div>
-                <a href="providers.php" class="sidebar-item">
-                    <i class="fas fa-search"></i>
-                    <span>Find Service</span>
-                </a>
-                <a href="profile.php" class="sidebar-item">
-                    <i class="fas fa-user"></i>
-                    <span>Profile</span>
-                </a>
-            </div>
-
-            <div class="sidebar-section">
-                <div class="sidebar-section-title">Account</div>
-                <a href="settings.php" class="sidebar-item">
-                    <i class="fas fa-cog"></i>
-                    <span>Settings</span>
-                </a>
-                <a href="../logout.php" class="sidebar-item">
-                    <i class="fas fa-sign-out-alt"></i>
-                    <span>Logout</span>
-                </a>
-            </div>
-        </aside>
-
-        <!-- MAIN CONTENT -->
         <main class="main-content">
     <div class="booking-container">
         <?php if ($error): ?>
@@ -1798,5 +1751,6 @@ function getStatusMessage($booking_mode, $booking_status, $payment_status) {
             }
         });
     </script>
+<?php client_header_render_scripts(); ?>
 </body>
 </html>

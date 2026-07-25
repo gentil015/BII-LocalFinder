@@ -2,6 +2,7 @@
 session_start();
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/includes/client_header.php';
 require_once __DIR__ . '/../includes/mailer.php';
 
 // Check if user is logged in
@@ -961,18 +962,10 @@ $complaint_types = [
             display: block;
         }
     </style>
+<?php client_header_render_styles(); ?>
 </head>
 <body>
-    <!-- Mobile Menu Toggle -->
-    <button class="mobile-menu-toggle" id="mobileToggle">
-        <i class="fas fa-bars"></i>
-    </button>
-
-    <!-- Mobile Overlay -->
-    <div class="overlay" id="overlay"></div>
-
-    <!-- Sidebar -->
-    <?php include __DIR__ . '/includes/sidebar.php'; ?>
+    <?php client_header_render_markup(basename($_SERVER['PHP_SELF'])); ?>
 
     <!-- Main Content -->
     <div class="main-content">
@@ -1342,21 +1335,6 @@ $complaint_types = [
     <!-- Bootstrap JS -->
     <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Mobile sidebar toggle
-        const mobileToggle = document.getElementById('mobileToggle');
-        const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('overlay');
-        
-        mobileToggle.addEventListener('click', () => {
-            sidebar.classList.toggle('mobile-open');
-            overlay.classList.toggle('active');
-        });
-        
-        overlay.addEventListener('click', () => {
-            sidebar.classList.remove('mobile-open');
-            overlay.classList.remove('active');
-        });
-        
         // Modal functions
         function openNewComplaintModal() {
             document.getElementById('newComplaintModal').style.display = 'block';
@@ -1529,5 +1507,6 @@ $complaint_types = [
             }
         });
     </script>
+<?php client_header_render_scripts(); ?>
 </body>
 </html>

@@ -193,7 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Redirect to OTP verification page when email verification is enabled
             if ($email_verification_enabled) {
-                $nextUrl = $user_type === 'provider' ? 'provider/setup/step1-profile.php' : 'client/dashboard.php';
+                $nextUrl = $user_type === 'provider' ? 'provider/setup/step1-profile.php' : 'client/home.php';
                 $verificationUrl = 'verify-otp.php?email=' . urlencode($email) . '&flow=registration&next=' . urlencode($nextUrl);
                 header('Location: ' . $verificationUrl);
                 exit;
@@ -870,7 +870,7 @@ try {
                     <li class="nav-item"><a class="nav-link" href="about.php">About</a></li>
                     <?php if (isLoggedIn()): ?>
                         <li class="nav-item">
-                            <a class="nav-link" href="<?php echo isProvider() ? 'provider/dashboard.php' : 'client/dashboard.php'; ?>">Dashboard</a>
+                            <a class="nav-link" href="<?php echo isProvider() ? 'provider/dashboard.php' : 'client/home.php'; ?>">Dashboard</a>
                         </li>
                         <li class="nav-item"><a class="nav-link" href="logout.php">Logout</a></li>
                     <?php else: ?>

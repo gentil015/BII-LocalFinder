@@ -7,6 +7,10 @@ require_once '../includes/functions.php';
 require_once '../includes/live_location.php';
 require_once '../includes/chat.php';
 require_once '../includes/mailer.php';
+require_once '../controllers/pages/client/ClientMessagesController.php';
+
+$db = Database::getInstance()->getConnection();
+$controller = new ClientMessagesController();
 
 // API poll endpoint for live update
 if (isset($_GET['action']) && $_GET['action'] === 'poll') {
@@ -15,20 +19,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'poll') {
     
     try {
         $me = isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : 0;
-        $with = isset($_GET['with']) ? intval($_GET['with']) : 0;
-        
-        if ($me > 0 && $with > 0) {
-            $messages = getConversationMessages($me, $with);
-            $bookingTimelineData = [];
-            $booking_id = isset($_GET['booking_id']) ? intval($_GET['booking_id']) : 0;
-            if ($booking_id > 0) {
-                $bookingTimelineData = getBookingTimeline($booking_id);
-            }
-            echo json_encode(['success' => true, 'messages' => $messages, 'booking_timeline' => $bookingTimelineData]);
-        } else {
-            http_response_code(400);
-            echo json_encode(['success' => false, 'message' => 'Invalid session or conversation']);
-        }
+        $response = $controller->poll($db, $me, $_GET);
+        echo json_encode($response);
     } catch (Throwable $e) {
         http_response_code(500);
         error_log('Poll error: ' . $e->getMessage());
@@ -47,7 +39,6 @@ if (isProvider()) {
 }
 
 $me = $_SESSION['user_id'];
-$db = Database::getInstance()->getConnection();
 
 function decodeMessageJson(string $message): string {
     $decoded = html_entity_decode($message, ENT_QUOTES, 'UTF-8');
@@ -267,119 +258,49 @@ function saveChatAttachment(array $file): ?string
     return null;
 }
 
-// handle new message form
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['receiver_id']) && (isset($_POST['message']) || !empty($_FILES['attachment']['name']))) {
-    $receiver_id = intval($_POST['receiver_id']);
-    $msg = sanitize($_POST['message']);
-    $booking_id = isset($_POST['booking_id']) ? intval($_POST['booking_id']) : 0;
-    $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || (isset($_POST['ajax']) && $_POST['ajax'] == '1');
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['receiver_id']) && (isset($_POST['message']) || !empty($_FILES['attachment']['name']) || isset($_POST['message_type']))) {
+    $result = $controller->handleSubmit($db, $me, $_POST, $_FILES, $_SERVER);
 
-    $attachmentPath = null;
-    $attachmentType = null;
-    if (!empty($_FILES['attachment']['name'])) {
-        $attachmentPath = saveChatAttachment($_FILES['attachment']);
-        if ($attachmentPath !== null) {
-            $ext = strtolower(pathinfo($attachmentPath, PATHINFO_EXTENSION));
-            if (in_array($ext, ['webm','ogg','mp3','wav'], true)) {
-                $attachmentType = 'audio';
-            } elseif (in_array($ext, ['jpg','jpeg','png','gif'], true)) {
-                $attachmentType = 'image';
-            } else {
-                $attachmentType = 'file';
-            }
-        }
-    }
-
-    $result = false;
-    if ($msg !== '' || $attachmentPath !== null) {
-        $result = sendMessage($me, $receiver_id, $msg, $attachmentPath, $attachmentType);
-
-        // optionally notify provider via email/push/sms
-        if (Mailer::isProviderNotificationEnabled($receiver_id, 'chat_message_email')) {
-            $stmt = $db->prepare("SELECT email FROM users WHERE id = ?");
-            $stmt->execute([$receiver_id]);
-            $prov = $stmt->fetch(PDO::FETCH_ASSOC);
-            if ($prov && !empty($prov['email'])) {
-                $clientStmt = $db->prepare("SELECT full_name FROM users WHERE id = ?");
-                $clientStmt->execute([$me]);
-                $client = $clientStmt->fetch(PDO::FETCH_ASSOC);
-                $clientName = $client['full_name'] ?? 'A client';
-
-                $serviceText = 'General inquiry';
-                if ($booking_id) {
-                    $bstmt = $db->prepare("SELECT service_description FROM bookings WHERE id = ?");
-                    $bstmt->execute([$booking_id]);
-                    $booking = $bstmt->fetch(PDO::FETCH_ASSOC);
-                    if ($booking) {
-                        $serviceText = trim($booking['service_description']) ?: 'Booked service';
-                    }
-                }
-
-                $body = "Hello,\n\n";
-                $body .= "You have received a new message from {$clientName}.\n";
-                $body .= "Service: {$serviceText}.\n\n";
-                $body .= "Message:\n{$msg}\n\n";
-                $body .= "Please log in to BII LocalFinder to reply.\n";
-
-                Mailer::send(
-                    $prov['email'],
-                    "New message from {$clientName}",
-                    $body,
-                    false
-                );
-            }
-        }
-    }
-
-    if ($isAjax) {
+    if ($result['is_ajax']) {
         header('Content-Type: application/json');
         echo json_encode([
-            'success' => $result,
-            'message' => $result ? ['sender_id' => $me, 'receiver_id' => $receiver_id, 'message' => $msg, 'attachment_path' => $attachmentPath, 'attachment_type' => $attachmentType, 'created_at' => date('Y-m-d H:i:s')] : null
+            'success' => $result['success'],
+            'message' => $result['message'] ?? null,
+            'errors' => $result['errors'] ?? []
         ]);
         exit;
     }
 
-    // redirect to avoid form resubmission
-    redirect('messages.php?with=' . $receiver_id . ($booking_id ? '&booking_id=' . $booking_id : ''));
+    if ($result['success']) {
+        redirect($result['redirect']);
+    }
+
+    $errors = $result['errors'] ?? [];
 }
 
-// determine active conversation partner
-$with = isset($_GET['with']) ? intval($_GET['with']) : 0;
-$booking_id = isset($_GET['booking_id']) ? intval($_GET['booking_id']) : 0;
+$viewData = $controller->index($db, $me, $_GET);
+$convs = $viewData['convs'] ?? [];
+$with = $viewData['with'] ?? 0;
+$booking_id = $viewData['booking_id'] ?? 0;
+$messages = $viewData['messages'] ?? [];
+$otherUser = $viewData['otherUser'] ?? null;
+$bookingTimeline = $viewData['bookingTimeline'] ?? [];
 
+/* ── Header nav (shared "Market Ledger" shell used across client pages) ── */
+$headerClientName = '';
 try {
-    $convs = getConversationList($me) ?: [];
-    if (!is_array($convs)) {
-        $convs = [];
-    }
-} catch (Throwable $e) {
-    error_log('getConversationList error: ' . $e->getMessage());
-    $convs = [];
-}
-
-$messages = [];
-$otherUser = null;
-$bookingTimeline = [];
-if ($with) {
-    // fetch other user info
-    $stmt = $db->prepare("SELECT id, full_name, profile_image FROM users WHERE id = ?");
-    $stmt->execute([$with]);
-    $otherUser = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($otherUser) {
-        // link provider profile for client page, or client profile for provider page
-        $profileHref = isProvider() ? '../client/profile.php?id=' . $with : '../provider/profile.php?id=' . $with;
-        // mark incoming as read
-        markMessagesRead($with, $me);
-        // load conversation
-        $messages = getConversationMessages($me, $with);
-        if ($booking_id) {
-            $bookingTimeline = getBookingTimeline($booking_id);
-        }
-    } else {
-        $with = 0; // invalid user
-    }
-}
+    $hs = $db->prepare("SELECT full_name FROM users WHERE id = ?");
+    $hs->execute([$me]);
+    $headerClientName = (string)($hs->fetchColumn() ?: '');
+} catch (Throwable $e) { $headerClientName = ''; }
+$headerClientInitial = strtoupper(substr(trim($headerClientName), 0, 1)) ?: 'U';
+$navLinks = [
+    ['href' => 'home.php',         'icon' => 'fa-house',            'label' => 'Home'],
+    ['href' => 'providers.php',    'icon' => 'fa-magnifying-glass', 'label' => 'Find providers'],
+    ['href' => 'my-bookings.php',  'icon' => 'fa-calendar-check',   'label' => 'Bookings'],
+    ['href' => 'messages.php',     'icon' => 'fa-comment-dots',     'label' => 'Messages', 'active' => true],
+    ['href' => 'favorites.php',    'icon' => 'fa-heart',            'label' => 'Favorites'],
+];
 
 ?>
 <!DOCTYPE html>
@@ -392,58 +313,126 @@ if ($with) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
-            --accent: #0d6efd;
-            --accent-dark: #0a58ca;
-            --accent-light: #eff4ff;
+            /* Market Ledger design system — shared with providers.php */
+            --ink:        #0B1F17;
+            --ink-2:      #12291F;
+            --ink-3:      #1B382A;
+            --paper:      #F6F3EC;
+            --brass:      #B9822E;
+            --brass-2:    #D9A64E;
+            --moss:       #3F6B4A;
+            --moss-2:     #2E5038;
+            --clay:       #A8432E;
+            --online-dot: #4FAE68;
+
+            --accent: var(--brass);
+            --accent-dark: var(--moss-2);
+            --accent-light: rgba(185,130,46,.12);
             --surface: #ffffff;
-            --surface-2: #f7f8fc;
-            --border: #e8eaf0;
-            --border-subtle: #f0f2f7;
-            --text-primary: #0f1117;
-            --text-secondary: #6b7280;
-            --text-muted: #9ca3af;
-            --sent-bg: #0d6efd;
-            --recv-bg: #f0f2f7;
-            --online: #22c55e;
-            --radius-sm: 8px;
-            --radius-md: 12px;
-            --radius-lg: 16px;
-            --shadow-sm: 0 1px 4px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-            --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
-            --transition: all 0.18s cubic-bezier(0.4,0,0.2,1);
+            --surface-2: var(--paper);
+            --border: #E7E2D6;
+            --border-subtle: #EFEBE0;
+            --text-primary: #10201A;
+            --text-secondary: #5B685F;
+            --text-muted: #94A092;
+            --sent-bg: var(--ink);
+            --recv-bg: #EFEBE0;
+            --online: var(--online-dot);
+            --radius-sm: 10px;
+            --radius-md: 16px;
+            --radius-lg: 22px;
+            --shadow-sm: 0 1px 2px rgba(16,32,26,.05), 0 1px 4px rgba(16,32,26,.05);
+            --shadow-md: 0 12px 28px rgba(16,32,26,.12);
+            --transition: all 0.18s cubic-bezier(.16,.8,.24,1);
+            --header-h: 68px;
+            --font-display: 'Syne', sans-serif;
+            --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+        }
+
+        html, body {
+            height: 100%;
         }
 
         body {
-            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
             background: var(--surface-2);
             overflow: hidden;
             -webkit-font-smoothing: antialiased;
             color: var(--text-primary);
         }
+        h1,h2,h3,h4 { font-family: var(--font-display); letter-spacing: -.01em; }
 
-        /* ── SIDEBAR OFFSET ── */
+        /* ── HEADER NAVIGATION (replaces sidebar) ── */
         .main-content {
-            margin-left: 72px;
-            transition: margin-left 0.3s ease;
+            height: 100vh;
             min-height: 100vh;
+            display:flex;
+            flex-direction:column;
+            overflow: hidden;
+            background: linear-gradient(180deg, #f8f4ea 0%, var(--surface-2) 100%);
         }
-
-        .sidebar:not(.collapsed) + .main-content,
-        .sidebar:not(.collapsed) ~ .main-content {
-            margin-left: 260px;
+        .site-header {
+          position: sticky; top:0; z-index: 1000; background: rgba(246,243,236,.92); backdrop-filter: blur(14px);
+          border-bottom: 1px solid var(--border); height: var(--header-h); flex-shrink:0;
         }
+        .site-header-inner {
+          max-width: 1320px; margin:0 auto; height:100%; padding: 0 2rem;
+          display:flex; align-items:center; justify-content:space-between; gap:1.5rem;
+        }
+        .brand { display:flex; align-items:center; gap:.6rem; text-decoration:none; color: var(--text-primary); flex-shrink:0; }
+        .brand-mark { width:36px; height:36px; border-radius:10px; background: var(--ink); display:flex; align-items:center; justify-content:center; color: var(--brass-2); font-size:1rem; flex-shrink:0; }
+        .brand-word { font-family: var(--font-display); font-weight:800; font-size:1.05rem; line-height:1.1; }
+        .brand-word small { display:block; font-family: var(--font-mono); font-weight:400; font-size:.6rem; color: var(--text-muted); letter-spacing:.06em; text-transform:uppercase; }
+        .main-nav { display:flex; align-items:center; gap:.15rem; flex:1; justify-content:center; }
+        .main-nav a { text-decoration:none; color: var(--text-secondary); font-size:.86rem; font-weight:600; padding:.55rem .9rem; border-radius: var(--radius-sm); transition: var(--transition); position:relative; }
+        .main-nav a:hover { color: var(--text-primary); background: var(--border-subtle); }
+        .main-nav a.active { color: var(--ink); }
+        .main-nav a.active::after { content:''; position:absolute; left:.9rem; right:.9rem; bottom:.2rem; height:2px; background: var(--brass); border-radius:2px; }
+        .header-actions { display:flex; align-items:center; gap:.6rem; flex-shrink:0; }
+        .header-icon-btn { width:38px; height:38px; border-radius:10px; border:1px solid var(--border); background:#fff; color: var(--text-secondary); display:flex; align-items:center; justify-content:center; cursor:pointer; text-decoration:none; transition: var(--transition); position:relative; font-size:.9rem; }
+        .header-icon-btn:hover { border-color: var(--brass); color: var(--brass); }
+        .header-icon-btn .ping { position:absolute; top:6px; right:6px; width:7px; height:7px; border-radius:50%; background: var(--clay); border:1.5px solid #fff; }
+        .user-menu { position:relative; }
+        .user-menu-btn { display:flex; align-items:center; gap:.55rem; background:#fff; border:1px solid var(--border); border-radius:100px; padding:.3rem .8rem .3rem .3rem; cursor:pointer; font-family:inherit; transition: var(--transition); }
+        .user-menu-btn:hover { border-color: var(--brass); }
+        .user-menu-avatar { width:30px; height:30px; border-radius:50%; background: linear-gradient(135deg, var(--brass), var(--brass-2)); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:.78rem; flex-shrink:0; }
+        .user-menu-name { font-size:.82rem; font-weight:700; color: var(--text-primary); max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .user-menu-btn i.chev { font-size:.6rem; color: var(--text-muted); transition: var(--transition); }
+        .user-menu.open .chev { transform: rotate(180deg); }
+        .user-menu-dropdown { position:absolute; top:calc(100% + .6rem); right:0; background:#fff; border:1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); min-width:200px; padding:.5rem; display:none; z-index:1200; }
+        .user-menu.open .user-menu-dropdown { display:block; animation: slideDownNav .16s ease; }
+        @keyframes slideDownNav { from{opacity:0; transform:translateY(-6px)} to{opacity:1; transform:translateY(0)} }
+        .user-menu-dropdown a { display:flex; align-items:center; gap:.6rem; padding:.6rem .7rem; border-radius: var(--radius-sm); text-decoration:none; color: var(--text-secondary); font-size:.84rem; font-weight:600; transition: var(--transition); }
+        .user-menu-dropdown a:hover { background: var(--accent-light); color: var(--brass); }
+        .user-menu-dropdown a i { width:16px; text-align:center; color: var(--text-muted); }
+        .user-menu-dropdown a:hover i { color: var(--brass); }
+        .user-menu-dropdown .divider { height:1px; background: var(--border-subtle); margin:.4rem .2rem; }
+        .user-menu-dropdown a.logout { color: var(--clay); }
+        .user-menu-dropdown a.logout i { color: var(--clay); }
+        .mobile-nav-toggle { display:none; width:38px; height:38px; border-radius:10px; border:1px solid var(--border); background:#fff; align-items:center; justify-content:center; cursor:pointer; font-size:1rem; color: var(--text-primary); }
+        .mobile-nav-panel { display:none; background:#fff; border-bottom: 1px solid var(--border); padding: .5rem 1.1rem 1rem; }
+        .mobile-nav-panel.open { display:block; animation: slideDownNav .18s ease; }
+        .mobile-nav-panel a { display:flex; align-items:center; gap:.65rem; padding:.75rem .5rem; text-decoration:none; color: var(--text-secondary); font-size:.9rem; font-weight:600; border-bottom:1px solid var(--border-subtle); }
+        .mobile-nav-panel a:last-child { border-bottom:none; }
+        .mobile-nav-panel a.active { color: var(--brass); }
+        .mobile-nav-panel a i { width:18px; color: var(--text-muted); }
+        .mobile-back-btn { display:none; }
 
         /* ── CHAT SHELL ── */
         .chat-container {
             display: flex;
-            height: 100vh;
-            background: var(--surface);
+            flex: 1;
+            min-height: 0;
+            height: calc(100vh - var(--header-h) - 2rem);
+            background: transparent;
             overflow: hidden;
+            padding: 1rem;
+            gap: 1rem;
         }
 
         /* ══════════════════════════════════════
@@ -452,10 +441,14 @@ if ($with) {
         .conversations-panel {
             width: 320px;
             min-width: 320px;
-            border-right: 1px solid var(--border);
+            min-height: 0;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
             display: flex;
             flex-direction: column;
-            background: var(--surface);
+            background: rgba(255,255,255,.88);
+            box-shadow: var(--shadow-sm);
+            overflow: hidden;
         }
 
         .conversations-header {
@@ -483,7 +476,7 @@ if ($with) {
             border-radius: 100px;
             font-size: 0.85rem;
             font-family: inherit;
-            background: var(--surface-2);
+            background: linear-gradient(90deg, #fff, #f8f4ea);
             color: var(--text-primary);
             transition: var(--transition);
         }
@@ -629,8 +622,13 @@ if ($with) {
             flex: 1;
             display: flex;
             flex-direction: column;
-            background: var(--surface-2);
+            min-height: 0;
+            background: rgba(255,255,255,.92);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
             min-width: 0;
+            box-shadow: var(--shadow-sm);
+            overflow: hidden;
         }
 
         .chat-empty {
@@ -649,13 +647,13 @@ if ($with) {
 
         /* Chat Header */
         .chat-header {
-            padding: 0.875rem 1.25rem;
-            border-bottom: 1px solid var(--border);
+            padding: 0.9rem 1.1rem;
+            border-bottom: 1px solid var(--border-subtle);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: var(--surface);
-            box-shadow: var(--shadow-sm);
+            background: linear-gradient(90deg, rgba(255,255,255,.95), rgba(248,244,234,.92));
+            box-shadow: none;
             position: relative;
             z-index: 5;
         }
@@ -715,8 +713,8 @@ if ($with) {
         }
 
         .header-btn {
-            background: none;
-            border: none;
+            background: #fff;
+            border: 1px solid var(--border);
             color: var(--text-secondary);
             font-size: 1rem;
             cursor: pointer;
@@ -728,8 +726,9 @@ if ($with) {
         }
 
         .header-btn:hover {
-            background: var(--surface-2);
+            background: var(--accent-light);
             color: var(--accent);
+            border-color: var(--accent);
         }
 
         /* Options dropdown */
@@ -960,12 +959,14 @@ if ($with) {
         /* ── MESSAGES AREA ── */
         .messages-area {
             flex: 1;
+            min-height: 0;
             overflow-y: auto;
             padding: 1.25rem 1.5rem;
             display: flex;
             flex-direction: column;
             gap: 0.5rem;
             background: var(--surface-2);
+            overscroll-behavior: contain;
         }
 
         .msg-empty {
@@ -1319,6 +1320,12 @@ if ($with) {
         .messages-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
 
         /* ── RESPONSIVE ── */
+        @media (max-width: 900px) {
+            .main-nav { display: none; }
+            .mobile-nav-toggle { display: flex; }
+            .user-menu-name { display: none; }
+            .site-header-inner { padding: 0 1.1rem; }
+        }
         @media (max-width: 768px) {
             .conversations-panel {
                 width: 100%;
@@ -1332,7 +1339,7 @@ if ($with) {
             .chat-panel { width: 100%; }
             .message-bubble { max-width: 82%; }
             .chat-header { padding: 0.75rem 1rem; }
-            .main-content { margin-left: 0 !important; }
+            .mobile-back-btn { display: flex; }
         }
 
         /* ── UTILITY ── */
@@ -1386,11 +1393,58 @@ if ($with) {
     </style>
 </head>
 <body>
-    <!-- Sidebar -->
-    <?php include __DIR__ . '/includes/sidebar.php'; ?>
-
-    <!-- Main Content -->
     <div class="main-content">
+        <header class="site-header">
+            <div class="site-header-inner">
+                <a href="home.php" class="brand">
+                    <span class="brand-mark"><i class="fas fa-comment-dots"></i></span>
+                    <span class="brand-word">BII LocalFinder<small>Rwanda · messages</small></span>
+                </a>
+
+                <nav class="main-nav">
+                    <?php foreach ($navLinks as $nl): ?>
+                        <a href="<?php echo htmlspecialchars($nl['href']); ?>" class="<?php echo !empty($nl['active']) ? 'active' : ''; ?>">
+                            <?php echo htmlspecialchars($nl['label']); ?>
+                        </a>
+                    <?php endforeach; ?>
+                </nav>
+
+                <div class="header-actions">
+                    <a href="favorites.php" class="header-icon-btn" title="Favorites"><i class="fas fa-heart"></i></a>
+                    <a href="messages.php" class="header-icon-btn" title="Messages"><i class="fas fa-comment-dots"></i></a>
+                    <a href="notifications.php" class="header-icon-btn" title="Notifications"><i class="fas fa-bell"></i><span class="ping"></span></a>
+
+                    <div class="user-menu" id="userMenu">
+                        <button class="user-menu-btn" id="userMenuBtn" type="button">
+                            <span class="user-menu-avatar"><?php echo htmlspecialchars($headerClientInitial); ?></span>
+                            <span class="user-menu-name"><?php echo htmlspecialchars($headerClientName); ?></span>
+                            <i class="fas fa-chevron-down chev"></i>
+                        </button>
+                        <div class="user-menu-dropdown">
+                            <a href="profile.php"><i class="fas fa-user"></i> My profile</a>
+                            <a href="my-bookings.php"><i class="fas fa-calendar-check"></i> My bookings</a>
+                            <a href="settings.php"><i class="fas fa-gear"></i> Settings</a>
+                            <div class="divider"></div>
+                            <a href="../logout.php" class="logout"><i class="fas fa-arrow-right-from-bracket"></i> Log out</a>
+                        </div>
+                    </div>
+
+                    <button class="mobile-nav-toggle" id="mobileNavToggle" type="button"><i class="fas fa-bars"></i></button>
+                </div>
+            </div>
+
+            <nav class="mobile-nav-panel" id="mobileNavPanel">
+                <?php foreach ($navLinks as $nl): ?>
+                    <a href="<?php echo htmlspecialchars($nl['href']); ?>" class="<?php echo !empty($nl['active']) ? 'active' : ''; ?>">
+                        <i class="fas <?php echo htmlspecialchars($nl['icon']); ?>"></i> <?php echo htmlspecialchars($nl['label']); ?>
+                    </a>
+                <?php endforeach; ?>
+                <a href="profile.php"><i class="fas fa-user"></i> My profile</a>
+                <a href="settings.php"><i class="fas fa-gear"></i> Settings</a>
+                <a href="../logout.php" style="color:var(--clay);"><i class="fas fa-arrow-right-from-bracket"></i> Log out</a>
+            </nav>
+        </header>
+
         <div class="chat-container">
             <!-- Conversations Panel -->
     <div class="conversations-panel" id="conversationsPanel">
@@ -2315,6 +2369,30 @@ if (!document.querySelector('style[data-animation]')) {
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="../assets/js/live-location-chat.js"></script>
 <script src="../assets/js/chat-dropdown.js"></script>
+<script>
+    const mobileNavToggle = document.getElementById('mobileNavToggle');
+    const mobileNavPanel = document.getElementById('mobileNavPanel');
+    mobileNavToggle?.addEventListener('click', () => {
+        mobileNavPanel.classList.toggle('open');
+        const icon = mobileNavToggle.querySelector('i');
+        icon.className = mobileNavPanel.classList.contains('open') ? 'fas fa-xmark' : 'fas fa-bars';
+    });
+
+    const userMenuBtn = document.getElementById('userMenuBtn');
+    const userMenu = document.getElementById('userMenu');
+    userMenuBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        userMenu.classList.toggle('open');
+        mobileNavPanel?.classList.remove('open');
+        if (mobileNavToggle) mobileNavToggle.querySelector('i').className = 'fas fa-bars';
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!userMenu?.contains(e.target)) {
+            userMenu?.classList.remove('open');
+        }
+    });
+</script>
     </div> <!-- .main-content -->
 </body>
 </html>

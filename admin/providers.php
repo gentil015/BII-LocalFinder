@@ -5,6 +5,7 @@ require_once '../includes/functions.php';
 require_once '../includes/mailer.php';
 require_once '../includes/provider_requirements.php';
 require_once '../includes/admin_ranking.php';
+require_once '../controllers/pages/admin/AdminProvidersController.php';
 
 // Check admin access
 if (!isLoggedIn() || !isAdmin()) {
@@ -15,6 +16,24 @@ $db = Database::getInstance()->getConnection();
 $success = '';
 $errors = [];
 
+$search = trim($_GET['search'] ?? '');
+$status_filter = trim($_GET['status'] ?? '');
+$category_filter = trim($_GET['category'] ?? '');
+$verification_filter = trim($_GET['verification'] ?? '');
+$availability_filter = trim($_GET['availability'] ?? '');
+
+$controller = new AdminProvidersController();
+$viewData = $controller->index($db, [
+    'search' => $search,
+    'status' => $status_filter,
+    'category' => $category_filter,
+    'verification' => $verification_filter,
+    'availability' => $availability_filter,
+]);
+$providers = $viewData['providers'] ?? [];
+$categories = $viewData['categories'] ?? [];
+
+if (false) {
 // Search and filter parameters
 $search = $_GET['search'] ?? '';
 $status_filter = $_GET['status'] ?? '';
@@ -88,282 +107,15 @@ $providers = $stmt->fetchAll();
 // Get categories for filter
 $categories = $db->query("SELECT * FROM categories ORDER BY name")->fetchAll();
 
+}
+
 // Handle POST actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    
-    // 🔴 Provider Account Lifecycle Management
-    if (isset($_POST['approve_provider'])) {
-        $id = intval($_POST['provider_id']);
-        try {
-            // Update BOTH users.is_active AND service_providers.is_active
-            $db->prepare("UPDATE users SET is_verified = 1, is_active = 1 WHERE id = (SELECT user_id FROM service_providers WHERE id = ?)")->execute([$id]);
-            $db->prepare("UPDATE service_providers SET is_active = 1 WHERE id = ?")->execute([$id]);
-            $success = "Provider approved and activated successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to approve provider: " . $e->getMessage();
-        }
-    }
-    
-    if (isset($_POST['reject_provider'])) {
-        $id = intval($_POST['provider_id']);
-        $reason = sanitize($_POST['rejection_reason'] ?? '');
-        try {
-            $db->prepare("UPDATE service_providers SET application_status = 'rejected', rejection_reason = ? WHERE id = ?")->execute([$reason, $id]);
-            $success = "Provider application rejected";
-        } catch (Exception $e) {
-            $errors[] = "Failed to reject provider";
-        }
-    }
-    
-    if (isset($_POST['toggle_activation'])) {
-        $id = intval($_POST['provider_id']);
-        $current_status = intval($_POST['current_status']);
-        $new_status = $current_status ? 0 : 1;
-        
-        try {
-            // Update BOTH service_providers AND users table
-            $db->prepare("UPDATE users SET is_active = ? WHERE id = (SELECT user_id FROM service_providers WHERE id = ?)")->execute([$new_status, $id]);
-            $db->prepare("UPDATE service_providers SET is_active = ? WHERE id = ?")->execute([$new_status, $id]);
-            $action = $new_status ? 'activated' : 'deactivated';
-            $success = "Provider {$action} successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to update provider status";
-        }
-    }
-    
-    if (isset($_POST['ban_provider'])) {
-        $id = intval($_POST['provider_id']);
-        $reason = sanitize($_POST['ban_reason'] ?? '');
-
-        // Fetch provider user info (email, name) so we can notify them
-        $userStmt = $db->prepare("SELECT u.email, u.full_name FROM users u JOIN service_providers sp ON sp.user_id = u.id WHERE sp.id = ?");
-        $userStmt->execute([$id]);
-        $user = $userStmt->fetch(PDO::FETCH_ASSOC);
-
-        try {
-            $db->prepare("UPDATE service_providers SET is_banned = 1, ban_reason = ?, is_active = 0 WHERE id = ?")->execute([$reason, $id]);
-            $success = "Provider banned permanently";
-
-            // Notify provider by email (best-effort — failures logged but do not block)
-            if (!empty($user['email'])) {
-                $subject = "Account Banned — BII LocalFinder";
-                $body = "
-                    <p>Hello " . htmlspecialchars($user['full_name'] ?? 'User') . ",</p>
-                    <p>Your provider account on <strong>BII LocalFinder</strong> has been banned by the administration.</p>
-                    <p><strong>Reason:</strong><br>" . nl2br(htmlspecialchars($reason ?: 'No reason provided')) . "</p>
-                    <p>If you believe this is an error or you would like to appeal, please reply to this email or contact support at <a href='mailto:support@biilocalfinder.example'>support@biilocalfinder.example</a>.</p>
-                    <p>Regards,<br/>BII LocalFinder Team</p>
-                ";
-
-                try {
-                    Mailer::sendAnnouncement($user['email'], $user['full_name'] ?? '', $subject, $body);
-                    $success .= " — provider notified by email.";
-                } catch (\Throwable $e) {
-                    error_log("Provider ban notification failed for provider_id {$id}: " . $e->getMessage());
-                    // keep $success intact; don't surface mail errors to admin UI
-                }
-            }
-
-        } catch (Exception $e) {
-            $errors[] = "Failed to ban provider";
-        }
-    }
-    
-    if (isset($_POST['unban_provider'])) {
-        $id = intval($_POST['provider_id']);
-        try {
-            $db->prepare("UPDATE service_providers SET is_banned = 0, ban_reason = NULL WHERE id = ?")->execute([$id]);
-            $success = "Provider unbanned successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to unban provider";
-        }
-    }
-    
-    // 🔵 Provider Profile Editing (INCLUDING SCHEDULING)
-    if (isset($_POST['update_provider_profile'])) {
-        $id = intval($_POST['provider_id']);
-        $profession = sanitize($_POST['profession']);
-        $bio = sanitize($_POST['bio']);
-        $location = sanitize($_POST['location']);
-        $district = sanitize($_POST['district']);
-        $sector = sanitize($_POST['sector']);
-        $experience_years = intval($_POST['experience_years']);
-        $hourly_rate = floatval($_POST['hourly_rate']);
-        $availability = sanitize($_POST['availability']);
-        
-        // Scheduling fields
-        $working_days = isset($_POST['working_days']) ? implode(',', $_POST['working_days']) : '';
-        $working_hours_start = sanitize($_POST['working_hours_start']);
-        $working_hours_end = sanitize($_POST['working_hours_end']);
-        $break_start = sanitize($_POST['break_start'] ?? '');
-        $break_end = sanitize($_POST['break_end'] ?? '');
-        $slot_duration = intval($_POST['slot_duration']);
-        $buffer_time = intval($_POST['buffer_time']);
-        $max_daily_bookings = intval($_POST['max_daily_bookings']);
-        
-        try {
-            $stmt = $db->prepare("
-                UPDATE service_providers SET 
-                    profession = ?, bio = ?, location = ?, district = ?, sector = ?, 
-                    experience_years = ?, hourly_rate = ?, availability = ?,
-                    working_days = ?, working_hours_start = ?, working_hours_end = ?,
-                    break_start = ?, break_end = ?, slot_duration = ?, buffer_time = ?, max_daily_bookings = ?
-                WHERE id = ?
-            ");
-            $stmt->execute([
-                $profession, $bio, $location, $district, $sector, 
-                $experience_years, $hourly_rate, $availability,
-                $working_days, $working_hours_start, $working_hours_end,
-                $break_start, $break_end, $slot_duration, $buffer_time, $max_daily_bookings,
-                $id
-            ]);
-            $success = "Provider profile updated successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to update provider profile: " . $e->getMessage();
-        }
-    }
-    
-    // 🟣 Provider Verification Management
-    if (isset($_POST['update_verification'])) {
-        $id = intval($_POST['provider_id']);
-        $verification_level = sanitize($_POST['verification_level']);
-        $verification_notes = sanitize($_POST['verification_notes'] ?? '');
-        
-        try {
-            $db->prepare("UPDATE service_providers SET verification_level = ?, verification_notes = ? WHERE id = ?")->execute([$verification_level, $verification_notes, $id]);
-            $success = "Verification level updated successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to update verification level";
-        }
-    }
-    
-    // 🟠 Provider Search Ranking Controls
-    if (isset($_POST['update_featured_status'])) {
-        $id = intval($_POST['provider_id']);
-        $is_featured = intval($_POST['is_featured']);
-        $featured_until = !empty($_POST['featured_until']) ? $_POST['featured_until'] : null;
-        
-        try {
-            $stmt = $db->prepare("UPDATE service_providers SET is_featured = ?, featured_until = ? WHERE id = ?");
-            $stmt->execute([$is_featured, $featured_until, $id]);
-            $action = $is_featured ? 'featured' : 'unfeatured';
-            $success = "Provider {$action} successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to update featured status";
-        }
-    }
-    
-    if (isset($_POST['update_search_boost'])) {
-        $id = intval($_POST['provider_id']);
-        $search_boost = intval($_POST['search_boost']);
-        
-        try {
-            $db->prepare("UPDATE service_providers SET search_boost = ? WHERE id = ?")->execute([$search_boost, $id]);
-            $success = "Search ranking boost updated successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to update search ranking";
-        }
-    }
-
-    if (isset($_POST['update_admin_ranking'])) {
-        $id = intval($_POST['provider_id']);
-        $admin_promotion_boost = max(0, min(20, intval($_POST['admin_promotion_boost'] ?? 0)));
-        $admin_priority_level = max(0, min(3, intval($_POST['admin_priority_level'] ?? 0)));
-        $admin_score_override = isset($_POST['admin_score_override']) && $_POST['admin_score_override'] !== ''
-            ? max(0, min(100, intval($_POST['admin_score_override'])))
-            : null;
-
-        try {
-            $stmt = $db->prepare("UPDATE service_providers SET admin_promotion_boost = ?, admin_priority_level = ?, admin_score_override = ? WHERE id = ?");
-            $stmt->execute([$admin_promotion_boost, $admin_priority_level, $admin_score_override, $id]);
-
-            if (admin_ranking_table_has_column($db, 'service_providers', 'admin_ranking_score')) {
-                $provider = getProviderDetails($db, $id);
-                if ($provider) {
-                    $score = calculate_admin_score($provider);
-                    $db->prepare("UPDATE service_providers SET admin_ranking_score = ? WHERE id = ?")->execute([$score, $id]);
-                }
-            }
-
-            $success = "Admin ranking settings updated successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to update admin ranking settings";
-        }
-    }
-    
-    // 🔵 Provider Financial Settings
-    if (isset($_POST['update_financial_settings'])) {
-        $id = intval($_POST['provider_id']);
-        $commission_rate = floatval($_POST['commission_rate']);
-        $subscription_plan = sanitize($_POST['subscription_plan']);
-        $can_receive_jobs = intval($_POST['can_receive_jobs']);
-        
-        try {
-            $stmt = $db->prepare("UPDATE service_providers SET commission_rate = ?, subscription_plan = ?, can_receive_jobs = ? WHERE id = ?");
-            $stmt->execute([$commission_rate, $subscription_plan, $can_receive_jobs, $id]);
-            $success = "Financial settings updated successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to update financial settings";
-        }
-    }
-    
-    // Update provider categories
-    if (isset($_POST['update_categories'])) {
-        $id = intval($_POST['provider_id']);
-        $categories = $_POST['categories'] ?? [];
-        
-        try {
-            $db->beginTransaction();
-            
-            // Remove existing categories
-            $db->prepare("DELETE FROM provider_services WHERE provider_id = ?")->execute([$id]);
-            
-            // Add new categories
-            $stmt = $db->prepare("INSERT INTO provider_services (provider_id, category_id) VALUES (?, ?)");
-            foreach ($categories as $category_id) {
-                $stmt->execute([$id, intval($category_id)]);
-            }
-            
-            $db->commit();
-            $success = "Provider categories updated successfully";
-        } catch (Exception $e) {
-            $db->rollBack();
-            $errors[] = "Failed to update categories: " . $e->getMessage();
-        }
-    }
-    
-    // 🟢 Manage Scheduling (Admin override)
-    if (isset($_POST['update_scheduling_settings'])) {
-        $id = intval($_POST['provider_id']);
-        $working_days = isset($_POST['working_days']) ? implode(',', $_POST['working_days']) : '';
-        $working_hours_start = sanitize($_POST['working_hours_start']);
-        $working_hours_end = sanitize($_POST['working_hours_end']);
-        $break_start = sanitize($_POST['break_start'] ?? '');
-        $break_end = sanitize($_POST['break_end'] ?? '');
-        $slot_duration = intval($_POST['slot_duration']);
-        $buffer_time = intval($_POST['buffer_time']);
-        $max_daily_bookings = intval($_POST['max_daily_bookings']);
-        $booking_lead_time = intval($_POST['booking_lead_time']);
-        $cancellation_cutoff = intval($_POST['cancellation_cutoff']);
-        
-        try {
-            $stmt = $db->prepare("
-                UPDATE service_providers SET 
-                    working_days = ?, working_hours_start = ?, working_hours_end = ?,
-                    break_start = ?, break_end = ?, slot_duration = ?, buffer_time = ?, 
-                    max_daily_bookings = ?, booking_lead_time = ?, cancellation_cutoff = ?
-                WHERE id = ?
-            ");
-            $stmt->execute([
-                $working_days, $working_hours_start, $working_hours_end,
-                $break_start, $break_end, $slot_duration, $buffer_time,
-                $max_daily_bookings, $booking_lead_time, $cancellation_cutoff,
-                $id
-            ]);
-            $success = "Scheduling settings updated successfully";
-        } catch (Exception $e) {
-            $errors[] = "Failed to update scheduling settings: " . $e->getMessage();
-        }
+    $result = $controller->handlePostAction($db, $_POST);
+    $success = $result['message'] ?? '';
+    $errors = $result['errors'] ?? [];
+    if (!empty($result['success'])) {
+        $success = $result['message'];
     }
 }
 
