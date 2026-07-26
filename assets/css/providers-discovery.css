@@ -1,0 +1,174 @@
+/* ==========================================================================
+   Providers Discovery Page — Netflix/YouTube-style shelves
+   Scoped under .discovery-wrap so it never touches other pages/components.
+   ========================================================================== */
+
+.discovery-wrap { display: flex; flex-direction: column; gap: 2rem; margin: 1.5rem 0 3rem; }
+
+.discovery-welcome {
+  background: linear-gradient(135deg, rgba(246,243,236,0.9), rgba(255,255,255,0.95));
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  padding: .9rem 1.25rem;
+  font-size: .95rem;
+  color: var(--ink-2);
+}
+.discovery-welcome i { color: var(--moss); margin-right: .5rem; }
+
+.discovery-section { position: relative; }
+
+.discovery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: .65rem;
+}
+.discovery-header h2 {
+  font-size: 1.08rem;
+  font-weight: 700;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  color: var(--ink-2);
+}
+.discovery-header h2 i { color: var(--moss); font-size: .95rem; }
+
+.discovery-nav { display: flex; gap: .4rem; }
+.scroll-btn {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 1px solid var(--line-soft); background: var(--card); color: var(--ink-3);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all .15s ease;
+}
+.scroll-btn:hover { background: var(--brass); color: #fff; border-color: var(--brass); transform: translateY(-1px); }
+.scroll-btn:disabled { opacity: .35; cursor: default; pointer-events: none; }
+
+.discovery-track {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scroll-snap-type: x proximity;
+  padding: .35rem .1rem 1rem;
+  -ms-overflow-style: none;
+  scrollbar-width: thin;
+}
+.discovery-track::-webkit-scrollbar { height: 6px; }
+.discovery-track::-webkit-scrollbar-thumb { background: var(--line); border-radius: 6px; }
+
+/* ---- Provider card ---- */
+.pcard {
+  flex: 0 0 260px;
+  scroll-snap-align: start;
+  background: #fff;
+  border: 1px solid #edf0f6;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(20,20,40,.05);
+  transition: transform .18s ease, box-shadow .18s ease;
+  display: flex;
+  flex-direction: column;
+}
+.pcard:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(30,40,90,.14);
+}
+
+.pcard-media { position: relative; height: 140px; background: rgba(246,243,236,0.85); }
+.pcard-photo { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pcard-photo.lazy-img { opacity: 0; transition: opacity .3s ease; }
+.pcard-photo.lazy-loaded { opacity: 1; }
+
+.pcard-fav {
+  position: absolute; top: 8px; right: 8px;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(255,255,255,.92); border: none;
+  display: flex; align-items: center; justify-content: center;
+  color: #b6bccb; cursor: pointer; transition: transform .15s ease, color .15s ease;
+}
+.pcard-fav:hover { transform: scale(1.08); }
+.pcard-fav.active, .pcard-fav.active i { color: #ff4d67; }
+
+.pcard-open-pill {
+  position: absolute; left: 8px; bottom: 8px;
+  background: rgba(20,170,110,.92); color: #fff;
+  font-size: .65rem; font-weight: 600;
+  padding: .2rem .5rem; border-radius: 999px;
+  display: flex; align-items: center; gap: .3rem;
+}
+.pcard-open-pill i { font-size: .4rem; }
+
+.pcard-body { padding: .75rem .9rem 1rem; display: flex; flex-direction: column; gap: .4rem; flex: 1; }
+
+.pcard-badges { display: flex; flex-wrap: wrap; gap: .3rem; min-height: 1.4rem; }
+.badge-pill {
+  font-size: .62rem; font-weight: 700; letter-spacing: .01em;
+  padding: .18rem .45rem; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: .25rem;
+  background: rgba(247,243,236,0.8); color: var(--ink-3);
+}
+.badge-top_rated, .badge-highly_recommended { background: rgba(217,166,78,0.14); color: #B9822E; }
+.badge-trending { background: rgba(168,67,46,0.12); color: #A8432E; }
+.badge-fast_response, .badge-available_now { background: rgba(63,107,74,0.14); color: #3F6B4A; }
+.badge-verified, .badge-trusted { background: rgba(63,107,74,0.14); color: #3F6B4A; }
+.badge-new { background: rgba(168,67,46,0.12); color: #A8432E; }
+.badge-popular_nearby, .badge-most_booked { background: rgba(185,130,46,0.14); color: #B9822E; }
+
+.pcard-name { font-size: .98rem; font-weight: 700; margin: 0; color: #1c202b; }
+.pcard-profession { font-size: .78rem; color: #7d8296; font-weight: 600; }
+
+.pcard-meta { display: flex; flex-wrap: wrap; gap: .55rem; font-size: .74rem; color: #565c70; }
+.pcard-meta span { display: inline-flex; align-items: center; gap: .25rem; }
+
+.pcard-trust { display: flex; align-items: center; gap: .5rem; font-size: .68rem; color: #6b7085; }
+.trust-bar { flex: 1; height: 5px; border-radius: 4px; background: rgba(231,226,214,0.8); overflow: hidden; }
+.trust-fill { height: 100%; background: linear-gradient(90deg, var(--brass), var(--brass-2)); border-radius: 4px; transition: width .5s ease; }
+
+.pcard-desc { font-size: .78rem; color: #6b7085; line-height: 1.35; margin: 0; }
+
+.pcard-actions { margin-top: auto; display: flex; gap: .4rem; padding-top: .35rem; }
+.pcard-actions .btn { flex: 1; font-size: .74rem; padding: .35rem .4rem; }
+
+.discovery-wrap .btn-primary {
+  background-color: var(--moss);
+  border-color: var(--moss);
+  color: #fff;
+}
+
+.discovery-wrap .btn-primary:hover,
+.discovery-wrap .btn-primary:focus {
+  background-color: var(--moss-2);
+  border-color: var(--moss-2);
+  color: #fff;
+}
+
+.discovery-wrap .btn-outline-primary {
+  color: var(--brass);
+  border-color: var(--brass);
+}
+
+.discovery-wrap .btn-outline-primary:hover,
+.discovery-wrap .btn-outline-primary:focus {
+  background-color: rgba(185,130,46,0.12);
+  color: var(--brass);
+  border-color: var(--brass);
+}
+
+/* ---- Skeleton loading ---- */
+.pcard.skeleton { pointer-events: none; }
+.pcard.skeleton .pcard-media,
+.pcard.skeleton .sk-line {
+  background: linear-gradient(90deg, #eef0f6 25%, #f7f8fc 37%, #eef0f6 63%);
+  background-size: 400% 100%;
+  animation: sk-shimmer 1.4s ease infinite;
+}
+.sk-line { height: 10px; border-radius: 6px; margin: 6px 0; }
+@keyframes sk-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+
+/* ---- Responsive ---- */
+@media (max-width: 768px) {
+  .pcard { flex-basis: 210px; }
+  .discovery-header h2 { font-size: .96rem; }
+  .discovery-nav { display: none; } /* touch users swipe instead */
+}

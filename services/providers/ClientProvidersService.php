@@ -3,14 +3,17 @@
 require_once __DIR__ . '/../../repositories/providers/ClientProvidersRepository.php';
 require_once __DIR__ . '/../../includes/geolocation.php';
 require_once __DIR__ . '/../../includes/final_ranking.php';
+require_once __DIR__ . '/ProviderRankingService.php';
 
 class ClientProvidersService
 {
     private ClientProvidersRepository $repository;
+    private ProviderRankingService $rankingService;
 
-    public function __construct(?ClientProvidersRepository $repository = null)
+    public function __construct(?ClientProvidersRepository $repository = null, ?ProviderRankingService $rankingService = null)
     {
         $this->repository = $repository ?? new ClientProvidersRepository();
+        $this->rankingService = $rankingService ?? new ProviderRankingService();
     }
 
     public function buildViewModel(PDO $db, int $userId, array $filters): array
@@ -373,6 +376,17 @@ class ClientProvidersService
             unset($p);
             $providers = $rawProviders;
         }
+
+        $providers = $this->rankingService->rankProviders($providers, [
+            'client_id' => $userId,
+            'client_location' => $clientLocation,
+            'search_term' => $search,
+            'category' => $category,
+            'booked_professions' => $bookedProfessions,
+            'favorite_ids' => $favIds,
+            'viewed_ids' => $recentlyViewedIds,
+            'booked_ids' => [],
+        ]);
 
         $forYouProviders = [];
         if (!empty($bookedProfessions) || !empty($favIds)) {

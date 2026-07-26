@@ -23,8 +23,8 @@ from mysql.connector import Error
 DB_CONFIG = {
     "host":     os.getenv("DB_HOST",   "localhost"),
     "database": os.getenv("DB_NAME",   "bii_localfinder"),   # <-- update
-    "user":     os.getenv("DB_USER",   "root"),       # <-- update
-    "password": os.getenv("DB_PASS",   ""),   # <-- update
+    "user":     os.getenv("DB_USER",   "gentil"),       # <-- update
+    "password": os.getenv("DB_PASS",   "Dushime330805"),   # <-- update
     "charset":  "utf8mb4",
     "use_unicode": True,
     "connection_timeout": 10,

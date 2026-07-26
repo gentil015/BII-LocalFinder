@@ -216,6 +216,126 @@ $hasSub = false;
 
 </aside>
 
+<script>
+(function() {
+    const pageUrl = window.location.href;
+    const pageTitle = document.title;
+    let pageStartTime = Date.now();
+
+    function sendTracking(action, data = {}) {
+        const payload = new URLSearchParams(Object.assign({
+            action,
+            page_url: pageUrl,
+            page_title: pageTitle
+        }, data));
+
+        fetch('../api/track_user_behavior.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+            body: payload,
+            keepalive: true
+        }).catch(function(err) {
+            console.error(err);
+        });
+    }
+
+    function trackPageView() {
+        sendTracking('track_page_view', { referrer: document.referrer || '' });
+    }
+
+    function startPageSession() {
+        sendTracking('start_page_session', { page_start: new Date(pageStartTime).toISOString() });
+    }
+
+    function endPageSession() {
+        const pageEndTime = Date.now();
+        const timeSpentSeconds = Math.floor((pageEndTime - pageStartTime) / 1000);
+        sendTracking('end_page_session', {
+            page_start: new Date(pageStartTime).toISOString(),
+            page_end: new Date(pageEndTime).toISOString(),
+            time_spent_seconds: timeSpentSeconds
+        });
+    }
+
+    window.trackSearch = function(searchQuery, searchType = 'general', filters = {}, resultsCount = 0) {
+        if (!searchQuery || !String(searchQuery).trim()) {
+            return;
+        }
+
+        sendTracking('track_search', {
+            search_query: String(searchQuery).trim(),
+            search_type: searchType || 'general',
+            filters: typeof filters === 'string' ? filters : JSON.stringify(filters || {}),
+            results_count: Number.isFinite(Number(resultsCount)) ? Number(resultsCount) : 0
+        });
+    };
+
+    window.trackClick = function(eventType, targetType = '', targetId = null, metadata = {}) {
+        if (!eventType || !String(eventType).trim()) {
+            return;
+        }
+
+        const body = new URLSearchParams({
+            action: 'track_click',
+            event_type: String(eventType).trim(),
+            target_type: targetType ? String(targetType) : '',
+            target_id: targetId !== null ? String(targetId) : '',
+            metadata: typeof metadata === 'string' ? metadata : JSON.stringify(metadata || {}),
+            page_url: pageUrl
+        });
+
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon('../api/track_user_behavior.php', body);
+        } else {
+            fetch('../api/track_user_behavior.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                body: body,
+                keepalive: true
+            }).catch(function(err) {
+                console.error(err);
+            });
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        trackPageView();
+        startPageSession();
+    });
+
+    window.addEventListener('beforeunload', endPageSession);
+    window.addEventListener('unload', endPageSession);
+
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            endPageSession();
+        } else {
+            pageStartTime = Date.now();
+            startPageSession();
+        }
+    });
+
+    document.addEventListener('click', function(event) {
+        const target = event.target;
+        if (!target || !(target instanceof Element)) {
+            return;
+        }
+
+        const clickable = target.closest('a, button, input[type="submit"], input[type="button"], [data-track-click], .js-track-click');
+        if (!clickable) {
+            return;
+        }
+
+        const action = clickable.tagName.toLowerCase() === 'a' ? 'link_click' : 'button_click';
+        window.trackClick(action, clickable.tagName.toLowerCase(), null, {
+            text: (clickable.textContent || '').trim().slice(0, 120),
+            href: clickable.getAttribute && clickable.getAttribute('href') ? String(clickable.getAttribute('href')) : '',
+            id: clickable.id || ''
+        });
+    });
+})();
+</script>
+
 <style>
 /* ═══════════════════════════════════════════
    PROVIDER SIDEBAR — Modern Design System

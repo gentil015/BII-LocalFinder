@@ -800,7 +800,7 @@ $total_cats = (int) $cat_stmt->fetchColumn();
         </div><!-- /page-layout -->
     </div><!-- /main-content -->
 
-    <?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
+    
     <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
         // Sort dropdown — preserve all current filters

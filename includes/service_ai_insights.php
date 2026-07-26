@@ -1,26 +1,17 @@
 <?php
 /**
  * AI Service Insights Class
- * Provides AI-powered insights and recommendations for service optimization
- * Now integrates with ML system for enhanced predictions
+ * Provides service insights and recommendations for the MVP
+ * Uses rule-based fallbacks without the removed ML service
  */
 
 class AIServiceInsights {
     private $db;
     private $provider_id;
-    private $ml_recommender;
 
     public function __construct($db, $provider_id) {
         $this->db = $db;
         $this->provider_id = $provider_id;
-
-        // Initialize ML recommender if available
-        if (file_exists('../ml-system/api/MultiModelRecommender.php')) {
-            require_once '../ml-system/api/MultiModelRecommender.php';
-            $this->ml_recommender = new MultiModelRecommender($db);
-        } else {
-            $this->ml_recommender = null;
-        }
     }
 
     /**
@@ -29,19 +20,7 @@ class AIServiceInsights {
      */
     public function calculatePerformanceScore($service_id) {
         try {
-            // Try ML-based prediction first
-            if ($this->ml_recommender) {
-                $service_data = $this->getServiceDataForML($service_id);
-                if ($service_data) {
-                    $ml_prediction = $this->ml_recommender->predictProviderPerformance($service_data);
-                    if ($ml_prediction && isset($ml_prediction['performance_score'])) {
-                        // ML returns score 0-1, convert to 0-100
-                        return round($ml_prediction['performance_score'] * 100, 1);
-                    }
-                }
-            }
-
-            // Fallback to rule-based calculation
+            // Use rule-based calculation for the MVP
             // Get all relevant metrics for the service
             $stmt = $this->db->prepare("
                 SELECT
@@ -88,89 +67,9 @@ class AIServiceInsights {
         }
     }
 
-    /**
-     * Get service data formatted for ML predictions
-     */
-    private function getServiceDataForML($service_id) {
-        try {
-            // Get comprehensive service data for ML features
-            $stmt = $this->db->prepare("
-                SELECT
-                    ps.*,
-                    COUNT(DISTINCT pv.id) as view_count,
-                    COUNT(DISTINCT b.id) as booking_count,
-                    COUNT(DISTINCT CASE WHEN b.status = 'completed' THEN b.id END) as completed_count,
-                    COUNT(DISTINCT CASE WHEN b.status = 'cancelled' THEN b.id END) as cancelled_count,
-                    AVG(r.rating) as avg_rating,
-                    COUNT(r.id) as review_count,
-                    AVG(TIMESTAMPDIFF(HOUR, b.created_at, b.updated_at)) as avg_response_time_hours,
-                    COUNT(DISTINCT CASE WHEN b.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN b.id END) as recent_bookings,
-                    COUNT(DISTINCT CASE WHEN pv.viewed_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN pv.id END) as recent_views
-                FROM provider_services ps
-                LEFT JOIN provider_views pv ON ps.id = pv.service_id
-                LEFT JOIN bookings b ON ps.id = b.service_id AND b.provider_id = ?
-                LEFT JOIN reviews r ON b.id = r.booking_id
-                WHERE ps.id = ? AND ps.provider_id = ?
-                GROUP BY ps.id
-            ");
-            $stmt->execute([$this->provider_id, $service_id, $this->provider_id]);
-            $service_data = $stmt->fetch();
-
-            if (!$service_data) {
-                return null;
-            }
-
-            // Build ML feature array
-            return [
-                'service_id' => $service_data['id'],
-                'provider_id' => $service_data['provider_id'],
-                'category_id' => $service_data['category_id'],
-                'price' => (float)$service_data['price'],
-                'duration' => (int)$service_data['duration'],
-                'views' => (int)$service_data['view_count'],
-                'bookings' => (int)$service_data['booking_count'],
-                'completed_bookings' => (int)$service_data['completed_count'],
-                'cancelled_bookings' => (int)$service_data['cancelled_count'],
-                'avg_rating' => (float)$service_data['avg_rating'],
-                'review_count' => (int)$service_data['review_count'],
-                'avg_response_time' => (float)$service_data['avg_response_time_hours'],
-                'recent_views' => (int)$service_data['recent_views'],
-                'recent_bookings' => (int)$service_data['recent_bookings'],
-                'is_available' => (int)$service_data['is_available'],
-                'negotiable' => (int)$service_data['negotiable'],
-                'booking_mode' => $service_data['booking_mode'] ?? 'request_approval'
-            ];
-        } catch (Exception $e) {
-            error_log("Error getting service data for ML: " . $e->getMessage());
-            return null;
-        }
-    }
     public function getDemandIndicator($service_id) {
         try {
-            // Try ML-based prediction first
-            if ($this->ml_recommender) {
-                $service_data = $this->getServiceDataForML($service_id);
-                if ($service_data) {
-                    // Use user engagement model to predict demand level
-                    $engagement_score = $this->ml_recommender->predictUserEngagement(
-                        $this->provider_id, // Using provider_id as user_id for now
-                        $service_data,
-                        ['context' => 'demand_analysis']
-                    );
-
-                    if ($engagement_score !== null) {
-                        if ($engagement_score >= 0.7) {
-                            return ['level' => 'high', 'label' => 'High Demand', 'color' => '#10b981', 'icon' => 'fas fa-arrow-up'];
-                        } elseif ($engagement_score >= 0.4) {
-                            return ['level' => 'medium', 'label' => 'Medium Demand', 'color' => '#f59e0b', 'icon' => 'fas fa-minus'];
-                        } else {
-                            return ['level' => 'low', 'label' => 'Low Demand', 'color' => '#ef4444', 'icon' => 'fas fa-arrow-down'];
-                        }
-                    }
-                }
-            }
-
-            // Fallback to rule-based calculation
+            // Use rule-based calculation for the MVP
             // Get views and bookings from last 30 days
             $stmt = $this->db->prepare("
                 SELECT

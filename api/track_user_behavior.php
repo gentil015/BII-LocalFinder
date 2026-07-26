@@ -78,6 +78,21 @@ try {
         CONSTRAINT click_logs_ibfk_1 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    $db->exec("CREATE TABLE IF NOT EXISTS event_logs (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        user_id INT NULL,
+        session_id VARCHAR(255) NOT NULL,
+        event_type VARCHAR(255) NOT NULL,
+        entity_type VARCHAR(255) NULL,
+        entity_id INT NULL,
+        metadata LONGTEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY(user_id),
+        KEY(session_id),
+        KEY(event_type),
+        KEY(created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
     $action = $_POST['action'] ?? '';
 
     switch ($action) {
@@ -128,6 +143,16 @@ try {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $stmt->execute([$user_id, $search_query, $search_type, $filters, $results_count, $ip_address, $user_agent, $session_id]);
+
+            if (function_exists('trackEvent')) {
+                trackEvent('search', 'search', null, [
+                    'search_query' => $search_query,
+                    'search_type' => $search_type,
+                    'filters' => $filters,
+                    'results_count' => $results_count,
+                    'source' => 'client'
+                ], $user_id, $session_id);
+            }
 
             $response = ['success' => true, 'message' => 'Search tracked'];
             break;

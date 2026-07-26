@@ -6,12 +6,13 @@ require_once '../includes/event_tracking.php';
 require_once '../includes/geolocation.php';
 require_once '../includes/final_ranking.php';
 require_once '../controllers/pages/client/ClientProvidersController.php';
+require_once '../controllers/pages/client/ProviderDiscoveryController.php';
 
-if (!isLoggedIn()) { redirect('login.php'); }
-if (isProvider())  { redirect('provider/dashboard.php'); }
+$guestMode = !isLoggedIn();
+if (!$guestMode && isProvider())  { redirect('provider/dashboard.php'); }
 
 $db  = Database::getInstance()->getConnection();
-$uid = (int)$_SESSION['user_id'];
+$uid = $guestMode ? 0 : (int)$_SESSION['user_id'];
 
 $filters = [
     'search' => trim($_GET['search'] ?? ''),
@@ -28,7 +29,7 @@ $controller = new ClientProvidersController();
 $viewData = $controller->index($db, $uid, $filters);
 
 $platform_name = $viewData['platform_name'] ?? 'BII LocalFinder';
-$clientName = $viewData['client_name'] ?? 'there';
+$clientName = $guestMode ? 'Guest' : ($viewData['client_name'] ?? 'there');
 $clientLocation = $viewData['client_location'] ?? '';
 $search = $viewData['search'] ?? '';
 $category = $viewData['category'] ?? '';
@@ -370,7 +371,19 @@ try { trackEvent('providers_page_view','page',0,['filters'=>compact('search','ca
 
 $activeFiltersCount = (int)($minRating > 0) + (int)$verified;
 $isHome = ($search === '' && $category === '' && $location === '' && $avail === '' && $minRating === 0.0 && !$verified);
-$clientInitial = strtoupper(substr(trim((string)$clientName), 0, 1)) ?: 'U';
+$isDiscoveryView = !$guestMode
+    && $search === '' && $category === '' && $location === ''
+    && $avail === '' && $minRating <= 0 && !$verified && $page === 1
+    && in_array($sort, ['ml', 'system'], true);
+
+$discovery = null;
+if ($isDiscoveryView) {
+    $discovery = (new ProviderDiscoveryController())->index($db, $uid, [
+        'location' => $clientLocation,
+    ]);
+}
+
+$clientInitial = strtoupper(substr(trim((string)$clientName), 0, 1)) ?: ($guestMode ? 'G' : 'U');
 $navLinks = [
     ['href' => 'home.php',         'icon' => 'fa-house',          'label' => 'Home'],
     ['href' => 'providers.php',    'icon' => 'fa-magnifying-glass','label' => 'Find providers', 'active' => true],
@@ -388,9 +401,10 @@ $navLinks = [
 <meta name="description" content="<?php echo htmlspecialchars($platformDescription); ?>">
 <link rel="stylesheet" href="../bootstrap/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="../assets/css/providers-discovery.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
+
 <style>
 /* ══════════════════════════════════════════════════════════════
    BII LocalFinder — "Market Ledger" design system
@@ -435,6 +449,15 @@ body {
   color: var(--text-1);
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+}
+.auth-pill {
+  display:inline-flex; align-items:center; gap:.4rem; padding:.5rem .8rem; border-radius:999px; border:1px solid var(--line); color:var(--text-2); text-decoration:none; font-size:.8rem; font-weight:700; background:var(--paper-2);
+}
+.auth-pill.primary {
+  background:var(--ink); color:var(--text-inv); border-color:var(--ink);
+}
+.guest-banner {
+  margin-top:1rem; display:inline-flex; align-items:center; gap:.55rem; padding:.7rem .9rem; border-radius:999px; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.18); color:rgba(246,243,236,.95); font-size:.84rem; font-weight:600;
 }
 h1,h2,h3,h4 { font-family: var(--font-display); letter-spacing:-.01em; }
 a { color: inherit; }
@@ -920,19 +943,131 @@ a { color: inherit; }
   .trust-band { grid-template-columns:1fr; }
   .footer-inner { grid-template-columns:1fr 1fr; }
 }
+@media (max-width: 768px) {
+  .providers-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .prov-card {
+    border: none;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 0.9rem;
+    padding: 1rem 0;
+    margin: 0;
+    min-height: auto;
+  }
+  .prov-card:hover { transform: none; }
+  .prov-card.top-pick::after { height: 0; }
+
+  .prov-banner {
+    position: static;
+    height: auto;
+    background: transparent;
+    padding: 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+  }
+  .prov-banner-pattern { display: none; }
+  .prov-avatar-wrap {
+    width: 56px;
+    height: 56px;
+    border-radius: 18px;
+    border: 1px solid rgba(16,32,26,.08);
+    background: linear-gradient(135deg, var(--brass), var(--brass-2));
+    box-shadow: 0 10px 24px rgba(16,32,26,.08);
+  }
+
+  .prov-banner-meta {
+    position: static;
+    align-items: flex-start;
+    justify-content: flex-start;
+    width: 100%;
+    gap: 0.45rem;
+  }
+  .ml-score-badge {
+    padding: .3rem .65rem;
+    font-size: .72rem;
+  }
+  .avail-badge {
+    font-size: .7rem;
+    padding: .25rem .65rem;
+  }
+
+  .prov-body {
+    padding: 0;
+  }
+  .prov-name-row { gap: .35rem; }
+  .prov-name { font-size: 1rem; white-space: normal; }
+  .prov-profession { font-size:.78rem; margin-bottom:.5rem; }
+  .prov-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    gap:.75rem;
+    margin-bottom:.6rem;
+  }
+  .prov-stat { gap:.35rem; font-size:.78rem; }
+  .prov-price { font-size:.82rem; margin-bottom:.6rem; }
+  .ml-bar-wrap,
+  .pers-tags { display:none; }
+  .prov-location { font-size:.72rem; margin-bottom:.6rem; }
+
+  .prov-footer {
+    border-top:none;
+    padding-top:0;
+    display:flex;
+    flex-direction:column;
+    gap:.75rem;
+    background: transparent;
+  }
+  .btn-view-prof {
+    width:100%;
+    padding:.85rem 1rem;
+    border-radius: var(--r-md);
+    font-size:.9rem;
+  }
+  .btn-fav {
+    width: 100%;
+    max-width: none;
+    border-radius: var(--r-md);
+    justify-content: flex-start;
+    padding:.75rem 1rem;
+    background: rgba(255,255,255,.92);
+    border:1px solid var(--line);
+  }
+  .btn-fav i { margin-right:.55rem; }
+  .prov-compare-check { display: none; }
+}
+
 @media (max-width: 640px) {
-  .providers-grid { grid-template-columns:1fr; }
+  .results-header { flex-direction:column; align-items:flex-start; gap:1rem; }
+  .sort-chips { justify-content:flex-start; }
+  .providers-grid { gap: .85rem; }
+  .prov-card { grid-template-columns: 60px minmax(0, 1fr); gap:.75rem; }
+  .prov-avatar-wrap { width: 52px; height: 52px; }
+  .prov-name { font-size: .98rem; }
+  .prov-profession { font-size:.76rem; }
+  .prov-stat { font-size:.76rem; }
+  .btn-view-prof, .btn-fav { font-size:.85rem; padding:.75rem; }
+  .filter-drawer { padding:1rem; }
+  .adv-filters-btn { width:100%; justify-content:center; }
   .quick-actions { grid-template-columns:1fr; margin-top:1rem; }
   .stats-band { grid-template-columns:1fr; }
   .stat-cell { border-right:none; border-bottom:1px solid var(--line); }
-  .results-header { flex-direction:column; align-items:flex-start; }
   .footer-inner { grid-template-columns:1fr; }
   .hero { padding-bottom: 8.5rem; }
   .search-bar-row { flex-direction:column; }
 }
 </style>
 </head>
-<body>
+<body data-guest-mode="<?php echo $guestMode ? '1' : '0'; ?>">
 
 <div class="main-content">
 
@@ -952,24 +1087,29 @@ a { color: inherit; }
       </nav>
 
       <div class="header-actions">
-        <a href="favorites.php" class="header-icon-btn" title="Favorites"><i class="fas fa-heart"></i></a>
-        <a href="messages.php" class="header-icon-btn" title="Messages"><i class="fas fa-comment-dots"></i></a>
-        <a href="notifications.php" class="header-icon-btn" title="Notifications"><i class="fas fa-bell"></i><span class="ping"></span></a>
+        <?php if ($guestMode): ?>
+          <a href="../login.php" class="auth-pill"><i class="fas fa-right-to-bracket"></i> Sign in</a>
+          <a href="../register.php" class="auth-pill primary"><i class="fas fa-user-plus"></i> Join now</a>
+        <?php else: ?>
+          <a href="favorites.php" class="header-icon-btn" title="Favorites"><i class="fas fa-heart"></i></a>
+          <a href="messages.php" class="header-icon-btn" title="Messages"><i class="fas fa-comment-dots"></i></a>
+          <a href="notifications.php" class="header-icon-btn" title="Notifications"><i class="fas fa-bell"></i><span class="ping"></span></a>
 
-        <div class="user-menu" id="userMenu">
-          <button class="user-menu-btn" id="userMenuBtn" type="button">
-            <span class="user-menu-avatar"><?php echo htmlspecialchars($clientInitial); ?></span>
-            <span class="user-menu-name"><?php echo htmlspecialchars($clientName); ?></span>
-            <i class="fas fa-chevron-down chev"></i>
-          </button>
-          <div class="user-menu-dropdown">
-            <a href="profile.php"><i class="fas fa-user"></i> My profile</a>
-            <a href="my-bookings.php"><i class="fas fa-calendar-check"></i> My bookings</a>
-            <a href="settings.php"><i class="fas fa-gear"></i> Settings</a>
-            <div class="divider"></div>
-            <a href="../logout.php" class="logout"><i class="fas fa-arrow-right-from-bracket"></i> Log out</a>
+          <div class="user-menu" id="userMenu">
+            <button class="user-menu-btn" id="userMenuBtn" type="button">
+              <span class="user-menu-avatar"><?php echo htmlspecialchars($clientInitial); ?></span>
+              <span class="user-menu-name"><?php echo htmlspecialchars($clientName); ?></span>
+              <i class="fas fa-chevron-down chev"></i>
+            </button>
+            <div class="user-menu-dropdown">
+              <a href="profile.php"><i class="fas fa-user"></i> My profile</a>
+              <a href="my-bookings.php"><i class="fas fa-calendar-check"></i> My bookings</a>
+              <a href="settings.php"><i class="fas fa-gear"></i> Settings</a>
+              <div class="divider"></div>
+              <a href="../logout.php" class="logout"><i class="fas fa-arrow-right-from-bracket"></i> Log out</a>
+            </div>
           </div>
-        </div>
+        <?php endif; ?>
 
         <button class="mobile-nav-toggle" id="mobileNavToggle" type="button"><i class="fas fa-bars"></i></button>
       </div>
@@ -981,9 +1121,14 @@ a { color: inherit; }
           <i class="fas <?php echo htmlspecialchars($nl['icon']); ?>"></i> <?php echo htmlspecialchars($nl['label']); ?>
         </a>
       <?php endforeach; ?>
-      <a href="profile.php"><i class="fas fa-user"></i> My profile</a>
-      <a href="settings.php"><i class="fas fa-gear"></i> Settings</a>
-      <a href="../logout.php" style="color:var(--clay);"><i class="fas fa-arrow-right-from-bracket"></i> Log out</a>
+      <?php if ($guestMode): ?>
+        <a href="../login.php"><i class="fas fa-right-to-bracket"></i> Sign in</a>
+        <a href="../register.php"><i class="fas fa-user-plus"></i> Join now</a>
+      <?php else: ?>
+        <a href="profile.php"><i class="fas fa-user"></i> My profile</a>
+        <a href="settings.php"><i class="fas fa-gear"></i> Settings</a>
+        <a href="../logout.php" style="color:var(--clay);"><i class="fas fa-arrow-right-from-bracket"></i> Log out</a>
+      <?php endif; ?>
     </nav>
   </header>
 
@@ -998,9 +1143,12 @@ a { color: inherit; }
       <div class="hero-eyebrow"><i class="fas fa-map-location-dot"></i> <?php echo htmlspecialchars($platform_name); ?> · all 30 districts of Rwanda</div>
       <h1 class="hero-title">Find someone who <em>actually shows up.</em></h1>
       <p class="hero-sub">
-        Hi <?php echo htmlspecialchars($clientName); ?> — compare verified drivers, electricians, cleaners and more near
+        Welcome, <?php echo htmlspecialchars($clientName); ?> — compare verified drivers, electricians, cleaners and more near
         <?php echo $clientLocation ? htmlspecialchars($clientLocation) : 'you'; ?>, negotiate a fair price, and book with confidence.
       </p>
+      <?php if ($guestMode): ?>
+      <div class="guest-banner"><i class="fas fa-circle-info"></i> You’re browsing as a guest. Create an account to save favorites, message providers, and book services.</div>
+      <?php endif; ?>
 
       <div class="hero-quick-stats">
         <div class="qs"><b><?php echo number_format($platformStats['providers']); ?></b><span>Active providers</span></div>
@@ -1355,9 +1503,13 @@ a { color: inherit; }
           </form>
         </div>
 
+        <?php if ($isDiscoveryView && $discovery && !empty($discovery['sections'])): ?>
+          <?php include __DIR__ . '/partials/discovery_sections.php'; ?>
+        <?php else: ?>
         <div class="providers-grid" id="providersGrid">
           <?php echo renderProvidersGridHtml($providers, $sort, $clientLocation, $bookedProfessions, $favIds, $recentlyViewedIds); ?>
         </div>
+        <?php endif; ?>
 
         <?php if ($totalPages > 1): ?>
         <div class="pagination-wrap" id="paginationWrap">
@@ -1456,6 +1608,7 @@ a { color: inherit; }
 </div>
 
 <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
+<script src="../assets/js/providers-discovery.js"></script>
 <script>
 // ── Header navigation: mobile panel + user dropdown ──
 const mobileNavToggle = document.getElementById('mobileNavToggle');
@@ -1557,12 +1710,19 @@ function updateActiveControlsFromUrl(url) {
   } catch (e) { console.warn('Unable to update active controls from URL', e); }
 }
 
+const isGuestMode = document.body.dataset.guestMode === '1';
+
 // ── Favourite toggle + compare checkboxes (rebound after AJAX swap) ──
 function bindDynamicEvents() {
   document.querySelectorAll('.btn-fav').forEach(btn => btn.replaceWith(btn.cloneNode(true)));
   document.querySelectorAll('.btn-fav').forEach(btn => {
     btn.addEventListener('click', e => {
       e.preventDefault(); e.stopPropagation();
+      if (isGuestMode) {
+        showToast('Sign in to save favorites', 'info');
+        setTimeout(() => window.location.href = '../login.php', 800);
+        return;
+      }
       const pid = btn.dataset.providerId;
       const isFav = btn.classList.contains('favorited');
       const fd = new FormData();

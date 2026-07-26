@@ -1014,7 +1014,7 @@ $payment_label = $payment_labels[$service['payment_type']] ?? 'Per Service';
 <!-- Toast container -->
 <div id="toastContainer" style="position:fixed;top:1.25rem;right:1.25rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem;"></div>
 
-<?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
+
 <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
 <script>
     // ── Toast helper ───────────────────────────────────────────────────────

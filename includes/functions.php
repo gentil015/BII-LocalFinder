@@ -67,7 +67,12 @@ function sanitize_filename($filename) {
  * @return bool
  */
 function isLoggedIn() {
-    return isset($_SESSION['user_id']);
+    if (!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) {
+        return false;
+    }
+
+    $role = trim((string)($_SESSION['user_role'] ?? $_SESSION['user_type'] ?? ''));
+    return $role !== '';
 }
 
 /**

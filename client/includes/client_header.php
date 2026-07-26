@@ -1,5 +1,9 @@
 <?php
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 if (!function_exists('client_header_get_db')) {
     function client_header_get_db()
     {
@@ -193,6 +197,29 @@ if (!function_exists('client_header_render_styles')) {
           max-width: 1320px; margin:0 auto; height:100%; padding: 0 2rem;
           display:flex; align-items:center; justify-content:space-between; gap:1.5rem;
         }
+        .public-header .site-header-inner { gap: 1rem; }
+        .public-header .brand { min-width: 0; }
+        .public-header .main-nav.public-nav { gap: .2rem; flex: 1 1 auto; justify-content: flex-start; }
+        .public-header .main-nav.public-nav a { padding: .55rem .7rem; }
+        .public-header .public-actions { display:flex; align-items:center; gap:.65rem; flex-shrink:0; }
+        .public-header .header-pill,
+        .public-header .header-pill-ghost,
+        .public-header .header-pill-cta {
+          display:inline-flex; align-items:center; justify-content:center; gap:.4rem; border-radius:999px;
+          padding:.6rem .95rem; text-decoration:none; font-size:.84rem; font-weight:700; transition:.15s var(--ease);
+        }
+        .public-header .header-pill {
+          border:1px solid var(--line); background: var(--paper-2); color: var(--text-1);
+        }
+        .public-header .header-pill:hover { border-color: var(--brass); color: var(--brass); }
+        .public-header .header-pill-ghost {
+          border:1px solid var(--line); background: transparent; color: var(--text-2);
+        }
+        .public-header .header-pill-ghost:hover { border-color: var(--brass); color: var(--brass); }
+        .public-header .header-pill-cta {
+          background: var(--moss); color: #fff; box-shadow: 0 8px 18px rgba(63,107,74,.22);
+        }
+        .public-header .header-pill-cta:hover { background: var(--moss-2); transform: translateY(-1px); }
         .brand { display:flex; align-items:center; gap:.6rem; text-decoration:none; color: var(--text-1); flex-shrink:0; }
         .brand-mark {
           width:36px; height:36px; border-radius:10px; background: var(--ink);
@@ -271,9 +298,31 @@ if (!function_exists('client_header_render_styles')) {
           .mobile-nav-toggle { display:flex; }
           .user-menu-name { display:none; }
           .site-header-inner { padding: 0 1.1rem; }
+          .public-header .main-nav.public-nav { display:none; }
+          .public-header .public-actions { display:none; }
         }
         </style>
         <?php
+    }
+}
+
+if (!function_exists('client_header_is_logged_in')) {
+    function client_header_is_logged_in(): bool
+    {
+        if (!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) {
+            return false;
+        }
+
+        $role = trim((string)($_SESSION['user_role'] ?? $_SESSION['user_type'] ?? ''));
+        if ($role === '') {
+            return false;
+        }
+
+        if (function_exists('isLoggedIn')) {
+            return isLoggedIn();
+        }
+
+        return in_array($role, ['client', 'provider', 'admin'], true);
     }
 }
 
@@ -281,59 +330,98 @@ if (!function_exists('client_header_render_markup')) {
     function client_header_render_markup(string $activePage = ''): void
     {
         $platform_name = client_header_get_platform_name();
-        $clientName = client_header_get_client_name();
-        $clientInitial = strtoupper(substr(trim($clientName), 0, 1)) ?: 'U';
         $platformStats = client_header_get_platform_stats();
+        $isLoggedIn = client_header_is_logged_in();
         $navLinks = client_header_get_nav_links($activePage);
+        $clientName = $isLoggedIn ? client_header_get_client_name() : '';
+        $clientInitial = $isLoggedIn ? (strtoupper(substr(trim($clientName), 0, 1)) ?: 'U') : 'G';
+        $publicNavLinks = [
+            ['href' => '../index.php', 'label' => 'Home'],
+            ['href' => 'services.php', 'label' => 'Services'],
+            ['href' => 'providers.php', 'label' => 'Providers'],
+            ['href' => 'pricing.php', 'label' => 'Pricing'],
+            ['href' => 'about.php', 'label' => 'About'],
+            ['href' => 'help.php', 'label' => 'Help'],
+        ];
+        $activeFile = basename($activePage ?: $_SERVER['PHP_SELF'] ?? '');
         ?>
-        <header class="site-header">
+        <header class="site-header<?php echo $isLoggedIn ? '' : ' public-header'; ?>">
           <div class="site-header-inner">
-            <a href="home.php" class="brand">
+            <a href="<?php echo $isLoggedIn ? 'home.php' : '../index.php'; ?>" class="brand">
               <span class="brand-mark"><i class="fas fa-map-location-dot"></i></span>
               <span class="brand-word"><?php echo htmlspecialchars($platform_name); ?><small>Rwanda · local services</small></span>
             </a>
 
-            <nav class="main-nav">
-              <?php foreach ($navLinks as $nl): ?>
-                <a href="<?php echo htmlspecialchars($nl['href']); ?>" class="<?php echo !empty($nl['active']) ? 'active' : ''; ?>">
-                  <?php echo htmlspecialchars($nl['label']); ?>
-                </a>
-              <?php endforeach; ?>
-            </nav>
+            <?php if ($isLoggedIn): ?>
+                <nav class="main-nav">
+                  <?php foreach ($navLinks as $nl): ?>
+                    <a href="<?php echo htmlspecialchars($nl['href']); ?>" class="<?php echo !empty($nl['active']) ? 'active' : ''; ?>">
+                      <?php echo htmlspecialchars($nl['label']); ?>
+                    </a>
+                  <?php endforeach; ?>
+                </nav>
 
-            <div class="header-actions">
-              <a href="favorites.php" class="header-icon-btn" title="Favorites"><i class="fas fa-heart"></i></a>
-              <a href="messages.php" class="header-icon-btn" title="Messages"><i class="fas fa-comment-dots"></i></a>
-              <a href="notifications.php" class="header-icon-btn" title="Notifications"><i class="fas fa-bell"></i><span class="ping"></span></a>
+                <div class="header-actions">
+                  <a href="favorites.php" class="header-icon-btn" title="Favorites"><i class="fas fa-heart"></i></a>
+                  <a href="messages.php" class="header-icon-btn" title="Messages"><i class="fas fa-comment-dots"></i></a>
+                  <a href="notifications.php" class="header-icon-btn" title="Notifications"><i class="fas fa-bell"></i><span class="ping"></span></a>
 
-              <div class="user-menu" id="userMenu">
-                <button class="user-menu-btn" id="userMenuBtn" type="button">
-                  <span class="user-menu-avatar"><?php echo htmlspecialchars($clientInitial); ?></span>
-                  <span class="user-menu-name"><?php echo htmlspecialchars($clientName); ?></span>
-                  <i class="fas fa-chevron-down chev"></i>
-                </button>
-                <div class="user-menu-dropdown">
-                  <a href="profile.php"><i class="fas fa-user"></i> My profile</a>
-                  <a href="my-bookings.php"><i class="fas fa-calendar-check"></i> My bookings</a>
-                  <a href="settings.php"><i class="fas fa-gear"></i> Settings</a>
-                  <div class="divider"></div>
-                  <a href="../logout.php" class="logout"><i class="fas fa-arrow-right-from-bracket"></i> Log out</a>
+                  <div class="user-menu" id="userMenu">
+                    <button class="user-menu-btn" id="userMenuBtn" type="button">
+                      <span class="user-menu-avatar"><?php echo htmlspecialchars($clientInitial); ?></span>
+                      <span class="user-menu-name"><?php echo htmlspecialchars($clientName); ?></span>
+                      <i class="fas fa-chevron-down chev"></i>
+                    </button>
+                    <div class="user-menu-dropdown">
+                      <a href="profile.php"><i class="fas fa-user"></i> My profile</a>
+                      <a href="my-bookings.php"><i class="fas fa-calendar-check"></i> My bookings</a>
+                      <a href="settings.php"><i class="fas fa-gear"></i> Settings</a>
+                      <div class="divider"></div>
+                      <a href="../logout.php" class="logout"><i class="fas fa-arrow-right-from-bracket"></i> Log out</a>
+                    </div>
+                  </div>
+
+                  <button class="mobile-nav-toggle" id="mobileNavToggle" type="button"><i class="fas fa-bars"></i></button>
                 </div>
-              </div>
+            <?php else: ?>
+                <nav class="main-nav public-nav">
+                  <?php foreach ($publicNavLinks as $link): ?>
+                    <a href="<?php echo htmlspecialchars($link['href']); ?>" class="<?php echo basename($link['href']) === $activeFile || ($link['href'] === '../index.php' && $activeFile === 'index.php') ? 'active' : ''; ?>">
+                      <?php echo htmlspecialchars($link['label']); ?>
+                    </a>
+                  <?php endforeach; ?>
+                </nav>
 
-              <button class="mobile-nav-toggle" id="mobileNavToggle" type="button"><i class="fas fa-bars"></i></button>
-            </div>
+                <div class="public-actions">
+                  <a href="providers.php" class="header-pill"><i class="fas fa-search"></i> Search</a>
+                  <a href="../register.php?type=provider" class="header-pill-cta">Become a Provider</a>
+                  <a href="../login.php" class="header-pill-ghost">Sign In</a>
+                </div>
+
+                <button class="mobile-nav-toggle" id="mobileNavToggle" type="button"><i class="fas fa-bars"></i></button>
+            <?php endif; ?>
           </div>
 
           <nav class="mobile-nav-panel" id="mobileNavPanel">
-            <?php foreach ($navLinks as $nl): ?>
-              <a href="<?php echo htmlspecialchars($nl['href']); ?>" class="<?php echo !empty($nl['active']) ? 'active' : ''; ?>">
-                <i class="fas <?php echo htmlspecialchars($nl['icon']); ?>"></i> <?php echo htmlspecialchars($nl['label']); ?>
-              </a>
-            <?php endforeach; ?>
-            <a href="profile.php"><i class="fas fa-user"></i> My profile</a>
-            <a href="settings.php"><i class="fas fa-gear"></i> Settings</a>
-            <a href="../logout.php" style="color:var(--clay);"><i class="fas fa-arrow-right-from-bracket"></i> Log out</a>
+            <?php if ($isLoggedIn): ?>
+                <?php foreach ($navLinks as $nl): ?>
+                  <a href="<?php echo htmlspecialchars($nl['href']); ?>" class="<?php echo !empty($nl['active']) ? 'active' : ''; ?>">
+                    <i class="fas <?php echo htmlspecialchars($nl['icon']); ?>"></i> <?php echo htmlspecialchars($nl['label']); ?>
+                  </a>
+                <?php endforeach; ?>
+                <a href="profile.php"><i class="fas fa-user"></i> My profile</a>
+                <a href="settings.php"><i class="fas fa-gear"></i> Settings</a>
+                <a href="../logout.php" style="color:var(--clay);"><i class="fas fa-arrow-right-from-bracket"></i> Log out</a>
+            <?php else: ?>
+                <?php foreach ($publicNavLinks as $link): ?>
+                  <a href="<?php echo htmlspecialchars($link['href']); ?>" class="<?php echo basename($link['href']) === $activeFile || ($link['href'] === '../index.php' && $activeFile === 'index.php') ? 'active' : ''; ?>">
+                    <i class="fas fa-link"></i> <?php echo htmlspecialchars($link['label']); ?>
+                  </a>
+                <?php endforeach; ?>
+                <a href="providers.php"><i class="fas fa-search"></i> Search</a>
+                <a href="../register.php?type=provider" style="color:var(--brass);"><i class="fas fa-user-plus"></i> Become a Provider</a>
+                <a href="../login.php"><i class="fas fa-arrow-right-to-bracket"></i> Sign In</a>
+            <?php endif; ?>
           </nav>
         </header>
 
@@ -350,6 +438,155 @@ if (!function_exists('client_header_render_scripts')) {
     {
         ?>
         <script>
+        (function() {
+          const pageUrl = window.location.href;
+          const pageTitle = document.title;
+          let pageStartTime = Date.now();
+
+          function sendTracking(action, data = {}) {
+            const payload = new URLSearchParams(Object.assign({
+              action,
+              page_url: pageUrl,
+              page_title: pageTitle
+            }, data));
+
+            fetch('../api/track_user_behavior.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+              body: payload,
+              keepalive: true
+            }).catch(function(err) {
+              console.error(err);
+            });
+          }
+
+          function trackPageView() {
+            sendTracking('track_page_view', { referrer: document.referrer || '' });
+          }
+
+          function trackSearchEvent(searchQuery, searchType = 'general', filters = {}, resultsCount = 0) {
+            if (!searchQuery || !String(searchQuery).trim()) {
+              return;
+            }
+
+            sendTracking('track_search', {
+              search_query: String(searchQuery).trim(),
+              search_type: searchType || 'general',
+              filters: typeof filters === 'string' ? filters : JSON.stringify(filters || {}),
+              results_count: Number.isFinite(Number(resultsCount)) ? Number(resultsCount) : 0
+            });
+          };
+
+          function startPageSession() {
+            sendTracking('start_page_session', { page_start: new Date(pageStartTime).toISOString() });
+          }
+
+          function endPageSession() {
+            const pageEndTime = Date.now();
+            const timeSpentSeconds = Math.floor((pageEndTime - pageStartTime) / 1000);
+            sendTracking('end_page_session', {
+              page_start: new Date(pageStartTime).toISOString(),
+              page_end: new Date(pageEndTime).toISOString(),
+              time_spent_seconds: timeSpentSeconds
+            });
+          }
+
+          window.trackClick = function(eventType, targetType = '', targetId = null, metadata = {}) {
+            if (!eventType || !String(eventType).trim()) {
+              return;
+            }
+
+            const body = new URLSearchParams({
+              action: 'track_click',
+              event_type: String(eventType).trim(),
+              target_type: targetType ? String(targetType) : '',
+              target_id: targetId !== null ? String(targetId) : '',
+              metadata: typeof metadata === 'string' ? metadata : JSON.stringify(metadata || {}),
+              page_url: pageUrl
+            });
+
+            if (navigator.sendBeacon) {
+              navigator.sendBeacon('../api/track_user_behavior.php', body);
+            } else {
+              fetch('../api/track_user_behavior.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                body: body,
+                keepalive: true
+              }).catch(function(err) {
+                console.error(err);
+              });
+            }
+          };
+
+          function collectClickMetadata(element) {
+            const metadata = {
+              tag: (element.tagName || '').toLowerCase(),
+              id: element.id || '',
+              className: element.className ? String(element.className).split(/\s+/).filter(Boolean).slice(0, 6).join(' ') : '',
+              text: (element.textContent || '').trim().slice(0, 120),
+              href: element.getAttribute && element.getAttribute('href') ? String(element.getAttribute('href')) : ''
+            };
+
+            const form = element.closest('form');
+            if (form) {
+              metadata.formId = form.id || '';
+            }
+
+            return metadata;
+          }
+
+          document.addEventListener('DOMContentLoaded', function() {
+            trackPageView();
+            startPageSession();
+          });
+
+          window.addEventListener('beforeunload', endPageSession);
+          window.addEventListener('unload', endPageSession);
+
+          document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+              endPageSession();
+            } else {
+              pageStartTime = Date.now();
+              startPageSession();
+            }
+          });
+
+          document.addEventListener('click', function(event) {
+            const target = event.target;
+            if (!target || !(target instanceof Element)) {
+              return;
+            }
+
+            const clickable = target.closest('a, button, input[type="submit"], input[type="button"], [data-track-click], .js-track-click');
+            if (!clickable) {
+              return;
+            }
+
+            const action = clickable.tagName.toLowerCase() === 'a' ? 'link_click' : 'button_click';
+            window.trackClick(action, clickable.tagName.toLowerCase(), null, collectClickMetadata(clickable));
+          });
+
+          document.addEventListener('submit', function(event) {
+            const form = event.target;
+            if (!form || !(form instanceof HTMLFormElement)) {
+              return;
+            }
+
+            const searchInput = form.querySelector('input[type="search"], input[name*="search" i], input[name*="query" i], input[name*="q" i]');
+            const value = searchInput ? searchInput.value : '';
+            if (!value || !String(value).trim()) {
+              return;
+            }
+
+            window.trackSearch(String(value).trim(), 'client_form', {
+              formId: form.id || '',
+              formAction: form.getAttribute('action') || ''
+            }, 0);
+          });
+        })();
+
         const mobileNavToggle = document.getElementById('mobileNavToggle');
         const mobileNavPanel = document.getElementById('mobileNavPanel');
         mobileNavToggle?.addEventListener('click', () => {

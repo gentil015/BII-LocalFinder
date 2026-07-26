@@ -1,8 +1,0 @@
-views,clicks,messages,rating,price,avg_response_time,user_avg_price,user_avg_response_time,user_total_bookings,hired
-1,0,1,0,0,24,15000,12,3,0
-0,0,0,0,4000,24,8000,18,1,0
-1,0,13,3.5,17500,0,25000,6,8,1
-0,0,0,0,4000,24,12000,24,2,0
-0,0,0,0,0,24,0,24,0,0
-0,0,0,0,0,24,0,24,0,0
-0,0,0,2,0,24,30000,8,5,1

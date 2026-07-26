@@ -769,7 +769,7 @@ $recommended_providers = $stmt->fetchAll();
         }
     </style>
     <!-- Shared User Behavior Tracking -->
-    <?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
+    
 <?php client_header_render_styles(); ?>
 </head>
 <body>

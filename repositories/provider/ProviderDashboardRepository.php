@@ -42,18 +42,16 @@ class ProviderDashboardRepository
         $mlApiHealthy = false;
         $avgResponseHours = null;
 
+        $mlApiHealthy = false;
+
         try {
-            if (file_exists(__DIR__ . '/../../includes/MultiModelRecommender.php')) {
-                require_once __DIR__ . '/../../includes/MultiModelRecommender.php';
-                $recommender = new MultiModelRecommender($db);
-                $mlApiHealthy = $recommender->isApiHealthy();
-                if ($mlApiHealthy) {
-                    $raw = (float) ($recommender->rankByRecommendation([$provider + ['id' => $pid]])[0]['ml_score'] ?? 0);
-                    $mlScore = min(100, max(0, (int) round($raw * 100)));
-                }
-            }
+            $ratingScore = min(100, (float) ($provider['average_rating'] ?? 0) / 5 * 40);
+            $bookingScore = min(40, $stats['completed_bookings'] * 2);
+            $reviewScore = min(20, $stats['total_reviews']);
+            $mlScore = (int) round($ratingScore + $bookingScore + $reviewScore);
         } catch (Throwable $e) {
             error_log('ML score error: ' . $e->getMessage());
+            $mlScore = 0;
         }
 
         if (!$mlApiHealthy || $mlScore === 0) {

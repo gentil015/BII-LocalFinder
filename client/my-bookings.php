@@ -2,6 +2,7 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+require_once __DIR__ . '/includes/client_header.php';
 require_once '../includes/chat.php';
 require_once '../includes/event_tracking.php';
 
@@ -1310,69 +1311,10 @@ if (empty($recommended_providers)) {
             color: var(--primary);
         }
     </style>
+<?php client_header_render_styles(); ?>
 </head>
 <body>
-<?php
-$headerClientName = $client['full_name'] ?? 'there';
-$headerClientInitial = strtoupper(substr(trim((string)$headerClientName), 0, 1)) ?: 'U';
-$navLinks = [
-    ['href' => 'dashboard.php',    'icon' => 'fa-house',            'label' => 'Dashboard'],
-    ['href' => 'providers.php',    'icon' => 'fa-magnifying-glass', 'label' => 'Find providers'],
-    ['href' => 'my-bookings.php',  'icon' => 'fa-calendar-check',   'label' => 'Bookings', 'active' => true],
-    ['href' => 'messages.php',     'icon' => 'fa-comment-dots',     'label' => 'Messages'],
-    ['href' => 'favorites.php',    'icon' => 'fa-heart',            'label' => 'Favorites'],
-];
-?>
-    <div class="page-shell">
-        <div class="site-header-inner">
-            <a href="dashboard.php" class="brand">
-                <span class="brand-mark"><i class="fas fa-map-location-dot"></i></span>
-                <span class="brand-word"><?php echo htmlspecialchars($system_settings['platform_name']); ?><small>Rwanda · local services</small></span>
-            </a>
-
-            <nav class="main-nav">
-                <?php foreach ($navLinks as $nl): ?>
-                    <a href="<?php echo htmlspecialchars($nl['href']); ?>" class="<?php echo !empty($nl['active']) ? 'active' : ''; ?>">
-                        <?php echo htmlspecialchars($nl['label']); ?>
-                    </a>
-                <?php endforeach; ?>
-            </nav>
-
-            <div class="header-actions">
-                <a href="favorites.php" class="header-icon-btn" title="Favorites"><i class="fas fa-heart"></i></a>
-                <a href="messages.php" class="header-icon-btn" title="Messages"><i class="fas fa-comment-dots"></i></a>
-                <a href="notifications.php" class="header-icon-btn" title="Notifications"><i class="fas fa-bell"></i><span class="ping"></span></a>
-
-                <div class="user-menu" id="userMenu">
-                    <button class="user-menu-btn" id="userMenuBtn" type="button">
-                        <span class="user-menu-avatar"><?php echo htmlspecialchars($headerClientInitial); ?></span>
-                        <span class="user-menu-name"><?php echo htmlspecialchars($headerClientName); ?></span>
-                        <i class="fas fa-chevron-down chev"></i>
-                    </button>
-                    <div class="user-menu-dropdown">
-                        <a href="profile.php"><i class="fas fa-user"></i> My profile</a>
-                        <a href="my-bookings.php"><i class="fas fa-calendar-check"></i> My bookings</a>
-                        <a href="settings.php"><i class="fas fa-gear"></i> Settings</a>
-                        <div class="divider"></div>
-                        <a href="../logout.php" class="logout"><i class="fas fa-arrow-right-from-bracket"></i> Log out</a>
-                    </div>
-                </div>
-
-                <button class="mobile-nav-toggle" id="mobileNavToggle" type="button"><i class="fas fa-bars"></i></button>
-            </div>
-        </div>
-
-        <nav class="mobile-nav-panel" id="mobileNavPanel">
-            <?php foreach ($navLinks as $nl): ?>
-                <a href="<?php echo htmlspecialchars($nl['href']); ?>" class="<?php echo !empty($nl['active']) ? 'active' : ''; ?>">
-                    <i class="fas <?php echo htmlspecialchars($nl['icon']); ?>"></i> <?php echo htmlspecialchars($nl['label']); ?>
-                </a>
-            <?php endforeach; ?>
-            <a href="profile.php"><i class="fas fa-user"></i> My profile</a>
-            <a href="settings.php"><i class="fas fa-gear"></i> Settings</a>
-            <a href="../logout.php" style="color:var(--danger);"><i class="fas fa-arrow-right-from-bracket"></i> Log out</a>
-        </nav>
-    </header>
+<?php client_header_render_markup('my-bookings.php'); ?>
 
     <!-- Main Content -->
     <div class="main-content">
@@ -1994,39 +1936,6 @@ $navLinks = [
     <!-- Bootstrap JS -->
     <script src="../bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Sidebar collapse toggle
-        const sidebarToggle = document.getElementById('sidebarToggle');
-        const clientSidebar = document.getElementById('clientSidebar');
-        
-        if (sidebarToggle && clientSidebar) {
-            // Load sidebar state from localStorage
-            const sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-            if (sidebarCollapsed) {
-                clientSidebar.classList.add('collapsed');
-            }
-            
-            // Toggle sidebar on button click
-            sidebarToggle.addEventListener('click', () => {
-                clientSidebar.classList.toggle('collapsed');
-                localStorage.setItem('sidebarCollapsed', clientSidebar.classList.contains('collapsed'));
-            });
-        }
-
-        // Mobile sidebar toggle
-        const mobileToggle = document.getElementById('mobileToggle');
-        const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('overlay');
-        
-        mobileToggle.addEventListener('click', () => {
-            sidebar.classList.toggle('mobile-open');
-            overlay.classList.toggle('active');
-        });
-        
-        overlay.addEventListener('click', () => {
-            sidebar.classList.remove('mobile-open');
-            overlay.classList.remove('active');
-        });
-        
         // Auto-dismiss alerts after 5 seconds
         setTimeout(() => {
             const alerts = document.querySelectorAll('.alert');
@@ -2145,6 +2054,7 @@ $navLinks = [
                 }
             });
         });
+    <?php client_header_render_scripts(); ?>
     </script>
     <!-- Booking Modal HTML -->
     <div class="booking-modal" id="bookingModal">

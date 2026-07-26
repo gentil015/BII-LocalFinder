@@ -1022,7 +1022,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['final_submit'])) {
         ::-webkit-scrollbar-thumb { background: rgba(185,130,46,.25); border-radius: 3px; }
     </style>
     <!-- Shared User Behavior Tracking -->
-    <?php include __DIR__ . '/../includes/user_behavior_tracking.php'; ?>
+    
 </head>
 <body>
 
