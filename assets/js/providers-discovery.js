@@ -102,11 +102,13 @@
    * for the current logged-in client and returns { success, is_favorite }.
    * Adjust FAVORITE_ENDPOINT to match your existing toggle-favorite route.
    */
-  const FAVORITE_ENDPOINT = '/bii_localfinder/client/ajax/toggle_favorite.php';
+  const FAVORITE_ENDPOINT = '../api/toggle_favorite.php';
 
   function initFavoriteButtons(root) {
     root.querySelectorAll('[data-fav-btn]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
+      btn.addEventListener('click', async (event) => {
+        event.stopPropagation();
+
         const providerId = btn.dataset.providerId;
         if (!providerId || btn.disabled) return;
         btn.disabled = true;

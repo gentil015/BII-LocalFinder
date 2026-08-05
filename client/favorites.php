@@ -3,8 +3,8 @@ session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once __DIR__ . '/includes/client_header.php';
+require_once '../controllers/pages/client/ClientFavoritesController.php';
 
-// Check if user is logged in and is a client
 if (!isLoggedIn()) {
     redirect('login.php');
 }
@@ -14,144 +14,33 @@ if (isProvider()) {
 }
 
 $db = Database::getInstance()->getConnection();
+$controller = new ClientFavoritesController();
 
-// Load system settings
-function getSetting($db, $key, $default = '') {
-    $stmt = $db->prepare("SELECT setting_value FROM system_settings WHERE setting_key = ?");
-    $stmt->execute([$key]);
-    $result = $stmt->fetch(PDO::FETCH_COLUMN);
-    return $result !== false ? $result : $default;
-}
+$viewData = $controller->index($db, $_SESSION['user_id']);
+$client = $viewData['client'] ?? null;
+$system_settings = $viewData['system_settings'] ?? [];
+$favorite_providers = $viewData['favorite_providers'] ?? [];
+$total_favorites = $viewData['total_favorites'] ?? 0;
+$recent_favorites = $viewData['recent_favorites'] ?? [];
+$recommended_providers = $viewData['recommended_providers'] ?? [];
 
-// Get all system settings
-$system_settings = [
-    'platform_name' => getSetting($db, 'platform_name', 'BII LocalFinder'),
-    'contact_email' => getSetting($db, 'contact_email', 'support@biilocalfinder.com'),
-    'contact_phone' => getSetting($db, 'contact_phone', '+250 788 123 456'),
-    'platform_description' => getSetting($db, 'platform_description', 'Connecting clients with trusted local service providers'),
-];
+$success = '';
+$error = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_to_favorites']) || isset($_POST['remove_from_favorites']) || isset($_POST['clear_all_favorites']))) {
+    $result = $controller->handlePost($db, $_SESSION['user_id'], $_POST);
+    $success = $result['success'] ?? '';
+    $error = $result['error'] ?? '';
 
-// Get client information
-$stmt = $db->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$client = $stmt->fetch();
-
-// Check if favorites table exists, if not create it
-try {
-    $db->query("SELECT 1 FROM favorites LIMIT 1");
-} catch (Exception $e) {
-    // Create favorites table if it doesn't exist
-    $createTable = "
-        CREATE TABLE favorites (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            client_id INT NOT NULL,
-            provider_id INT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (client_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (provider_id) REFERENCES service_providers(id) ON DELETE CASCADE,
-            UNIQUE KEY unique_favorite (client_id, provider_id)
-        )
-    ";
-    $db->exec($createTable);
-}
-
-// Handle add to favorites
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_favorites'])) {
-    $provider_id = intval($_POST['provider_id']);
-    
-    try {
-        $stmt = $db->prepare("INSERT IGNORE INTO favorites (client_id, provider_id) VALUES (?, ?)");
-        $stmt->execute([$_SESSION['user_id'], $provider_id]);
-        $success = "Provider added to favorites successfully";
-    } catch (Exception $e) {
-        $error = "Failed to add provider to favorites";
+    if (!empty($success) || !empty($error)) {
+        $viewData = $controller->index($db, $_SESSION['user_id']);
+        $client = $viewData['client'] ?? null;
+        $system_settings = $viewData['system_settings'] ?? [];
+        $favorite_providers = $viewData['favorite_providers'] ?? [];
+        $total_favorites = $viewData['total_favorites'] ?? 0;
+        $recent_favorites = $viewData['recent_favorites'] ?? [];
+        $recommended_providers = $viewData['recommended_providers'] ?? [];
     }
 }
-
-// Handle remove from favorites
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['remove_from_favorites'])) {
-    $provider_id = intval($_POST['provider_id']);
-    
-    try {
-        $stmt = $db->prepare("DELETE FROM favorites WHERE client_id = ? AND provider_id = ?");
-        $stmt->execute([$_SESSION['user_id'], $provider_id]);
-        $success = "Provider removed from favorites successfully";
-    } catch (Exception $e) {
-        $error = "Failed to remove provider from favorites";
-    }
-}
-
-// Handle clear all favorites
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['clear_all_favorites'])) {
-    try {
-        $stmt = $db->prepare("DELETE FROM favorites WHERE client_id = ?");
-        $stmt->execute([$_SESSION['user_id']]);
-        $success = "All favorites cleared successfully";
-    } catch (Exception $e) {
-        $error = "Failed to clear favorites";
-    }
-}
-
-// Get favorite providers with detailed information
-$stmt = $db->prepare("
-    SELECT 
-        f.*,
-        sp.id as provider_id,
-        sp.profession,
-        sp.location,
-        sp.availability,
-        sp.hourly_rate,
-        sp.average_rating,
-        sp.total_reviews,
-        sp.experience_years,
-        sp.is_verified,
-        u.full_name as provider_name,
-        u.email as provider_email,
-        u.phone as provider_phone,
-        u.profile_image as provider_image,
-        u.is_verified as user_verified
-    FROM favorites f
-    JOIN service_providers sp ON f.provider_id = sp.id
-    JOIN users u ON sp.user_id = u.id
-    WHERE f.client_id = ?
-    ORDER BY f.created_at DESC
-");
-$stmt->execute([$_SESSION['user_id']]);
-$favorite_providers = $stmt->fetchAll();
-
-// Get total favorites count
-$total_favorites = count($favorite_providers);
-
-// Get recently added favorites (last 3)
-$recent_favorites = array_slice($favorite_providers, 0, 3);
-
-// Get recommended providers (not in favorites)
-$stmt = $db->prepare("
-    SELECT 
-        sp.id,
-        sp.profession,
-        sp.location,
-        sp.availability,
-        sp.hourly_rate,
-        sp.average_rating,
-        sp.total_reviews,
-        sp.experience_years,
-        sp.is_verified,
-        u.full_name as provider_name,
-        u.profile_image as provider_image,
-        u.is_verified as user_verified
-    FROM service_providers sp
-    JOIN users u ON sp.user_id = u.id
-    WHERE sp.id NOT IN (
-        SELECT provider_id FROM favorites WHERE client_id = ?
-    )
-    AND sp.average_rating >= 4.0
-    AND sp.is_active = 1
-    ORDER BY sp.average_rating DESC, sp.total_reviews DESC
-    LIMIT 6
-");
-$stmt->execute([$_SESSION['user_id']]);
-$recommended_providers = $stmt->fetchAll();
 ?>
 <!DOCTYPE html>
 <html lang="en">

@@ -16,9 +16,10 @@ $controller = new ClientMessagesController();
 if (isset($_GET['action']) && $_GET['action'] === 'poll') {
     header('Content-Type: application/json');
     header('Cache-Control: no-cache, no-store, must-revalidate');
-    
+
     try {
         $me = isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : 0;
+        session_write_close();
         $response = $controller->poll($db, $me, $_GET);
         echo json_encode($response);
     } catch (Throwable $e) {
@@ -39,6 +40,7 @@ if (isProvider()) {
 }
 
 $me = $_SESSION['user_id'];
+session_write_close();
 
 function decodeMessageJson(string $message): string {
     $decoded = html_entity_decode($message, ENT_QUOTES, 'UTF-8');
@@ -285,6 +287,17 @@ $booking_id = $viewData['booking_id'] ?? 0;
 $messages = $viewData['messages'] ?? [];
 $otherUser = $viewData['otherUser'] ?? null;
 $bookingTimeline = $viewData['bookingTimeline'] ?? [];
+$bookingServiceId = 0;
+if ($booking_id > 0) {
+    try {
+        $bookingStmt = $db->prepare('SELECT service_id FROM bookings WHERE id = ? LIMIT 1');
+        $bookingStmt->execute([$booking_id]);
+        $bookingRow = $bookingStmt->fetch(PDO::FETCH_ASSOC);
+        $bookingServiceId = (int) ($bookingRow['service_id'] ?? 0);
+    } catch (Throwable $e) {
+        $bookingServiceId = 0;
+    }
+}
 
 /* ── Header nav (shared "Market Ledger" shell used across client pages) ── */
 $headerClientName = '';
@@ -1572,6 +1585,25 @@ $navLinks = [
                 </div>
             <?php endif; ?>
 
+            <?php if ($booking_id > 0): ?>
+                <div class="negotiation-shell" id="negotiationShell" style="margin: 0 1rem 0.75rem; padding: 0.9rem 1rem; border: 1px solid rgba(37, 99, 235, 0.16); border-radius: 12px; background: linear-gradient(135deg, rgba(255,255,255,0.97), rgba(239,246,255,0.95)); box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.65rem; flex-wrap:wrap;">
+                        <div style="font-weight:700; color:var(--accent, #2563eb);"><i class="fas fa-handshake"></i> Structured negotiation</div>
+                        <div style="font-size:0.8rem; color:var(--text-muted, #64748b);">Offer · Counter-offer · Agreement</div>
+                    </div>
+                    <div id="negotiationStatusContainer" style="font-size:0.92rem; color:var(--text-primary, #111827);">Loading negotiation…</div>
+                    <div id="negotiationAlertContainer" style="margin-top:0.5rem;"></div>
+                    <div id="negotiationActionsContainer" style="margin-top:0.75rem; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                        <input type="hidden" id="negotiationServiceId" value="<?php echo (int) $bookingServiceId; ?>">
+                        <input type="number" id="negotiationPriceInput" min="1" step="100" placeholder="Enter price" style="flex: 1 1 180px; min-width: 140px; padding: 0.65rem 0.75rem; border: 1px solid #d1d5db; border-radius: 8px;">
+                        <button type="button" id="negotiationPrimaryActionBtn" class="btn btn-primary" style="padding:0.65rem 0.95rem; border-radius:8px; border:none; background:var(--accent, #2563eb); color:white; cursor:pointer;">Send offer</button>
+                        <button type="button" id="negotiationAcceptActionBtn" class="btn btn-success" style="display:none; padding:0.65rem 0.95rem; border-radius:8px; border:none; cursor:pointer;">Accept</button>
+                        <button type="button" id="negotiationRejectActionBtn" class="btn btn-outline-danger" style="display:none; padding:0.65rem 0.95rem; border-radius:8px; border:none; cursor:pointer;">Reject</button>
+                    </div>
+                    <div id="negotiationCardsContainer" style="margin-top:0.8rem; display:flex; flex-direction:column; gap:0.6rem;"></div>
+                </div>
+            <?php endif; ?>
+
             <div class="live-location-panel" id="liveLocationPanel" style="display:none;">
                 <div class="live-location-header">
                     <div class="live-location-title">Live Location</div>
@@ -1646,6 +1678,318 @@ $navLinks = [
 <script>
 function loadConversation(userId) {
     window.location.href = 'messages.php?with=' + userId;
+}
+
+const negotiationBookingId = <?php echo (int) $booking_id; ?>;
+const negotiationServiceId = <?php echo (int) $bookingServiceId; ?>;
+const negotiationIsProvider = <?php echo isProvider() ? 'true' : 'false'; ?>;
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function showNegotiationAlert(message, type = 'info') {
+    const container = document.getElementById('negotiationAlertContainer');
+    if (!container) return;
+    const tone = type === 'error' ? 'danger' : type;
+    container.innerHTML = '<div class="alert alert-' + tone + ' py-2 px-3 mb-0" role="alert">' + message + '</div>';
+}
+
+function setNegotiationBusy(isBusy) {
+    const button = document.getElementById('negotiationPrimaryActionBtn');
+    if (!button) return;
+    button.disabled = isBusy;
+    button.innerHTML = isBusy ? '<span class="me-2"><i class="fas fa-spinner fa-spin"></i></span>Working…' : (negotiationIsProvider ? 'Send counter-offer' : 'Send offer');
+}
+
+function renderNegotiationCards(cards) {
+    const container = document.getElementById('negotiationCardsContainer');
+    if (!container) return;
+
+    if (!Array.isArray(cards) || cards.length === 0) {
+        container.innerHTML = '<div class="text-muted small">No negotiation rounds yet.</div>';
+        return;
+    }
+
+    const html = cards.map(card => {
+        const isActive = !!card.is_active;
+        const disabled = !isActive || card.status === 'rejected' || card.status === 'expired';
+        const canAccept = isActive && card.status === 'pending' && ((negotiationIsProvider && card.type === 'offer') || (!negotiationIsProvider && card.type === 'counteroffer'));
+        const canNegotiate = isActive && card.status !== 'accepted';
+        const cardTitle = card.type === 'offer' ? 'Offer' : 'Counter-offer';
+        const actorLabel = card.type === 'offer' ? 'Client offer' : 'Provider counter-offer';
+        const statusLabel = card.status === 'accepted' ? 'Accepted' : card.status === 'pending' ? 'Pending' : card.status;
+        const notice = card.status === 'accepted'
+            ? '<div class="small text-success" style="margin-top:0.35rem;">The other party accepted this price. You can start booking or cancel this negotiation.</div>'
+            : (!isActive ? '<div class="small text-muted" style="margin-top:0.35rem;">Older negotiation round · the latest card is active now.</div>' : '');
+        const actionButtons = card.status === 'accepted'
+            ? '<button type="button" class="btn btn-sm btn-success" data-negotiation-action="booking">Start booking</button>' +
+              '<button type="button" class="btn btn-sm btn-outline-danger" data-negotiation-action="cancel">Cancel</button>'
+            : '<button type="button" class="btn btn-sm btn-outline-primary" data-negotiation-action="negotiate" data-price="' + Number(card.price || 0) + '" ' + (canNegotiate ? '' : 'disabled') + '>Negotiate</button>' +
+              '<button type="button" class="btn btn-sm btn-success" data-negotiation-action="accept" data-action-type="' + (card.type === 'offer' ? 'accept_offer' : 'accept_counteroffer') + '" data-id="' + escapeHtml(card.type === 'offer' ? card.offer_id : card.id) + '" ' + (canAccept ? '' : 'disabled') + '>Accept offer</button>';
+
+        return '<div class="negotiation-card" style="border:1px solid ' + (isActive ? '#93c5fd' : '#e5e7eb') + '; border-radius:10px; padding:0.7rem 0.8rem; background:' + (isActive ? '#f8fbff' : '#f9fafb') + '; opacity:' + (disabled ? '0.7' : '1') + ';">' +
+            '<div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap;">' +
+            '<div><strong>' + escapeHtml(cardTitle) + '</strong><div class="small text-muted">' + escapeHtml(actorLabel) + ' · Round ' + escapeHtml(card.round || 1) + '</div></div>' +
+            '<span class="badge" style="background:' + (card.status === 'accepted' ? '#dcfce7' : card.status === 'pending' ? '#dbeafe' : '#f3f4f6') + '; color:' + (card.status === 'accepted' ? '#166534' : card.status === 'pending' ? '#1d4ed8' : '#374151') + '; padding:0.25rem 0.5rem; border-radius:999px;">' + escapeHtml(statusLabel) + '</span>' +
+            '</div>' +
+            '<div style="margin-top:0.45rem; font-weight:700; color:var(--text-primary, #111827);">RWF ' + Number(card.price || 0).toLocaleString() + '</div>' +
+            notice +
+            '<div style="margin-top:0.55rem; display:flex; gap:0.45rem; flex-wrap:wrap;">' + actionButtons +
+            '</div>' +
+            '</div>';
+    }).join('');
+
+    container.innerHTML = html;
+}
+
+function renderNegotiationStatus(status) {
+    const container = document.getElementById('negotiationStatusContainer');
+    const primaryButton = document.getElementById('negotiationPrimaryActionBtn');
+    if (!container) return;
+
+    if (!status || !status.success) {
+        container.innerHTML = '<span class="text-muted">Negotiation unavailable right now.</span>';
+        if (primaryButton) primaryButton.textContent = 'Send offer';
+        renderNegotiationCards([]);
+        return;
+    }
+
+    const data = status.status || {};
+    const cards = Array.isArray(status.cards) ? status.cards : [];
+    const state = data.status || 'no_offer';
+    const acceptBtn = document.getElementById('negotiationAcceptActionBtn');
+    const rejectBtn = document.getElementById('negotiationRejectActionBtn');
+
+    if (acceptBtn) acceptBtn.style.display = 'none';
+    if (rejectBtn) rejectBtn.style.display = 'none';
+
+    if (state === 'finalized') {
+        container.innerHTML = '<div style="display:flex; flex-direction:column; gap:0.25rem;"><strong>Agreement locked</strong><span>Final price: <strong>RWF ' + Number(data.finalized_price || 0).toLocaleString() + '</strong></span><small>Negotiation complete.</small></div>';
+        if (primaryButton) {
+            primaryButton.textContent = 'Negotiation complete';
+            primaryButton.disabled = true;
+        }
+        renderNegotiationCards(cards);
+        return;
+    }
+
+    if (state === 'counter_pending') {
+        container.innerHTML = '<div style="display:flex; flex-direction:column; gap:0.25rem;"><strong>Counter-offer waiting</strong><span>Proposed price: <strong>RWF ' + Number(data.proposed_price || 0).toLocaleString() + '</strong></span><small>Review and respond in the next step.</small></div>';
+        if (primaryButton) {
+            primaryButton.textContent = negotiationIsProvider ? 'Send new counter-offer' : 'Send counter-offer';
+            primaryButton.disabled = false;
+        }
+        if (!negotiationIsProvider && data.counteroffer_id) {
+            if (acceptBtn) {
+                acceptBtn.style.display = 'inline-flex';
+                acceptBtn.onclick = function() { submitNegotiationDecision('accept_counteroffer', data.counteroffer_id); };
+            }
+            if (rejectBtn) {
+                rejectBtn.style.display = 'inline-flex';
+                rejectBtn.onclick = function() { submitNegotiationDecision('reject_counteroffer', data.counteroffer_id); };
+            }
+        }
+        renderNegotiationCards(cards);
+        return;
+    }
+
+    if (state === 'offer_pending') {
+        container.innerHTML = '<div style="display:flex; flex-direction:column; gap:0.25rem;"><strong>Offer sent</strong><span>Current offer: <strong>RWF ' + Number(data.offered_price || 0).toLocaleString() + '</strong></span><small>Waiting for the other party to respond.</small></div>';
+        if (primaryButton) {
+            primaryButton.textContent = negotiationIsProvider ? 'Send counter-offer' : 'Send counter-offer';
+            primaryButton.disabled = false;
+        }
+        if (negotiationIsProvider && data.offer_id) {
+            if (acceptBtn) {
+                acceptBtn.style.display = 'inline-flex';
+                acceptBtn.onclick = function() { submitNegotiationDecision('accept_offer', data.offer_id); };
+            }
+            if (rejectBtn) {
+                rejectBtn.style.display = 'inline-flex';
+                rejectBtn.onclick = function() { submitNegotiationDecision('reject_offer', data.offer_id); };
+            }
+        }
+        renderNegotiationCards(cards);
+        return;
+    }
+
+    container.innerHTML = '<div style="display:flex; flex-direction:column; gap:0.25rem;"><strong>Start a structured negotiation</strong><span>Share an initial offer and continue until both sides agree.</span></div>';
+    if (primaryButton) {
+        primaryButton.textContent = negotiationIsProvider ? 'Send counter-offer' : 'Send offer';
+        primaryButton.disabled = false;
+    }
+    renderNegotiationCards(cards);
+}
+
+function populateNegotiationPrice(price) {
+    const priceInput = document.getElementById('negotiationPriceInput');
+    if (priceInput) {
+        priceInput.value = price;
+        priceInput.focus();
+    }
+}
+
+function submitBookingStart() {
+    const formData = new FormData();
+    formData.append('action', 'start_booking');
+    formData.append('booking_id', negotiationBookingId);
+    const priceInput = document.getElementById('negotiationPriceInput');
+    if (priceInput && Number(priceInput.value) > 0) {
+        formData.append('final_price', priceInput.value);
+    }
+
+    fetch('../api/service_offers.php', {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showNegotiationAlert(data.message || 'Booking started successfully.', 'success');
+                if (data.redirect_url) {
+                    window.location.href = data.redirect_url;
+                } else {
+                    refreshNegotiationStatus();
+                }
+            } else {
+                showNegotiationAlert(data.message || 'Unable to start the booking.', 'error');
+            }
+        })
+        .catch(() => showNegotiationAlert('Could not start the booking.', 'error'));
+}
+
+function handleNegotiationCardAction(action, detail) {
+    if (action === 'negotiate') {
+        populateNegotiationPrice(detail.price || 0);
+        showNegotiationAlert('The latest negotiation card is ready for a new offer. Adjust the price and send it.', 'info');
+        return;
+    }
+
+    if (action === 'accept') {
+        submitNegotiationDecision(detail.type, Number(detail.id));
+        return;
+    }
+
+    if (action === 'booking') {
+        submitBookingStart();
+        return;
+    }
+
+    if (action === 'cancel') {
+        showNegotiationAlert('Negotiation was cancelled for this round.', 'info');
+    }
+}
+
+function refreshNegotiationStatus() {
+    if (!negotiationBookingId) return;
+    const formData = new FormData();
+    formData.append('action', 'get_status');
+    formData.append('booking_id', negotiationBookingId);
+    fetch('../api/service_offers.php', {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+        .then(r => r.json())
+        .then(data => renderNegotiationStatus(data))
+        .catch(() => renderNegotiationStatus({ success: false }));
+}
+
+function submitNegotiation() {
+    if (!negotiationBookingId) return;
+    const priceInput = document.getElementById('negotiationPriceInput');
+    const serviceIdInput = document.getElementById('negotiationServiceId');
+    const price = priceInput ? Number(priceInput.value) : 0;
+    const serviceId = serviceIdInput ? Number(serviceIdInput.value || negotiationServiceId) : negotiationServiceId;
+
+    if (!price || price <= 0) {
+        showNegotiationAlert('Enter a valid price before sending the offer.', 'error');
+        return;
+    }
+
+    setNegotiationBusy(true);
+    const formData = new FormData();
+    formData.append('action', negotiationIsProvider ? 'counteroffer' : 'create_offer');
+    formData.append('booking_id', negotiationBookingId);
+    formData.append('service_id', serviceId || 0);
+    formData.append('offered_price', price);
+    if (negotiationIsProvider) {
+        formData.append('proposed_price', price);
+        formData.append('notes', 'Counter-offer sent from chat');
+    }
+
+    fetch('../api/service_offers.php', {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showNegotiationAlert(negotiationIsProvider ? 'Counter-offer sent successfully.' : 'Offer sent successfully. The other party can now accept or counter it.', 'success');
+                if (priceInput) priceInput.value = '';
+                refreshNegotiationStatus();
+            } else {
+                showNegotiationAlert(data.message || 'Unable to send the negotiation update.', 'error');
+            }
+        })
+        .catch(() => showNegotiationAlert('Could not submit the negotiation update.', 'error'))
+        .finally(() => setNegotiationBusy(false));
+}
+
+function submitNegotiationDecision(action, id) {
+    const formData = new FormData();
+    formData.append('action', action);
+    if (action === 'accept_offer' || action === 'reject_offer') {
+        formData.append('offer_id', id);
+    } else {
+        formData.append('counteroffer_id', id);
+    }
+    setNegotiationBusy(true);
+    fetch('../api/service_offers.php', {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showNegotiationAlert(action === 'accept_offer' || action === 'accept_counteroffer' ? 'The negotiation was accepted and locked.' : 'The negotiation was rejected.', 'success');
+                refreshNegotiationStatus();
+            } else {
+                showNegotiationAlert(data.message || 'Unable to complete the negotiation action.', 'error');
+            }
+        })
+        .catch(() => showNegotiationAlert('Could not complete the negotiation action.', 'error'))
+        .finally(() => setNegotiationBusy(false));
+}
+
+const negotiationPrimaryButton = document.getElementById('negotiationPrimaryActionBtn');
+if (negotiationPrimaryButton) {
+    negotiationPrimaryButton.addEventListener('click', submitNegotiation);
+}
+
+const negotiationCardsContainer = document.getElementById('negotiationCardsContainer');
+if (negotiationCardsContainer) {
+    negotiationCardsContainer.addEventListener('click', function(event) {
+        const button = event.target.closest('[data-negotiation-action]');
+        if (!button) return;
+        const action = button.getAttribute('data-negotiation-action');
+        if (action === 'negotiate') {
+            handleNegotiationCardAction(action, { price: button.getAttribute('data-price') });
+            return;
+        }
+        handleNegotiationCardAction(action, {
+            type: button.getAttribute('data-action-type'),
+            id: button.getAttribute('data-id')
+        });
+    });
+}
+
+if (negotiationBookingId) {
+    refreshNegotiationStatus();
 }
 
 // Auto-scroll to bottom on load
@@ -1898,8 +2242,9 @@ document.getElementById('searchInput')?.addEventListener('input', function(e) {
 // AJAX send message (no redirect)
 const messageForm = document.getElementById('messageForm');
 if (messageForm) {
+    let isSubmitting = false;
+
     messageForm.addEventListener('submit', function(event) {
-        // If we're recording, clicking send should stop + send the voice note.
         if (isRecording) {
             event.preventDefault();
             stopRecordingAndSend();
@@ -1907,36 +2252,60 @@ if (messageForm) {
         }
 
         event.preventDefault();
+        if (isSubmitting) return;
+
         const formData = new FormData(messageForm);
         const messageText = (formData.get('message') || '').trim();
         const attachmentFile = formData.get('attachment');
-        
+
         if (!messageText && (!attachmentFile || attachmentFile.size === 0)) return;
 
-        // Validate file size client-side
         if (attachmentFile && attachmentFile.size > 0) {
-            const maxSizeAudio = 10 * 1024 * 1024; // 10MB
-            const maxSizeImage = 5 * 1024 * 1024;  // 5MB
-            const maxSizeDoc = 5 * 1024 * 1024;    // 5MB
+            const maxSizeAudio = 10 * 1024 * 1024;
+            const maxSizeImage = 5 * 1024 * 1024;
+            const maxSizeDoc = 5 * 1024 * 1024;
             const filename = attachmentFile.name.toLowerCase();
             let maxSize = maxSizeDoc;
-            
+
             if (/\.(webm|ogg|mp3|wav)$/i.test(filename)) {
                 maxSize = maxSizeAudio;
             } else if (/\.(jpg|jpeg|png|gif)$/i.test(filename)) {
                 maxSize = maxSizeImage;
             }
-            
+
             if (attachmentFile.size > maxSize) {
                 alert('File is too large. Maximum size: ' + (maxSize / (1024 * 1024)).toFixed(1) + 'MB');
                 return;
             }
         }
 
+        const submitButton = messageForm.querySelector('button[type="submit"], .send-btn');
+        if (submitButton) submitButton.disabled = true;
+        isSubmitting = true;
+
+        const messagesArea = document.getElementById('messagesArea');
+        const pendingGroup = document.createElement('div');
+        pendingGroup.className = 'message-group pending-message';
+        pendingGroup.setAttribute('data-message-id', 'pending-' + Date.now());
+        pendingGroup.innerHTML = `
+            <div class="message sent">
+                <div class="message-bubble" style="opacity: 0.8;">
+                    ${messageText.replace(/\n/g,'<br>')}
+                    <div style="font-size: 0.8rem; margin-top: 0.4rem; opacity: 0.8;"><i class="fas fa-spinner fa-spin"></i> Sending…</div>
+                </div>
+            </div>
+            <div class="message-time">${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+        `;
+        if (messagesArea) {
+            messagesArea.appendChild(pendingGroup);
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+        }
+
         fetch(window.location.href, {
             method: 'POST',
             headers: {
-                'X-Requested-With': 'XMLHttpRequest'
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
             },
             body: formData
         })
@@ -1947,8 +2316,21 @@ if (messageForm) {
         .then(data => {
             if (data.success) {
                 const messagesArea = document.getElementById('messagesArea');
+                if (!messagesArea) return;
+
+                const pendingNode = messagesArea.querySelector('.pending-message:last-child');
+                if (pendingNode) {
+                    pendingNode.remove();
+                }
+
                 const group = document.createElement('div');
                 group.className = 'message-group';
+                const messageId = data.message && data.message.id ? parseInt(data.message.id, 10) : 0;
+                if (messageId) {
+                    group.setAttribute('data-message-id', messageId);
+                } else {
+                    group.setAttribute('data-message-id', 'pending-' + Date.now());
+                }
 
                 let attachmentHtml = '';
                 let voiceBadgeHtml = '';
@@ -1981,11 +2363,21 @@ if (messageForm) {
                 `;
                 messagesArea.appendChild(group);
                 messagesArea.scrollTop = messagesArea.scrollHeight;
+                if (messageId) {
+                    lastMessageId = Math.max(lastMessageId, messageId);
+                }
+                if (typeof updateConversationPreview === 'function') {
+                    updateConversationPreview(pollUser, messageText || '📎 Attachment');
+                }
                 messageForm.querySelector('input[name="message"]').value = '';
                 messageForm.querySelector('input[name="attachment"]').value = '';
             }
         })
-        .catch(console.error);
+        .catch(console.error)
+        .finally(() => {
+            isSubmitting = false;
+            if (submitButton) submitButton.disabled = false;
+        });
     });
 }
 
@@ -2325,8 +2717,8 @@ if (pollUser) {
     // Initial poll immediately
     pollForNewMessages();
     
-    // Then poll every 2 seconds for new messages
-    pollInterval = setInterval(pollForNewMessages, 2000);
+    // Then poll every second for near-instant replies
+    pollInterval = setInterval(pollForNewMessages, 1000);
     
     // Clean up polling when user leaves the page
     window.addEventListener('beforeunload', () => {

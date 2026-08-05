@@ -100,12 +100,14 @@ class ClientMessagesService
         }
 
         $success = false;
+        $messageId = 0;
         if (empty($errors)) {
-            $result = sendMessage($userId, $receiverId, $msg, $attachmentPath, $attachmentType, $messageType);
+            $result = sendMessage($userId, $receiverId, $msg, $attachmentPath, $attachmentType, $messageType, true);
             $success = $result !== false;
+            $messageId = is_numeric($result) ? (int) $result : 0;
 
             if ($success) {
-                $this->maybeNotifyProvider($db, $userId, $receiverId, $bookingId, $msg);
+                $this->sendNotificationInBackground($db, $userId, $receiverId, $bookingId, $msg);
             } else {
                 $errors[] = 'Failed to send message.';
             }
@@ -114,6 +116,7 @@ class ClientMessagesService
         $messageData = null;
         if ($success) {
             $messageData = [
+                'id' => $messageId,
                 'sender_id' => $userId,
                 'receiver_id' => $receiverId,
                 'message' => $msg,
@@ -131,6 +134,24 @@ class ClientMessagesService
             'is_ajax' => $isAjax,
             'redirect' => 'messages.php?with=' . $receiverId . ($bookingId ? '&booking_id=' . $bookingId : ''),
         ];
+    }
+
+    private function sendNotificationInBackground(PDO $db, int $senderId, int $receiverId, int $bookingId, string $msg): void
+    {
+        try {
+            ignore_user_abort(true);
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            } else {
+                while (ob_get_level() > 0) {
+                    ob_end_flush();
+                }
+                flush();
+            }
+            $this->maybeNotifyProvider($db, $senderId, $receiverId, $bookingId, $msg);
+        } catch (Throwable $e) {
+            error_log('Client chat notification error: ' . $e->getMessage());
+        }
     }
 
     private function maybeNotifyProvider(PDO $db, int $senderId, int $receiverId, int $bookingId, string $msg): void

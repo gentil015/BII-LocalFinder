@@ -101,6 +101,7 @@ class ProviderMessagesService
 
         $success = false;
         $messageData = null;
+        $messageId = 0;
 
         if (empty($errors) && $provider !== null) {
             if ($messageType === 'service_offer' && isset($post['offer_service_id'])) {
@@ -120,9 +121,10 @@ class ProviderMessagesService
                         'service_id' => $serviceId,
                     ]);
 
-                    $result = sendMessage($userId, $receiverId, $offerData, null, null, 'service_offer');
+                    $result = sendMessage($userId, $receiverId, $offerData, null, null, 'service_offer', true);
                     $success = $result !== false;
-                    $messageData = $this->buildResponseMessage($userId, $receiverId, $offerData, null, null, 'service_offer');
+                    $messageId = is_numeric($result) ? (int) $result : 0;
+                    $messageData = $this->buildResponseMessage($userId, $receiverId, $offerData, null, null, 'service_offer', $messageId);
                 }
             } elseif ($messageType === 'service' && isset($post['service_id'])) {
                 $serviceId = intval($post['service_id']);
@@ -138,16 +140,18 @@ class ProviderMessagesService
                         'service_id' => $serviceId,
                     ]);
 
-                    $result = sendMessage($userId, $receiverId, $serviceData, null, null, 'service');
+                    $result = sendMessage($userId, $receiverId, $serviceData, null, null, 'service', true);
                     $success = $result !== false;
-                    $messageData = $this->buildResponseMessage($userId, $receiverId, $serviceData, null, null, 'service');
+                    $messageId = is_numeric($result) ? (int) $result : 0;
+                    $messageData = $this->buildResponseMessage($userId, $receiverId, $serviceData, null, null, 'service', $messageId);
                 }
             } elseif ($messageType === 'text' && $msg === '' && $attachmentPath === null) {
                 $errors[] = 'Please enter a message or attach a file.';
             } else {
-                $result = sendMessage($userId, $receiverId, $msg, $attachmentPath, $attachmentType, $messageType);
+                $result = sendMessage($userId, $receiverId, $msg, $attachmentPath, $attachmentType, $messageType, true);
                 $success = $result !== false;
-                $messageData = $this->buildResponseMessage($userId, $receiverId, $msg, $attachmentPath, $attachmentType, $messageType);
+                $messageId = is_numeric($result) ? (int) $result : 0;
+                $messageData = $this->buildResponseMessage($userId, $receiverId, $msg, $attachmentPath, $attachmentType, $messageType, $messageId);
             }
 
             if (!$success && empty($errors)) {
@@ -155,7 +159,7 @@ class ProviderMessagesService
             }
 
             if ($success && $attachmentPath === null && ($messageType === 'text' || $messageType === '')) {
-                $this->maybeNotifyRecipient($db, $userId, $receiverId, $bookingId, $msg);
+                $this->sendNotificationInBackground($db, $userId, $receiverId, $bookingId, $msg);
             }
         }
 
@@ -166,6 +170,24 @@ class ProviderMessagesService
             'is_ajax' => $isAjax,
             'redirect' => 'messages.php?with=' . $receiverId . ($bookingId ? '&booking_id=' . $bookingId : ''),
         ];
+    }
+
+    private function sendNotificationInBackground(PDO $db, int $senderId, int $receiverId, int $bookingId, string $msg): void
+    {
+        try {
+            ignore_user_abort(true);
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            } else {
+                while (ob_get_level() > 0) {
+                    ob_end_flush();
+                }
+                flush();
+            }
+            $this->maybeNotifyRecipient($db, $senderId, $receiverId, $bookingId, $msg);
+        } catch (Throwable $e) {
+            error_log('Provider chat notification error: ' . $e->getMessage());
+        }
     }
 
     private function maybeNotifyRecipient(PDO $db, int $senderId, int $receiverId, int $bookingId, string $msg): void
@@ -210,9 +232,10 @@ class ProviderMessagesService
         );
     }
 
-    private function buildResponseMessage(int $senderId, int $receiverId, ?string $message, ?string $attachmentPath, ?string $attachmentType, string $messageType): array
+    private function buildResponseMessage(int $senderId, int $receiverId, ?string $message, ?string $attachmentPath, ?string $attachmentType, string $messageType, int $messageId = 0): array
     {
         return [
+            'id' => $messageId,
             'sender_id' => $senderId,
             'receiver_id' => $receiverId,
             'message' => $message,

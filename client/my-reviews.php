@@ -3,8 +3,8 @@ session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once __DIR__ . '/includes/client_header.php';
+require_once '../controllers/pages/client/ClientReviewsController.php';
 
-// Check if user is logged in and is a client
 if (!isLoggedIn()) {
     redirect('login.php');
 }
@@ -18,246 +18,31 @@ if (isAdmin()) {
 }
 
 $db = Database::getInstance()->getConnection();
-$success = '';
-$errors = [];
+$controller = new ClientReviewsController();
 
-// Load system settings
-function getSetting($db, $key, $default = '') {
-    $stmt = $db->prepare("SELECT setting_value FROM system_settings WHERE setting_key = ?");
-    $stmt->execute([$key]);
-    $result = $stmt->fetch(PDO::FETCH_COLUMN);
-    return $result !== false ? $result : $default;
-}
-
-// Get all system settings
-$system_settings = [
-    'platform_name' => getSetting($db, 'platform_name', 'BII LocalFinder'),
-    'contact_email' => getSetting($db, 'contact_email', 'support@biilocalfinder.com'),
-    'contact_phone' => getSetting($db, 'contact_phone', '+250 788 123 456'),
-    
-    // Review and rating settings
-    'require_rating_after_completion' => getSetting($db, 'require_rating_after_completion', '0'),
-    'allow_review_editing' => getSetting($db, 'allow_review_editing', '1'),
-    'allow_review_deletion' => getSetting($db, 'allow_review_deletion', '1'),
-    'min_review_length' => intval(getSetting($db, 'min_review_length', '10')),
-    'max_review_length' => intval(getSetting($db, 'max_review_length', '500')),
-    
-    // Booking settings
-    'auto_cancel_unconfirmed' => getSetting($db, 'auto_cancel_unconfirmed', '1'),
-    'max_pending_time' => intval(getSetting($db, 'max_pending_time', '15')),
-];
-
-// Handle review deletion
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_review'])) {
-    if (!$system_settings['allow_review_deletion']) {
-        $errors[] = "Review deletion is currently disabled by system administrator";
-    } else {
-        $review_id = intval($_POST['review_id']);
-        
-        // Verify review belongs to client
-        $stmt = $db->prepare("SELECT provider_id FROM reviews WHERE id = ? AND client_id = ?");
-        $stmt->execute([$review_id, $_SESSION['user_id']]);
-        $review = $stmt->fetch();
-        
-        if ($review) {
-            $provider_id = $review['provider_id'];
-            
-            // Delete review
-            $stmt = $db->prepare("DELETE FROM reviews WHERE id = ?");
-            if ($stmt->execute([$review_id])) {
-                // Update provider's average rating and total reviews
-                $stmt = $db->prepare("
-                    SELECT AVG(rating) as avg_rating, COUNT(*) as total_reviews
-                    FROM reviews
-                    WHERE provider_id = ?
-                ");
-                $stmt->execute([$provider_id]);
-                $stats = $stmt->fetch();
-                
-                $avg = $stats['avg_rating'] ?? 0;
-                $total = $stats['total_reviews'] ?? 0;
-                
-                $stmt = $db->prepare("
-                    UPDATE service_providers 
-                    SET average_rating = ?, total_reviews = ?
-                    WHERE id = ?
-                ");
-                $stmt->execute([round($avg, 2), $total, $provider_id]);
-                
-                $success = "Review deleted successfully";
-                
-                // Log activity
-                logActivity($db, $_SESSION['user_id'], 'review_deleted', "Deleted review for provider #{$provider_id}");
-            } else {
-                $errors[] = "Failed to delete review";
-            }
-        } else {
-            $errors[] = "Invalid review";
-        }
-    }
-}
-
-// Handle review editing
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_review'])) {
-    if (!$system_settings['allow_review_editing']) {
-        $errors[] = "Review editing is currently disabled by system administrator";
-    } else {
-        $review_id = intval($_POST['review_id']);
-        $new_rating = intval($_POST['rating']);
-        $new_comment = sanitize($_POST['comment']);
-        
-        // Validate review length
-        if (strlen($new_comment) < $system_settings['min_review_length']) {
-            $errors[] = "Review comment must be at least {$system_settings['min_review_length']} characters";
-        } elseif (strlen($new_comment) > $system_settings['max_review_length']) {
-            $errors[] = "Review comment cannot exceed {$system_settings['max_review_length']} characters";
-        } else {
-            // Verify review belongs to client
-            $stmt = $db->prepare("SELECT provider_id FROM reviews WHERE id = ? AND client_id = ?");
-            $stmt->execute([$review_id, $_SESSION['user_id']]);
-            $review = $stmt->fetch();
-            
-            if ($review) {
-                $provider_id = $review['provider_id'];
-                
-                // Update review
-                // Only include updated_at if the column exists to avoid SQL errors on older schemas
-                try {
-                    $colStmt = $db->prepare("SHOW COLUMNS FROM reviews LIKE 'updated_at'");
-                    $colStmt->execute();
-                    $hasUpdatedAt = (bool) $colStmt->fetch();
-                } catch (Throwable $e) {
-                    $hasUpdatedAt = false;
-                }
-
-                if ($hasUpdatedAt) {
-                    $stmt = $db->prepare("UPDATE reviews SET rating = ?, comment = ?, updated_at = NOW() WHERE id = ?");
-                    $execParams = [$new_rating, $new_comment, $review_id];
-                } else {
-                    $stmt = $db->prepare("UPDATE reviews SET rating = ?, comment = ? WHERE id = ?");
-                    $execParams = [$new_rating, $new_comment, $review_id];
-                }
-
-                if ($stmt->execute($execParams)) {
-                     // Update provider's average rating
-                     $stmt = $db->prepare("
-                         SELECT AVG(rating) as avg_rating
-                         FROM reviews
-                         WHERE provider_id = ?
-                     ");
-                     $stmt->execute([$provider_id]);
-                     $avg_rating = $stmt->fetch()['avg_rating'] ?? 0;
-                     
-                     $stmt = $db->prepare("UPDATE service_providers SET average_rating = ? WHERE id = ?");
-                     $stmt->execute([round($avg_rating, 2), $provider_id]);
-                     
-                     $success = "Review updated successfully";
-                     
-                     // Log activity
-                     logActivity($db, $_SESSION['user_id'], 'review_updated', "Updated review for provider #{$provider_id}");
-                 } else {
-                     $errors[] = "Failed to update review";
-                 }
-            } else {
-                $errors[] = "Invalid review";
-            }
-        }
-    }
-}
-
-// Get filter parameters
 $rating_filter = isset($_GET['rating']) ? intval($_GET['rating']) : 0;
 $sort = isset($_GET['sort']) ? sanitize($_GET['sort']) : 'recent';
 
-// Build query
-$sql = "
-    SELECT r.*, 
-           sp.profession, sp.location, sp.average_rating as provider_rating,
-           u.full_name as provider_name, u.profile_image as provider_image
-    FROM reviews r
-    JOIN service_providers sp ON r.provider_id = sp.id
-    JOIN users u ON sp.user_id = u.id
-    WHERE r.client_id = ?
-";
+$viewData = $controller->index($db, $_SESSION['user_id'], $rating_filter, $sort);
+$system_settings = $viewData['system_settings'] ?? [];
+$reviews = $viewData['reviews'] ?? [];
+$stats = $viewData['stats'] ?? ['total' => 0, 'avg_rating' => 0, 'five_star' => 0, 'four_star' => 0, 'three_star' => 0, 'two_star' => 0, 'one_star' => 0];
+$pending_reviews = $viewData['pending_reviews'] ?? [];
 
-$params = [$_SESSION['user_id']];
+$success = '';
+$errors = [];
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['delete_review']) || isset($_POST['edit_review']))) {
+    $result = $controller->handlePost($db, $_SESSION['user_id'], $_POST, $system_settings);
+    $success = $result['success'] ?? '';
+    $errors = $result['errors'] ?? [];
 
-if ($rating_filter > 0) {
-    $sql .= " AND r.rating = ?";
-    $params[] = $rating_filter;
-}
-
-// Sorting
-switch ($sort) {
-    case 'oldest':
-        $sql .= " ORDER BY r.created_at ASC";
-        break;
-    case 'highest':
-        $sql .= " ORDER BY r.rating DESC, r.created_at DESC";
-        break;
-    case 'lowest':
-        $sql .= " ORDER BY r.rating ASC, r.created_at DESC";
-        break;
-    default: // recent
-        $sql .= " ORDER BY r.created_at DESC";
-}
-
-$stmt = $db->prepare($sql);
-$stmt->execute($params);
-$reviews = $stmt->fetchAll();
-
-// Get statistics
-$stats_sql = "
-    SELECT 
-        COUNT(*) as total,
-        AVG(rating) as avg_rating,
-        SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END) as five_star,
-        SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END) as four_star,
-        SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END) as three_star,
-        SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END) as two_star,
-        SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) as one_star
-    FROM reviews
-    WHERE client_id = ?
-";
-$stats_stmt = $db->prepare($stats_sql);
-$stats_stmt->execute([$_SESSION['user_id']]);
-$stats = $stats_stmt->fetch();
-
-// Get pending reviews (bookings that need reviews)
-try {
-    // detect an appropriate timestamp column to sort by (avoid missing completed_at)
-    $cols = $db->query("SHOW COLUMNS FROM bookings")->fetchAll(PDO::FETCH_COLUMN);
-    if (in_array('completed_at', $cols, true)) {
-        $orderCol = 'completed_at';
-    } elseif (in_array('updated_at', $cols, true)) {
-        $orderCol = 'updated_at';
-    } elseif (in_array('preferred_date', $cols, true)) {
-        $orderCol = 'preferred_date';
-    } else {
-        $orderCol = 'created_at';
+    if (!empty($success) || !empty($errors)) {
+        $viewData = $controller->index($db, $_SESSION['user_id'], $rating_filter, $sort);
+        $system_settings = $viewData['system_settings'] ?? [];
+        $reviews = $viewData['reviews'] ?? [];
+        $stats = $viewData['stats'] ?? ['total' => 0, 'avg_rating' => 0, 'five_star' => 0, 'four_star' => 0, 'three_star' => 0, 'two_star' => 0, 'one_star' => 0];
+        $pending_reviews = $viewData['pending_reviews'] ?? [];
     }
-
-   $pending_reviews_sql = "
-       SELECT b.id as booking_id, b.service_description, b.preferred_date,
-              sp.profession, u.full_name as provider_name, u.profile_image as provider_image
-       FROM bookings b
-       JOIN service_providers sp ON b.provider_id = sp.id
-       JOIN users u ON sp.user_id = u.id
-       WHERE b.client_id = ? 
-         AND b.status = 'completed'
-         AND NOT EXISTS (
-             SELECT 1 FROM reviews r 
-             WHERE r.booking_id = b.id AND r.client_id = ?
-         )
-       ORDER BY b." . $orderCol . " DESC
-       LIMIT 5
-   ";
-   $pending_reviews_stmt = $db->prepare($pending_reviews_sql);
-   $pending_reviews_stmt->execute([$_SESSION['user_id'], $_SESSION['user_id']]);
-   $pending_reviews = $pending_reviews_stmt->fetchAll();
-} catch (Throwable $e) {
-    error_log('my-reviews: failed to load pending reviews: ' . $e->getMessage());
-    $pending_reviews = [];
 }
 ?>
 <!DOCTYPE html>

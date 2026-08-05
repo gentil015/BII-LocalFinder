@@ -230,6 +230,9 @@ function renderProviderCardHtml(array $p, string $sort, string $clientLocation, 
         <div class="prov-name-row">
           <span class="prov-name"><?php echo $name; ?></span>
           <?php if ($isVerif): ?><i class="fas fa-circle-check prov-verified" title="Verified"></i><?php endif; ?>
+          <button type="button" class="prov-expand-toggle" aria-expanded="false">
+            Details <i class="fas fa-chevron-down"></i>
+          </button>
         </div>
         <div class="prov-profession"><?php echo $prof; ?></div>
 
@@ -253,6 +256,7 @@ function renderProviderCardHtml(array $p, string $sort, string $clientLocation, 
         <div class="prov-price prov-price-quote">Price on request <span>· negotiable</span></div>
         <?php endif; ?>
 
+        <div class="prov-expandable">
         <?php if ($sort === 'ml' && $displayScore > 0): ?>
         <div class="ml-bar-wrap">
           <div class="ml-bar-label">
@@ -273,6 +277,7 @@ function renderProviderCardHtml(array $p, string $sort, string $clientLocation, 
           <?php if ($isViewed): ?><span class="pers-tag viewed"><i class="fas fa-eye"></i> Viewed</span><?php endif; ?>
         </div>
         <?php endif; ?>
+        </div>
 
         <?php if ($loc): ?>
         <div class="prov-location"><i class="fas fa-location-dot"></i> <?php echo $loc; ?></div>
@@ -1044,6 +1049,22 @@ a { color: inherit; }
   }
   .btn-fav i { margin-right:.55rem; }
   .prov-compare-check { display: none; }
+  .prov-expandable { display: none; }
+  .prov-expand-toggle {
+    border:none;
+    background: transparent;
+    color: var(--moss);
+    font-size:.76rem;
+    font-weight:700;
+    display:flex;
+    align-items:center;
+    gap:.35rem;
+    cursor:pointer;
+    padding:0;
+  }
+  .prov-expand-toggle i { transition:.2s ease; }
+  .prov-card.expanded .prov-expand-toggle i { transform: rotate(180deg); }
+  .prov-card.expanded .prov-expandable { display:block; }
 }
 
 @media (max-width: 640px) {
@@ -1755,6 +1776,14 @@ function bindDynamicEvents() {
   });
 
   document.querySelectorAll('.compare-toggle').forEach(cb => cb.addEventListener('change', onCompareToggle));
+  document.querySelectorAll('.prov-expand-toggle').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const card = btn.closest('.prov-card');
+      if (!card) return;
+      const expanded = card.classList.toggle('expanded');
+      btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    });
+  });
 
   const searchForm = document.getElementById('searchForm');
   searchForm?.addEventListener('submit', e => {

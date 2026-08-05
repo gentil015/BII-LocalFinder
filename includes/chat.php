@@ -193,7 +193,7 @@ function toggleMuteChat(int $userId, int $otherId): bool
     }
 }
 
-function sendMessage(int $sender_id, int $receiver_id, string $message, string $attachment_path = null, string $attachment_type = null, string $message_type = 'text'): bool
+function sendMessage(int $sender_id, int $receiver_id, string $message, string $attachment_path = null, string $attachment_type = null, string $message_type = 'text', bool $skipTracking = false)
 {
     if (trim($message) === '' && empty($attachment_path) && $message_type === 'text') {
         return false;
@@ -202,7 +202,15 @@ function sendMessage(int $sender_id, int $receiver_id, string $message, string $
     try {
         $db = Database::getInstance()->getConnection();
 
-        ensureChatMetaTablesExist();
+        if ($attachment_path !== null || $attachment_type !== null || $message_type !== 'text') {
+            ensureChatMetaTablesExist();
+            if ($attachment_path !== null || $attachment_type !== null) {
+                ensureMessagesAttachmentColumnExists();
+            }
+            if ($message_type !== 'text') {
+                ensureMessagesAudioColumnsExist();
+            }
+        }
 
         if (isUserBlocked($receiver_id, $sender_id) || isUserBlocked($sender_id, $receiver_id)) {
             return false;
@@ -245,15 +253,16 @@ function sendMessage(int $sender_id, int $receiver_id, string $message, string $
 
         $stmt = $db->prepare($sql);
         if ($stmt->execute($params)) {
-            $messageId = $db->lastInsertId();
+            $messageId = (int) $db->lastInsertId();
 
-            // Track message sent event
-            trackEvent('send_message', 'message', $messageId, [
-                'sender_id' => $sender_id,
-                'receiver_id' => $receiver_id,
-                'message_type' => $message_type,
-                'has_attachment' => !empty($attachment_path)
-            ], $sender_id);
+            if (!$skipTracking) {
+                trackEvent('send_message', 'message', $messageId, [
+                    'sender_id' => $sender_id,
+                    'receiver_id' => $receiver_id,
+                    'message_type' => $message_type,
+                    'has_attachment' => !empty($attachment_path)
+                ], $sender_id);
+            }
 
             return $messageId;
         }

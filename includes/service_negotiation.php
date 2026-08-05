@@ -473,9 +473,10 @@ class ServiceNegotiation {
     public function getNegotiationStatus($booking_id) {
         try {
             $offer = $this->getActiveOffer($booking_id);
+            $cards = $this->getNegotiationCards($booking_id);
             
             if (!$offer) {
-                return ['status' => 'no_offer', 'message' => 'No active offer'];
+                return ['status' => 'no_offer', 'message' => 'No active offer', 'cards' => $cards];
             }
             
             if ($offer['status'] === 'accepted') {
@@ -484,7 +485,9 @@ class ServiceNegotiation {
                     'status' => 'finalized',
                     'message' => 'Price negotiation completed',
                     'finalized_price' => $finalized['finalized_price'],
-                    'rounds' => $finalized['negotiation_rounds']
+                    'rounds' => $finalized['negotiation_rounds'],
+                    'offer_id' => (int) $offer['id'],
+                    'cards' => $cards
                 ];
             }
             
@@ -498,7 +501,10 @@ class ServiceNegotiation {
                     'message' => 'Awaiting response to counter-offer',
                     'time_remaining_minutes' => $time_remaining,
                     'proposed_price' => $counteroffer['proposed_price'],
-                    'round' => $counteroffer['round_number']
+                    'round' => $counteroffer['round_number'],
+                    'offer_id' => (int) $offer['id'],
+                    'counteroffer_id' => (int) $counteroffer['id'],
+                    'cards' => $cards
                 ];
             }
             
@@ -509,11 +515,13 @@ class ServiceNegotiation {
                 'message' => 'Awaiting provider response',
                 'time_remaining_minutes' => $time_remaining,
                 'offered_price' => $offer['offered_price'],
-                'round' => $offer['round_number']
+                'round' => $offer['round_number'],
+                'offer_id' => (int) $offer['id'],
+                'cards' => $cards
             ];
         } catch (Exception $e) {
             error_log("Get negotiation status error: " . $e->getMessage());
-            return ['status' => 'error', 'message' => 'Failed to get status'];
+            return ['status' => 'error', 'message' => 'Failed to get status', 'cards' => []];
         }
     }
 }

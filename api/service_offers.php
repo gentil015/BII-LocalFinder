@@ -37,6 +37,7 @@ try {
             }
             
             $service_id = isset($_POST['service_id']) ? intval($_POST['service_id']) : 0;
+            $booking_id = isset($_POST['booking_id']) ? intval($_POST['booking_id']) : 0;
             $offered_price = isset($_POST['offered_price']) ? floatval($_POST['offered_price']) : 0;
             $notes = isset($_POST['notes']) ? sanitize($_POST['notes']) : '';
             
@@ -71,18 +72,31 @@ try {
                 throw new Exception("Price must be between RWF " . number_format($min_price, 0) . " and RWF " . number_format($max_price, 0));
             }
             
-            // Create a temporary booking record for tracking the offer
-            try {
-                $stmt = $db->prepare("
-                    INSERT INTO bookings (client_id, provider_id, service_id, service_description, preferred_date, status, created_at)
-                    VALUES (?, ?, ?, ?, NOW(), 'offer_pending', NOW())
-                ");
-                $stmt->execute([$user_id, $service_provider_id, $service_id, $notes ?: 'Price negotiation offer']);
-                $booking_id = $db->lastInsertId();
-                // start a simple chat record so conversation exists for this negotiation
-                sendMessage($user_id, $provider_user_id, "Price negotiation started (booking #" . $booking_id . ")");
-            } catch (Exception $e) {
-                throw new Exception('Failed to create booking record: ' . $e->getMessage());
+            // Reuse an existing booking when the chat already has one, otherwise create a temporary record.
+            if ($booking_id > 0) {
+                $existingBooking = $db->prepare('SELECT id FROM bookings WHERE id = ? LIMIT 1');
+                $existingBooking->execute([$booking_id]);
+                $bookingRow = $existingBooking->fetch(PDO::FETCH_ASSOC);
+                if ($bookingRow) {
+                    $booking_id = (int) $bookingRow['id'];
+                } else {
+                    $booking_id = 0;
+                }
+            }
+
+            if ($booking_id <= 0) {
+                try {
+                    $stmt = $db->prepare("
+                        INSERT INTO bookings (client_id, provider_id, service_id, service_description, preferred_date, status, created_at)
+                        VALUES (?, ?, ?, ?, NOW(), 'pending', NOW())
+                    ");
+                    $stmt->execute([$user_id, $service_provider_id, $service_id, $notes ?: 'Price negotiation offer']);
+                    $booking_id = $db->lastInsertId();
+                    // start a simple chat record so conversation exists for this negotiation
+                    sendMessage($user_id, $provider_user_id, "Price negotiation started (booking #" . $booking_id . ")");
+                } catch (Exception $e) {
+                    throw new Exception('Failed to create booking record: ' . $e->getMessage());
+                }
             }
             
             // Create the offer
@@ -134,31 +148,48 @@ try {
             echo json_encode($result);
             break;
         
-        // PROVIDER: Reject offer and send counter-offer
+        // PROVIDER or CLIENT: Send a counter-offer for an existing offer
         case 'counteroffer':
-            if (!isProvider()) {
-                throw new Exception('Only providers can send counter-offers');
-            }
-            
             $offer_id = isset($_POST['offer_id']) ? intval($_POST['offer_id']) : 0;
+            $booking_id = isset($_POST['booking_id']) ? intval($_POST['booking_id']) : 0;
             $service_id = isset($_POST['service_id']) ? intval($_POST['service_id']) : 0;
             $proposed_price = isset($_POST['proposed_price']) ? floatval($_POST['proposed_price']) : 0;
             $notes = isset($_POST['notes']) ? sanitize($_POST['notes']) : '';
             
-            if (!$offer_id || !$service_id || $proposed_price <= 0) {
+            if (!$service_id || $proposed_price <= 0) {
                 throw new Exception('Missing or invalid required fields');
             }
+
+            if ($offer_id <= 0 && $booking_id > 0) {
+                $stmt = $db->prepare("SELECT id, client_id, provider_id FROM service_offers WHERE booking_id = ? ORDER BY created_at DESC LIMIT 1");
+                $stmt->execute([$booking_id]);
+                $offer = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($offer) {
+                    $offer_id = (int) $offer['id'];
+                }
+            }
+
+            if ($offer_id <= 0) {
+                throw new Exception('Offer not found');
+            }
             
-            // Verify offer
-            $stmt = $db->prepare("SELECT client_id FROM service_offers WHERE id = ? AND provider_id = ?");
-            $stmt->execute([$offer_id, $user_id]);
-            $offer = $stmt->fetch();
+            // Verify offer and determine actor role.
+            $stmt = $db->prepare("SELECT client_id, provider_id FROM service_offers WHERE id = ? LIMIT 1");
+            $stmt->execute([$offer_id]);
+            $offer = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if (!$offer) {
                 throw new Exception('Offer not found');
             }
-            
-            $result = $negotiation->createCounterOffer($offer_id, $service_id, $user_id, $offer['client_id'], $proposed_price, $notes);
+
+            if (isProvider()) {
+                if ((int) $offer['provider_id'] !== $user_id) {
+                    throw new Exception('Offer not found');
+                }
+                $result = $negotiation->createCounterOffer($offer_id, $service_id, $user_id, (int) $offer['client_id'], $proposed_price, $notes);
+            } else {
+                $result = $negotiation->createCounterOffer($offer_id, $service_id, (int) $offer['provider_id'], $user_id, $proposed_price, $notes);
+            }
             
             if (!$result['success']) {
                 throw new Exception($result['message']);
@@ -232,6 +263,53 @@ try {
             echo json_encode($result);
             break;
         
+        case 'start_booking':
+            $booking_id = isset($_POST['booking_id']) ? intval($_POST['booking_id']) : 0;
+            $final_price = isset($_POST['final_price']) ? floatval($_POST['final_price']) : 0;
+
+            if (!$booking_id) {
+                throw new Exception('Booking ID required');
+            }
+
+            $stmt = $db->prepare("SELECT b.id, b.client_id, b.provider_id, b.status, b.amount, sp.user_id AS provider_user_id FROM bookings b JOIN service_providers sp ON b.provider_id = sp.id WHERE b.id = ? LIMIT 1");
+            $stmt->execute([$booking_id]);
+            $booking = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$booking) {
+                throw new Exception('Booking not found');
+            }
+
+            if ((int) $booking['client_id'] !== $user_id && (int) $booking['provider_user_id'] !== $user_id) {
+                throw new Exception('Access denied');
+            }
+
+            if (in_array($booking['status'], ['confirmed', 'completed', 'cancelled'], true)) {
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Booking already confirmed',
+                    'booking_id' => (int) $booking_id,
+                    'status' => $booking['status']
+                ]);
+                break;
+            }
+
+            $amount = $final_price > 0 ? $final_price : ((float) ($booking['amount'] ?? 0));
+            $updateStmt = $db->prepare("UPDATE bookings SET status = 'confirmed', amount = ?, responded_at = NOW() WHERE id = ?");
+            $updateStmt->execute([$amount, $booking_id]);
+
+            $recipientId = (int) $booking['client_id'] === $user_id ? (int) $booking['provider_user_id'] : (int) $booking['client_id'];
+            if ($recipientId > 0) {
+                sendMessage($user_id, $recipientId, 'Booking started for negotiation #' . $booking_id . ' at RWF ' . number_format($amount, 0));
+            }
+
+            echo json_encode([
+                'success' => true,
+                'message' => 'Booking started successfully',
+                'booking_id' => (int) $booking_id,
+                'redirect_url' => '../client/booking-details.php?id=' . (int) $booking_id
+            ]);
+            break;
+
         // GET: Negotiation status
         case 'get_status':
             $booking_id = isset($_POST['booking_id']) ? intval($_POST['booking_id']) : 0;
@@ -241,10 +319,12 @@ try {
             }
             
             $status = $negotiation->getNegotiationStatus($booking_id);
+            $cards = $negotiation->getNegotiationCards($booking_id);
             
             echo json_encode([
                 'success' => true,
-                'status' => $status
+                'status' => $status,
+                'cards' => $cards
             ]);
             break;
         

@@ -4,8 +4,8 @@ require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once __DIR__ . '/includes/client_header.php';
 require_once '../includes/mailer.php';
+require_once '../controllers/pages/client/ClientWriteReviewController.php';
 
-// Check if user is logged in and is a client
 if (!isLoggedIn()) {
     redirect('../login.php');
 }
@@ -15,244 +15,49 @@ if (isProvider()) {
 }
 
 $db = Database::getInstance()->getConnection();
-$success = '';
-$errors = [];
+$controller = new ClientWriteReviewController();
 
-// Load system settings
-function getSetting($db, $key, $default = '') {
-    $stmt = $db->prepare("SELECT setting_value FROM system_settings WHERE setting_key = ?");
-    $stmt->execute([$key]);
-    $result = $stmt->fetch(PDO::FETCH_COLUMN);
-    return $result !== false ? $result : $default;
-}
-
-// Get all system settings
-$system_settings = [
-    'platform_name' => getSetting($db, 'platform_name', 'BII LocalFinder'),
-    'contact_email' => getSetting($db, 'contact_email', 'support@biilocalfinder.com'),
-    'contact_phone' => getSetting($db, 'contact_phone', '+250 788 123 456'),
-    
-    // Review system settings
-    'require_rating_after_completion' => getSetting($db, 'require_rating_after_completion', '0'),
-    'allow_review_editing' => getSetting($db, 'allow_review_editing', '1'),
-    'allow_review_deletion' => getSetting($db, 'allow_review_deletion', '1'),
-    'min_review_length' => intval(getSetting($db, 'min_review_length', '10')),
-    'max_review_length' => intval(getSetting($db, 'max_review_length', '1000')),
-    
-    // Notification settings
-    'enable_email_notifications' => getSetting($db, 'enable_email_notifications', '1'),
-    'enable_sms_notifications' => getSetting($db, 'enable_sms_notifications', '0'),
-    
-    // Booking settings
-    'auto_cancel_unconfirmed' => getSetting($db, 'auto_cancel_unconfirmed', '1'),
-];
-
-// Get provider ID from query string
 $provider_id = isset($_GET['provider_id']) ? intval($_GET['provider_id']) : 0;
 $booking_id = isset($_GET['booking_id']) ? intval($_GET['booking_id']) : 0;
+$success = '';
+$errors = [];
 
 if (!$provider_id) {
     redirect('client/home.php');
 }
 
-// Get provider details
-$stmt = $db->prepare("
-    SELECT sp.*, u.full_name, u.profile_image, u.email, u.phone
-    FROM service_providers sp
-    JOIN users u ON sp.user_id = u.id
-    WHERE sp.id = ?
-");
-$stmt->execute([$provider_id]);
-$provider = $stmt->fetch();
+$viewModel = $controller->index($db, $_SESSION['user_id'], $provider_id, $booking_id);
+$system_settings = $viewModel['system_settings'] ?? [];
+$provider = $viewModel['provider'] ?? null;
+$booking = $viewModel['booking'] ?? null;
+$existing_reviews = $viewModel['existing_reviews'] ?? [];
+$existing_review = $viewModel['existing_review'] ?? null;
+$is_review_mandatory = $viewModel['is_review_mandatory'] ?? false;
 
-if (!$provider) {
+if ($provider === null) {
     redirect('client/home.php');
 }
 
-// Check if user has already reviewed this provider
-// REPLACE the old provider-level-only check with booking-aware logic
-if ($booking_id) {
-    $stmt = $db->prepare("SELECT id FROM reviews WHERE client_id = ? AND booking_id = ? LIMIT 1");
-    $stmt->execute([$_SESSION['user_id'], $booking_id]);
-    $existing_review = $stmt->fetch();
-    if (!$existing_review) {
-        // fallback to provider-level if you still want to prevent multiple reviews across bookings
-        $stmt = $db->prepare("SELECT id FROM reviews WHERE client_id = ? AND provider_id = ? LIMIT 1");
-        $stmt->execute([$_SESSION['user_id'], $provider_id]);
-        $existing_review = $stmt->fetch();
-    }
-} else {
-    $stmt = $db->prepare("SELECT id FROM reviews WHERE client_id = ? AND provider_id = ? LIMIT 1");
-    $stmt->execute([$_SESSION['user_id'], $provider_id]);
-    $existing_review = $stmt->fetch();
-}
-
-// Get booking details if booking_id provided
-$booking = null;
-if ($booking_id) {
-    $stmt = $db->prepare("
-        SELECT * FROM bookings 
-        WHERE id = ? AND client_id = ? AND provider_id = ? AND status = 'completed'
-    ");
-    $stmt->execute([$booking_id, $_SESSION['user_id'], $provider_id]);
-    $booking = $stmt->fetch();
-    
-    // Check if review is required for this booking
-    if ($system_settings['require_rating_after_completion'] && !$booking) {
-        $errors[] = "Invalid booking or booking not completed";
-    }
-}
-
-// Handle review submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_review'])) {
-    // Ensure we have provider_id / booking_id from POST (in case query string wasn't preserved)
-    $provider_id = isset($_POST['provider_id']) ? intval($_POST['provider_id']) : $provider_id;
-    $booking_id = isset($_POST['booking_id']) ? intval($_POST['booking_id']) : $booking_id;
+    $post = $_POST;
+    $post['provider_id'] = isset($post['provider_id']) ? intval($post['provider_id']) : $provider_id;
+    $post['booking_id'] = isset($post['booking_id']) ? intval($post['booking_id']) : $booking_id;
 
-    $rating = intval($_POST['rating']);
-    $comment = sanitize($_POST['comment']);
-    
-    // Validation
-    if ($rating < 1 || $rating > 5) {
-        $errors[] = "Please select a rating between 1 and 5 stars";
-    }
-    
-    if (empty($comment)) {
-        $errors[] = "Please write a comment about your experience";
-    }
-    
-    if (strlen($comment) < $system_settings['min_review_length']) {
-        $errors[] = "Review comment must be at least {$system_settings['min_review_length']} characters long";
-    }
-    
-    if (strlen($comment) > $system_settings['max_review_length']) {
-        $errors[] = "Review comment must not exceed {$system_settings['max_review_length']} characters";
-    }
-    
-    // Re-check duplicate review by booking if booking_id present
-    if (empty($errors)) {
-        if ($booking_id) {
-            $stmt = $db->prepare("SELECT id FROM reviews WHERE client_id = ? AND booking_id = ? LIMIT 1");
-            $stmt->execute([$_SESSION['user_id'], $booking_id]);
-            if ($stmt->fetch()) {
-                $errors[] = "You have already reviewed this booking.";
-            }
-        } elseif ($existing_review) {
-            $errors[] = "You have already reviewed this provider";
-        }
-    }
+    $result = $controller->handlePost($db, $_SESSION['user_id'], $post, $system_settings);
+    $success = $result['success'] ?? '';
+    $errors = $result['errors'] ?? [];
 
-    if (empty($errors)) {
-        try {
-            $db->beginTransaction();
-            
-            // Insert review
-            $stmt = $db->prepare("
-                INSERT INTO reviews (client_id, provider_id, booking_id, rating, comment)
-                VALUES (?, ?, ?, ?, ?)
-            ");
-            $stmt->execute([
-                $_SESSION['user_id'], 
-                $provider_id, 
-                $booking_id ?: null, 
-                $rating, 
-                $comment
-            ]);
-            
-            // Update provider's average rating and total reviews
-            $stmt = $db->prepare("
-                SELECT AVG(rating) as avg_rating, COUNT(*) as total_reviews
-                FROM reviews
-                WHERE provider_id = ?
-            ");
-            $stmt->execute([$provider_id]);
-            $stats = $stmt->fetch();
-            
-            $stmt = $db->prepare("
-                UPDATE service_providers 
-                SET average_rating = ?, total_reviews = ?, updated_at = NOW()
-                WHERE id = ?
-            ");
-            $stmt->execute([
-                round($stats['avg_rating'], 2),
-                $stats['total_reviews'],
-                $provider_id
-            ]);
-            
-            // Mark booking as reviewed if applicable
-            if ($booking_id) {
-                // Only attempt to update if column exists to avoid SQL errors on older schemas
-                try {
-                    $colStmt = $db->prepare("SHOW COLUMNS FROM bookings LIKE 'is_reviewed'");
-                    $colStmt->execute();
-                    $hasIsReviewed = (bool) $colStmt->fetch();
-                } catch (Throwable $e) {
-                    $hasIsReviewed = false;
-                }
-
-                if ($hasIsReviewed) {
-                    $stmt = $db->prepare("UPDATE bookings SET is_reviewed = 1 WHERE id = ?");
-                    $stmt->execute([$booking_id]);
-                } else {
-                    // Optional: log that the column is missing for future migration
-                    error_log("write-review: bookings.is_reviewed column missing, skip update for booking_id={$booking_id}");
-                }
-            }
-            
-            $db->commit();
-            
-            $success = "Thank you! Your review has been submitted successfully.";
-            
-            // Log activity
-            logActivity($db, $_SESSION['user_id'], 'review_created', "Submitted review for provider #{$provider_id}");
-            
-            // Send email notification to provider if enabled
-            if ($system_settings['enable_email_notifications']) {
-                require_once '../includes/mailer.php';
-                try {
-                    $subject = "New Review Received - {$system_settings['platform_name']}";
-                    $message = "
-                        <p>Hello {$provider['full_name']},</p>
-                        <p>You have received a new {$rating}-star review from {$_SESSION['user_name']}!</p>
-                        <p><strong>Review:</strong> {$comment}</p>
-                        <p>View your reviews in your dashboard to see all feedback.</p>
-                        <p>Best regards,<br>{$system_settings['platform_name']} Team</p>
-                    ";
-                    // Use Mailer::send (static helper) from includes/mailer.php
-                    Mailer::send($provider['email'], $subject, $message, true);
-                } catch (Throwable $e) {
-                    error_log("Review email send error: " . $e->getMessage());
-                }
-            }
-            
-            // Send SMS notification if enabled (placeholder for SMS integration)
-            if ($system_settings['enable_sms_notifications'] && !empty($provider['phone'])) {
-                // SMS integration would go here
-                // sendSMS($provider['phone'], "You received a new {$rating}-star review on {$system_settings['platform_name']}!");
-            }
-            
-        } catch (Exception $e) {
-            $db->rollBack();
-            $errors[] = "Failed to submit review. Please try again.";
-            error_log("Review submission error: " . $e->getMessage());
-        }
+    if (!empty($success)) {
+        $viewModel = $controller->index($db, $_SESSION['user_id'], $provider_id, $booking_id);
+        $provider = $viewModel['provider'] ?? null;
+        $existing_reviews = $viewModel['existing_reviews'] ?? [];
+        $booking = $viewModel['booking'] ?? null;
     }
 }
 
-// Get provider's existing reviews
-$stmt = $db->prepare("
-    SELECT r.*, u.full_name as client_name, u.profile_image
-    FROM reviews r
-    JOIN users u ON r.client_id = u.id
-    WHERE r.provider_id = ?
-    ORDER BY r.created_at DESC
-    LIMIT 5
-");
-$stmt->execute([$provider_id]);
-$existing_reviews = $stmt->fetchAll();
-
-// Check if review is mandatory
-$is_review_mandatory = $system_settings['require_rating_after_completion'] && $booking_id;
+if ($provider === null) {
+    redirect('client/home.php');
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">

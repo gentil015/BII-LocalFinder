@@ -5,8 +5,8 @@ require_once '../includes/functions.php';
 require_once __DIR__ . '/includes/client_header.php';
 require_once '../includes/chat.php';
 require_once '../includes/event_tracking.php';
+require_once '../controllers/pages/client/ClientBookingsController.php';
 
-// Check if user is logged in and is a client
 if (!isLoggedIn()) {
     redirect('login.php');
 }
@@ -16,309 +16,61 @@ if (isProvider()) {
 }
 
 $db = Database::getInstance()->getConnection();
+$controller = new ClientBookingsController();
 
-// Load system settings
-function getSetting($db, $key, $default = '') {
-    $stmt = $db->prepare("SELECT setting_value FROM system_settings WHERE setting_key = ?");
-    $stmt->execute([$key]);
-    $result = $stmt->fetch(PDO::FETCH_COLUMN);
-    return $result !== false ? $result : $default;
-}
-
-// Get all system settings
-$system_settings = [
-    'platform_name' => getSetting($db, 'platform_name', 'BII LocalFinder'),
-    'contact_email' => getSetting($db, 'contact_email', 'support@biilocalfinder.com'),
-    'contact_phone' => getSetting($db, 'contact_phone', '+250 788 123 456'),
-    'platform_description' => getSetting($db, 'platform_description', 'Connecting clients with trusted local service providers'),
-    'timezone' => getSetting($db, 'timezone', 'Africa/Kigali'),
-    
-    // Booking settings
-    'max_pending_time' => intval(getSetting($db, 'max_pending_time', '15')),
-    'allow_booking_editing' => getSetting($db, 'allow_booking_editing', '1'),
-    'auto_cancel_unconfirmed' => getSetting($db, 'auto_cancel_unconfirmed', '1'),
-    'require_rating_after_completion' => getSetting($db, 'require_rating_after_completion', '0'),
-    'max_cancellations_per_month' => intval(getSetting($db, 'max_cancellations_per_month', '3')),
-    
-    // Payment settings
-    'enable_commission' => getSetting($db, 'enable_commission', '0'),
-    'commission_rate' => floatval(getSetting($db, 'commission_rate', '10')),
-    
-    // Notification settings
-    'enable_email_notifications' => getSetting($db, 'enable_email_notifications', '1'),
-    'enable_sms_notifications' => getSetting($db, 'enable_sms_notifications', '0'),
+$filters = [
+    'view' => isset($_GET['view']) ? sanitize($_GET['view']) : 'bookings',
+    'status' => $_GET['status'] ?? '',
+    'date_from' => $_GET['date_from'] ?? '',
+    'date_to' => $_GET['date_to'] ?? '',
+    'search' => $_GET['search'] ?? '',
 ];
 
-// Get client information
-$stmt = $db->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$client = $stmt->fetch();
-
-// Get view type (bookings or my-offers)
-$view = isset($_GET['view']) ? sanitize($_GET['view']) : 'bookings';
-
-// Get booking statistics
-$stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE client_id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$total_bookings = $stmt->fetch()['total'];
-
-$stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE client_id = ? AND status = 'pending'");
-$stmt->execute([$_SESSION['user_id']]);
-$pending_bookings = $stmt->fetch()['total'];
-
-$stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE client_id = ? AND status = 'confirmed'");
-$stmt->execute([$_SESSION['user_id']]);
-$confirmed_bookings = $stmt->fetch()['total'];
-
-$stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE client_id = ? AND status = 'completed'");
-$stmt->execute([$_SESSION['user_id']]);
-$completed_bookings = $stmt->fetch()['total'];
-
-// Get monthly cancellation count
-$stmt = $db->prepare("SELECT COUNT(*) as total FROM bookings WHERE client_id = ? AND status = 'cancelled' AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())");
-$stmt->execute([$_SESSION['user_id']]);
-$monthly_cancellations = $stmt->fetch()['total'];
-
-// Handle offer response (withdraw or view counter-offers)
+$viewData = $controller->index($db, $_SESSION['user_id'], $filters);
+$client = $viewData['client'] ?? null;
+$system_settings = $viewData['system_settings'] ?? [];
+$view = $viewData['view'] ?? 'bookings';
+$status_filter = $viewData['status_filter'] ?? '';
+$date_from = $viewData['date_from'] ?? '';
+$date_to = $viewData['date_to'] ?? '';
+$search = $viewData['search'] ?? '';
+$total_bookings = $viewData['total_bookings'] ?? 0;
+$pending_bookings = $viewData['pending_bookings'] ?? 0;
+$confirmed_bookings = $viewData['confirmed_bookings'] ?? 0;
+$completed_bookings = $viewData['completed_bookings'] ?? 0;
+$monthly_cancellations = $viewData['monthly_cancellations'] ?? 0;
+$all_bookings = $viewData['all_bookings'] ?? [];
+$recommended_providers = $viewData['recommended_providers'] ?? [];
 $success = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['offer_action'])) {
-    $offer_id = intval($_POST['offer_id']);
-    $action = sanitize($_POST['offer_action']);
-    
-    // Verify offer belongs to this client
-    $stmt = $db->prepare("SELECT * FROM service_offers WHERE id = ? AND client_id = ?");
-    $stmt->execute([$offer_id, $_SESSION['user_id']]);
-    $offer = $stmt->fetch();
-    
-    if ($offer) {
-        if ($action === 'withdraw') {
-            $stmt = $db->prepare("UPDATE service_offers SET status = 'withdrawn' WHERE id = ?");
-            if ($stmt->execute([$offer_id])) {
-                $success = "Offer withdrawn successfully!";
-            }
-        } elseif ($action === 'accept_counter') {
-            // AUTO-CONFIRM BOOKING when client accepts counter-offer
-            try {
-                $counter_id = intval($_POST['counter_id']);
-                
-                // Get counter-offer details
-                $stmt = $db->prepare("SELECT * FROM service_counteroffers WHERE id = ? AND client_id = ?");
-                $stmt->execute([$counter_id, $_SESSION['user_id']]);
-                $counter_offer = $stmt->fetch();
-                
-                if (!$counter_offer) {
-                    throw new Exception("Counter-offer not found or unauthorized");
-                }
-                
-                // Step 1: Update counter-offer status to 'accepted'
-                $stmt = $db->prepare("UPDATE service_counteroffers SET status = 'accepted' WHERE id = ?");
-                if (!$stmt->execute([$counter_id])) {
-                    throw new Exception("Failed to accept counter-offer");
-                }
-                
-                // Step 2: Update original offer status to 'accepted'
-                $stmt = $db->prepare("UPDATE service_offers SET status = 'accepted' WHERE id = ?");
-                if (!$stmt->execute([$offer_id])) {
-                    throw new Exception("Failed to update offer status");
-                }
-                
-                // Step 3: Finalize the price using counter-offer amount
-                $finalized_price = $counter_offer['proposed_price'];
-                $stmt = $db->prepare("
-                    INSERT INTO finalized_service_prices 
-                    (booking_id, service_id, client_id, provider_id, finalized_price, negotiation_rounds, provider_final_counteroffer_id, status)
-                    VALUES (?, ?, ?, ?, ?, 2, ?, 'active')
-                    ON DUPLICATE KEY UPDATE
-                    finalized_price = VALUES(finalized_price),
-                    negotiation_rounds = 2,
-                    provider_final_counteroffer_id = VALUES(provider_final_counteroffer_id),
-                    updated_at = NOW()
-                ");
-                if (!$stmt->execute([$offer['booking_id'], $offer['service_id'], $_SESSION['user_id'], $counter_offer['provider_id'], $finalized_price, $counter_id])) {
-                    throw new Exception("Failed to finalize price");
-                }
-                
-                // Step 4: Update booking status to 'confirmed' with final price
-                $stmt = $db->prepare("
-                    UPDATE bookings 
-                    SET status = 'confirmed', 
-                        agreed_price = ?
-                    WHERE id = ? AND client_id = ?
-                ");
-                if (!$stmt->execute([$finalized_price, $offer['booking_id'], $_SESSION['user_id']])) {
-                    throw new Exception("Failed to confirm booking");
-                }
-                
-                // Step 5: Log this action in negotiation history
-                $stmt = $db->prepare("
-                    INSERT INTO negotiation_history 
-                    (booking_id, offer_id, counteroffer_id, action_type, price_offered, actor_id, actor_type, notes)
-                    VALUES (?, ?, ?, 'counteroffer_accepted', ?, ?, 'client', 'Counter-offer accepted by client - Booking confirmed')
-                ");
-                $stmt->execute([$offer['booking_id'], $offer_id, $counter_id, $finalized_price, $_SESSION['user_id']]);
-                
-                $success = "✅ Counter-offer accepted and booking confirmed! Final price: RWF " . number_format($finalized_price, 0);
-                
-            } catch (Exception $e) {
-                error_log("Counter-offer acceptance error: " . $e->getMessage());
-                $success = "Error accepting counter-offer: " . $e->getMessage();
-            }
-        }
+$error = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['offer_action']) || isset($_POST['cancel_booking']))) {
+    $result = $controller->handlePost($db, $_SESSION['user_id'], $_POST, $system_settings);
+    $success = $result['success'] ?? '';
+    $error = $result['error'] ?? '';
+
+    if (isset($_POST['cancel_booking']) && !empty($success) && empty($error)) {
+        header('Location: my-bookings.php?cancelled=1');
+        exit();
     }
-}
 
-// Filter parameters
-$status_filter = $_GET['status'] ?? '';
-$date_from = $_GET['date_from'] ?? '';
-$date_to = $_GET['date_to'] ?? '';
-$search = $_GET['search'] ?? '';
-
-// Build query for all bookings with filters
-$query = "
-    SELECT b.*, 
-           sp.profession, sp.location, sp.availability, sp.hourly_rate,
-           u.full_name as provider_name, u.phone as provider_phone, 
-           u.email as provider_email, u.profile_image as provider_image
-    FROM bookings b
-    JOIN service_providers sp ON b.provider_id = sp.id
-    JOIN users u ON sp.user_id = u.id
-    WHERE b.client_id = ?
-";
-
-$params = [$_SESSION['user_id']];
-
-// Apply filters
-if (!empty($status_filter)) {
-    $query .= " AND b.status = ?";
-    $params[] = $status_filter;
-}
-
-if (!empty($date_from)) {
-    $query .= " AND DATE(b.created_at) >= ?";
-    $params[] = $date_from;
-}
-
-if (!empty($date_to)) {
-    $query .= " AND DATE(b.created_at) <= ?";
-    $params[] = $date_to;
-}
-
-if (!empty($search)) {
-    $query .= " AND (u.full_name LIKE ? OR sp.profession LIKE ? OR b.service_description LIKE ?)";
-    $search_term = "%$search%";
-    $params[] = $search_term;
-    $params[] = $search_term;
-    $params[] = $search_term;
-}
-
-$query .= " ORDER BY b.created_at DESC";
-
-// Execute query
-$stmt = $db->prepare($query);
-$stmt->execute($params);
-$all_bookings = $stmt->fetchAll();
-
-// Handle booking cancellation with system settings validation
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_booking'])) {
-    $booking_id = intval($_POST['booking_id']);
-    $cancellation_reason = isset($_POST['cancellation_reason']) ? sanitize($_POST['cancellation_reason']) : null;
-
-    // Check monthly cancellation limit
-    if ($monthly_cancellations >= $system_settings['max_cancellations_per_month']) {
-        $error = "You have reached your monthly cancellation limit ({$system_settings['max_cancellations_per_month']}). Please contact support.";
-    } else {
-        // Verify booking belongs to client and is pending/confirmed
-        $stmt = $db->prepare("SELECT * FROM bookings WHERE id = ? AND client_id = ? AND status IN ('pending', 'confirmed')");
-        $stmt->execute([$booking_id, $_SESSION['user_id']]);
-        
-        if ($stmt->fetch()) {
-            // Get the provider for messaging and timeline integration
-            $stmtProvider = $db->prepare("SELECT provider_id FROM bookings WHERE id = ?");
-            $stmtProvider->execute([$booking_id]);
-            $providerData = $stmtProvider->fetch(PDO::FETCH_ASSOC);
-            $providerId = $providerData['provider_id'] ?? null;
-
-            $updateQuery = "UPDATE bookings SET status = 'cancelled', cancelled_at = NOW(), cancellation_reason = ? WHERE id = ?";
-            $stmt = $db->prepare($updateQuery);
-            if ($stmt->execute([$cancellation_reason, $booking_id])) {
-                $success = "Booking cancelled successfully";
-                // Log activity
-                logActivity($db, $_SESSION['user_id'], 'booking_cancelled', "Cancelled booking #{$booking_id} - Reason: {$cancellation_reason}");
-
-                // Track booking cancelled event
-                trackEvent('booking_cancelled', 'booking', $booking_id, [
-                    'cancellation_reason' => $cancellation_reason,
-                    'client_id' => $_SESSION['user_id'],
-                    'provider_id' => $providerId
-                ], $_SESSION['user_id']);
-
-                if ($providerId) {
-                    sendMessage($_SESSION['user_id'], $providerId, "Booking #{$booking_id} has been cancelled by the client. Reason: {$cancellation_reason}");
-                }
-
-                // Refresh page
-                header("Location: my-bookings.php?cancelled=1");
-                exit();
-            }
-        } else {
-            $error = "Booking not found or cannot be cancelled";
-        }
+    if (!empty($success) || !empty($error)) {
+        $viewData = $controller->index($db, $_SESSION['user_id'], $filters);
+        $client = $viewData['client'] ?? null;
+        $system_settings = $viewData['system_settings'] ?? [];
+        $view = $viewData['view'] ?? 'bookings';
+        $status_filter = $viewData['status_filter'] ?? '';
+        $date_from = $viewData['date_from'] ?? '';
+        $date_to = $viewData['date_to'] ?? '';
+        $search = $viewData['search'] ?? '';
+        $total_bookings = $viewData['total_bookings'] ?? 0;
+        $pending_bookings = $viewData['pending_bookings'] ?? 0;
+        $confirmed_bookings = $viewData['confirmed_bookings'] ?? 0;
+        $completed_bookings = $viewData['completed_bookings'] ?? 0;
+        $monthly_cancellations = $viewData['monthly_cancellations'] ?? 0;
+        $all_bookings = $viewData['all_bookings'] ?? [];
+        $recommended_providers = $viewData['recommended_providers'] ?? [];
     }
-}
-
-// ============ Recommended Providers ============
-// Suggest providers based on categories the client has already booked from,
-// excluding providers already booked, falling back to top-rated/featured providers.
-$recommended_providers = [];
-
-$stmt = $db->prepare("SELECT DISTINCT provider_id FROM bookings WHERE client_id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$booked_provider_ids = array_column($stmt->fetchAll(), 'provider_id');
-$exclude_ids = !empty($booked_provider_ids) ? $booked_provider_ids : [0];
-$exclude_placeholders = implode(',', array_fill(0, count($exclude_ids), '?'));
-
-$client_category_ids = [];
-if (!empty($booked_provider_ids)) {
-    $booked_placeholders = implode(',', array_fill(0, count($booked_provider_ids), '?'));
-    $stmt = $db->prepare("SELECT DISTINCT category_id FROM provider_categories WHERE provider_id IN ($booked_placeholders)");
-    $stmt->execute($booked_provider_ids);
-    $client_category_ids = array_column($stmt->fetchAll(), 'category_id');
-}
-
-if (!empty($client_category_ids)) {
-    $cat_placeholders = implode(',', array_fill(0, count($client_category_ids), '?'));
-    $rec_query = "
-        SELECT DISTINCT sp.id, sp.profession, sp.location, sp.average_rating, sp.total_reviews,
-               sp.is_featured, sp.availability, u.full_name, u.profile_image
-        FROM service_providers sp
-        JOIN users u ON sp.user_id = u.id
-        JOIN provider_categories pc ON pc.provider_id = sp.id
-        WHERE pc.category_id IN ($cat_placeholders)
-        AND sp.is_active = 1 AND sp.is_banned = 0 AND sp.status = 'active'
-        AND sp.id NOT IN ($exclude_placeholders)
-        ORDER BY sp.is_featured DESC, sp.average_rating DESC, sp.total_reviews DESC
-        LIMIT 4
-    ";
-    $stmt = $db->prepare($rec_query);
-    $stmt->execute(array_merge($client_category_ids, $exclude_ids));
-    $recommended_providers = $stmt->fetchAll();
-}
-
-// Fallback: top-rated / featured providers overall
-if (empty($recommended_providers)) {
-    $rec_query = "
-        SELECT sp.id, sp.profession, sp.location, sp.average_rating, sp.total_reviews,
-               sp.is_featured, sp.availability, u.full_name, u.profile_image
-        FROM service_providers sp
-        JOIN users u ON sp.user_id = u.id
-        WHERE sp.is_active = 1 AND sp.is_banned = 0 AND sp.status = 'active'
-        AND sp.id NOT IN ($exclude_placeholders)
-        ORDER BY sp.is_featured DESC, sp.average_rating DESC, sp.total_reviews DESC
-        LIMIT 4
-    ";
-    $stmt = $db->prepare($rec_query);
-    $stmt->execute($exclude_ids);
-    $recommended_providers = $stmt->fetchAll();
 }
 ?>
 <!DOCTYPE html>

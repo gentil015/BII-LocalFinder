@@ -34,7 +34,9 @@ $isFav = !empty($p['is_favorite']) || in_array($pid, $favIds, true);
 $trustScore = (float) ($p['trust_score'] ?? 0);
 $isOpen = !empty($p['is_open_now']);
 ?>
-<article class="pcard" id="dcard-<?= $pid ?>" data-provider-id="<?= $pid ?>" data-lazy-visible="0">
+<article class="pcard" id="dcard-<?= $pid ?>" data-provider-id="<?= $pid ?>" data-lazy-visible="0"
+         onclick="if (!event.target.closest('a,button')) window.location.href='/client/provider-profile.php?id=<?= $pid ?>';"
+         style="cursor: pointer;">
   <div class="pcard-media">
     <img data-src="<?= htmlspecialchars($photo) ?>" src="/bii_localfinder/assets/img/card-skeleton.svg"
          alt="<?= $name ?>" class="pcard-photo lazy-img" loading="lazy" width="120" height="120">
@@ -82,10 +84,10 @@ $isOpen = !empty($p['is_open_now']);
     <?php if ($bio !== ''): ?><p class="pcard-desc"><?= $bio ?></p><?php endif; ?>
 
     <div class="pcard-actions">
-      <a class="btn btn-sm btn-outline-primary" href="/bii_localfinder/client/messages.php?with=<?= (int) ($p['user_id'] ?? 0) ?>">
+      <a class="btn btn-sm btn-outline-primary" href="/client/messages.php?with=<?= (int) ($p['user_id'] ?? 0) ?>">
         <i class="fas fa-comment-dots"></i> Quick Contact
       </a>
-      <a class="btn btn-sm btn-primary" href="/bii_localfinder/client/booking.php?provider_id=<?= $pid ?>">
+      <a class="btn btn-sm btn-primary" href="/client/booking.php?provider_id=<?= $pid ?>">
         <i class="fas fa-calendar-check"></i> Book Now
       </a>
     </div>

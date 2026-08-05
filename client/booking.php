@@ -3,7 +3,7 @@ session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once '../includes/chat.php';
-
+require_once '../controllers/pages/client/ClientBookingController.php';
 
 $db = Database::getInstance()->getConnection();
 
@@ -16,324 +16,52 @@ if (!$provider_id) {
     exit();
 }
 
-// If service_id is provided, we'll auto-select it and skip to step 2
-$auto_selected_service = null;
-
-// Fetch provider details
-$stmt = $db->prepare("SELECT sp.*, u.full_name, u.email, u.phone, u.profile_image, u.created_at as member_since, u.is_verified as user_verified FROM service_providers sp JOIN users u ON sp.user_id = u.id WHERE sp.id = ? AND sp.is_active = 1 AND sp.is_banned = 0");
-$stmt->execute([$provider_id]);
-$provider = $stmt->fetch();
+$controller = new ClientBookingController();
+$viewData = $controller->index($db, $provider_id, $service_id, $share_id);
+$provider = $viewData['provider'] ?? null;
 if (!$provider) {
     header('Location: providers.php');
     exit();
 }
 
-// Ensure provider share id exists on bookings table for share-to-booking attribution
-try {
-    $colStmt = $db->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'provider_share_id'");
-    $colStmt->execute();
-    if ($colStmt->fetchColumn() == 0) {
-        $db->exec("ALTER TABLE bookings ADD COLUMN provider_share_id INT NULL AFTER status");
-    }
-} catch (Exception $e) {
-    error_log('Booking table share column check failed: ' . $e->getMessage());
-}
+$services = $viewData['services'] ?? [];
+$auto_selected_service = $viewData['auto_selected_service'] ?? null;
+$schedule = $viewData['schedule'] ?? [];
+$working_days = $viewData['working_days'] ?? [1, 2, 3, 4, 5];
+$availability_exceptions = $viewData['availability_exceptions'] ?? [];
+$time_off_periods = $viewData['time_off_periods'] ?? [];
+$fully_booked_dates = $viewData['fully_booked_dates'] ?? [];
+$slot_duration = $viewData['slot_duration'] ?? 60;
+$buffer_minutes = $viewData['buffer_minutes'] ?? 0;
+$max_daily_bookings = $viewData['max_daily_bookings'] ?? 0;
 
-// Fetch services
-$stmt = $db->prepare("SELECT ps.*, c.name as category_name, c.icon as category_icon FROM provider_services ps JOIN categories c ON ps.category_id = c.id WHERE ps.provider_id = ? AND ps.is_available = 1 ORDER BY ps.created_at DESC");
-$stmt->execute([$provider_id]);
-$services = $stmt->fetchAll();
-
-// If service_id provided, find and auto-select it
-if ($service_id) {
-    foreach ($services as $svc) {
-        if ($svc['id'] == $service_id) {
-            $auto_selected_service = $svc;
-            break;
-        }
-    }
-}
-
-// Fetch schedule info
-$stmt = $db->prepare("SELECT working_days, working_hours_start, working_hours_end, break_start, break_end, slot_duration, buffer_time, max_daily_bookings FROM service_providers WHERE id = ?");
-$stmt->execute([$provider_id]);
-$schedule = $stmt->fetch();
-// Parse working_days properly - handle spaces and ensure integers
-$working_days = [];if (!empty($schedule['working_days'])) {
-    $working_days = array_map('intval', array_filter(array_map('trim', explode(',', $schedule['working_days']))));
-}
-// If still empty after parsing, use default
-if (empty($working_days)) {
-    $working_days = [1,2,3,4,5]; // Default: Mon-Fri
-}
-// Debug: log what we got
-error_log("Provider {$provider_id} working_days from DB: " . var_export($schedule['working_days'], true));
-error_log("Parsed working_days array: " . var_export($working_days, true));
-
-// get availability exceptions and time‑off for validation
-$stmt = $db->prepare("SELECT date, is_available FROM provider_availability WHERE provider_id = ? AND date >= CURDATE()");
-$stmt->execute([$provider_id]);
-$availability_exceptions = $stmt->fetchAll();
-
-$stmt = $db->prepare("SELECT start_date, end_date, reason FROM provider_time_off WHERE provider_id = ? AND end_date >= CURDATE() AND is_approved = 1");
-$stmt->execute([$provider_id]);
-$time_off_periods = $stmt->fetchAll();
-
-// Gather daily booking counts to detect fully booked dates
-$fully_booked_dates = [];
-$bookings_per_day = [];
-$slot_duration = !empty($schedule['slot_duration']) ? intval($schedule['slot_duration']) : 60;
-$buffer_minutes = !empty($schedule['buffer_time']) ? intval($schedule['buffer_time']) : 0;
-$max_daily_bookings = !empty($schedule['max_daily_bookings']) ? intval($schedule['max_daily_bookings']) : 0;
-$slots_per_day = 0;
-
-if (!empty($schedule['working_hours_start']) && !empty($schedule['working_hours_end'])) {
-    $start_ts = strtotime($schedule['working_hours_start']);
-    $end_ts = strtotime($schedule['working_hours_end']);
-    if ($end_ts > $start_ts) {
-        $total_minutes = intval(($end_ts - $start_ts) / 60);
-        if (!empty($schedule['break_start']) && !empty($schedule['break_end'])) {
-            $break_start_ts = strtotime($schedule['break_start']);
-            $break_end_ts = strtotime($schedule['break_end']);
-            if ($break_end_ts > $break_start_ts) {
-                $total_minutes -= intval(($break_end_ts - $break_start_ts) / 60);
-            }
-        }
-
-        $chunk = max(15, $slot_duration + $buffer_minutes);
-        $slots_per_day = intval(floor($total_minutes / $chunk));
-
-        if ($max_daily_bookings > 0) {
-            $slots_per_day = min($slots_per_day, $max_daily_bookings);
-        }
-    }
-}
-
-if ($max_daily_bookings > 0) {
-    $slots_per_day = $max_daily_bookings;
-}
-
-if ($slots_per_day > 0) {
-        $stmt = $db->prepare("SELECT preferred_date, COUNT(*) as cnt FROM bookings WHERE provider_id = ? AND preferred_date >= CURDATE() AND status IN ('pending','confirmed') GROUP BY preferred_date");
-        $stmt->execute([$provider_id]);
-        $bookings_per_day = $stmt->fetchAll();
-
-    foreach ($bookings_per_day as $row) {
-        if (!empty($row['preferred_date']) && intval($row['cnt']) >= $slots_per_day) {
-            $fully_booked_dates[] = $row['preferred_date'];
-        }
-    }
-}
-
-// handle booking submission via standard POST
 $booking_errors = [];
 $booking_success = '';
 $booking_ref = '';
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['final_submit'])) {
-    // Only validate on final form submission from step 4
-    // grab fields
-    $service_id = intval($_POST['service_id'] ?? 0);
-    $service_desc = trim($_POST['serviceDesc'] ?? '');
-    $preferred_date = trim($_POST['preferred_date'] ?? '');
-    $preferred_time = trim($_POST['preferred_time'] ?? '');
-    $client_name = trim($_POST['client_name'] ?? '');
-    $client_phone = trim($_POST['client_phone'] ?? '');
-    $client_location = trim($_POST['client_location'] ?? '');
-    $urgency_level = trim($_POST['urgency_level'] ?? 'normal');
-    $client_proposed_price = !empty($_POST['client_proposed_price']) ? floatval($_POST['client_proposed_price']) : null;
+    $result = $controller->handleSubmit(
+        $db,
+        $provider_id,
+        $service_id,
+        $share_id,
+        $_POST,
+        $_SESSION,
+        $provider,
+        $services,
+        $schedule,
+        $working_days,
+        $time_off_periods,
+        $availability_exceptions
+    );
 
-    if (empty($_SESSION['user_id'])) {
-        $booking_errors[] = "Please log in to submit a booking.";
-    }
+    $booking_errors = $result['booking_errors'] ?? [];
+    $booking_success = $result['booking_success'] ?? '';
+    $booking_ref = $result['booking_ref'] ?? '';
 
-    // Validate all required fields
-    if (empty($service_desc) || empty($preferred_date) || !$service_id) {
-        $booking_errors[] = "Please fill all required fields";
-    }
-    if (empty($client_name) || empty($client_phone) || empty($client_location)) {
-        $booking_errors[] = "Please enter your name, phone number, and location.";
-    }
-
-    // validate date
-    if ($preferred_date) {
-        $selected_date = new DateTime($preferred_date);
-        $today = new DateTime(); $today->setTime(0,0,0);
-        if ($selected_date < $today) {
-            $booking_errors[] = "Please select a date in the future";
-        }
-
-        // working day check
-        $day_of_week = (int)$selected_date->format('N'); // 1=Mon, 7=Sun
-        if (!in_array($day_of_week, $working_days, true)) {
-            $day_names = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-            $booking_errors[] = "Provider is not available on " . $day_names[$day_of_week-1] . "s";
-        }
-
-        // time off
-        foreach ($time_off_periods as $time_off) {
-            $time_off_start = new DateTime($time_off['start_date']);
-            $time_off_end = new DateTime($time_off['end_date']);
-            if ($selected_date >= $time_off_start && $selected_date <= $time_off_end) {
-                $booking_errors[] = "Provider is on time off from " . date('M d', strtotime($time_off['start_date'])) . " to " . date('M d, Y', strtotime($time_off['end_date']));
-                break;
-            }
-        }
-
-        // availability exceptions
-        foreach ($availability_exceptions as $ex) {
-            if ($ex['date'] == $preferred_date && $ex['is_available'] == 0) {
-                $booking_errors[] = "Provider is not available on this date";
-                break;
-            }
-        }
-    }
-
-    // validate time bounds
-    if ($preferred_time && $schedule['working_hours_start'] && $schedule['working_hours_end']) {
-        $time = strtotime($preferred_time);
-        $start_time = strtotime($schedule['working_hours_start']);
-        $end_time = strtotime($schedule['working_hours_end']);
-        if ($time < $start_time || $time > $end_time) {
-            $booking_errors[] = "Please select a time between " . date('g:i A', $start_time) . " and " . date('g:i A', $end_time);
-        }
-    }
-
-    // service belongs check
-    $selectedService = null;
-    foreach ($services as $svc) {
-        if ((int)$svc['id'] === $service_id) {
-            $selectedService = $svc;
-            break;
-        }
-    }
-
-    if (empty($booking_errors)) {
-        if (!$selectedService || !$selectedService['is_available']) {
-            $booking_errors[] = "Invalid service selected";
-        }
-    }
-
-    if (empty($booking_errors) && $selectedService) {
-        $serviceAvailabilityDays = [];
-        if (!empty($selectedService['availability_days'])) {
-            $serviceAvailabilityDays = array_map('intval', array_filter(array_map('trim', explode(',', $selectedService['availability_days']))));
-        }
-        if (empty($serviceAvailabilityDays)) {
-            $serviceAvailabilityDays = $working_days;
-        }
-
-        if ($preferred_date) {
-            if (!in_array($day_of_week, $serviceAvailabilityDays, true)) {
-                $day_names = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-                $booking_errors[] = "Selected service is not available on " . $day_names[$day_of_week-1] . "s";
-            }
-        }
-
-        if ($preferred_time && !empty($selectedService['time_slots'])) {
-            $availableServiceSlots = [];
-            $rawSlots = $selectedService['time_slots'];
-            $decoded = json_decode($rawSlots, true);
-            if (is_array($decoded) && $decoded !== null) {
-                foreach ($decoded as $slot) {
-                    if (is_string($slot)) {
-                        $availableServiceSlots[] = trim($slot);
-                    } elseif (is_array($slot) && isset($slot['start'], $slot['end'])) {
-                        $availableServiceSlots[] = trim($slot['start']) . '-' . trim($slot['end']);
-                    }
-                }
-            } else {
-                foreach (preg_split('/[\r\n]+/', $rawSlots) as $line) {
-                    $line = trim($line);
-                    if ($line !== '') {
-                        $availableServiceSlots[] = $line;
-                    }
-                }
-            }
-
-            if (!empty($availableServiceSlots)) {
-                $validTime = false;
-                $serviceDuration = intval($selectedService['duration']) ?: 60;
-                foreach ($availableServiceSlots as $slotRange) {
-                    $parts = array_map('trim', explode('-', $slotRange));
-                    if (count($parts) !== 2) {
-                        continue;
-                    }
-                    $slotStart = strtotime($parts[0]);
-                    $slotEnd = strtotime($parts[1]);
-                    $selectedTime = strtotime($preferred_time);
-                    if ($slotStart !== false && $slotEnd !== false && $selectedTime !== false) {
-                        if ($selectedTime >= $slotStart && ($selectedTime + ($serviceDuration * 60)) <= $slotEnd) {
-                            $validTime = true;
-                            break;
-                        }
-                    }
-                }
-                if (!$validTime) {
-                    $booking_errors[] = "Selected time is outside the service's available time slots.";
-                }
-            }
-        }
-    }
-
-    if (empty($booking_errors)) {
-        $bookingStatus = 'pending';
-        if ($selectedService && $selectedService['booking_mode'] === 'instant' && empty($selectedService['negotiable'])) {
-            $bookingStatus = 'confirmed';
-        }
-
-        $booking_amount = $client_proposed_price !== null
-            ? $client_proposed_price
-            : (isset($selectedService['price']) ? floatval($selectedService['price']) : null);
-
-        $stmt = $db->prepare("INSERT INTO bookings (client_id, provider_id, service_id, service_description, preferred_date, preferred_time, location, amount, status, provider_share_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        if ($stmt->execute([$_SESSION['user_id'], $provider_id, $service_id, $service_desc, $preferred_date, $preferred_time, $client_location, $booking_amount, $bookingStatus, $share_id ? $share_id : null])) {
-            $booking_id = $db->lastInsertId();
-            $booking_ref = '#BK-' . date('Y') . '-' . str_pad($booking_id,5,'0',STR_PAD_LEFT);
-
-            // Create payment record if amount > 0
-            if ($client_proposed_price > 0) {
-                require_once '../payments/PaymentManager.php';
-                $paymentManager = new PaymentManager();
-                $payment_id = $paymentManager->createPaymentForBooking($booking_id);
-                if ($payment_id) {
-                    // Log payment creation
-                    $stmt = $db->prepare("INSERT INTO user_activities (user_id, activity_type, description, ip_address, user_agent) VALUES (?, 'payment_created', ?, ?, ?)");
-                    $stmt->execute([$_SESSION['user_id'], "Payment created for booking {$booking_ref}", $_SERVER['REMOTE_ADDR'] ?? null, $_SERVER['HTTP_USER_AGENT'] ?? null]);
-                }
-            }
-
-            // send email/notification first
-            if (!empty($provider['email'])) {
-                require_once '../includes/mailer.php';
-                Mailer::sendBookingNotification(
-                    $provider['email'],
-                    $provider['full_name'],
-                    $_SESSION['user_name'] ?? '',
-                    $service_desc
-                );
-            }
-            try {
-                require_once '../includes/notifications.php';
-                notifyNewBooking($provider_id, $booking_id, [
-                    'client_name' => $_SESSION['user_name'] ?? '',
-                    'service_description' => $service_desc
-                ]);
-            } catch (Exception $e) {
-                error_log('Booking notification error: '.$e->getMessage());
-            }
-
-            // automatically start chat by inserting initial message
-            $provider_user_id = $provider['user_id'] ?? $provider_id;
-            sendMessage($_SESSION['user_id'], $provider_user_id, "New booking created: " . $booking_ref);
-            // redirect client straight to conversation
-            header('Location: messages.php?with=' . $provider_user_id . '&booking_id=' . $booking_id);
-            exit;
-
-            // backup success message (will only appear if redirect is disabled)
-            $booking_success = "Booking request sent successfully! The provider will contact you soon.";
-        } else {
-            $booking_errors[] = 'Failed to save booking. Please try again.';
-        }
+    if (!empty($result['redirect'])) {
+        header('Location: ' . $result['redirect']);
+        exit();
     }
 }
 

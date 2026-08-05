@@ -139,6 +139,10 @@ if (!function_exists('client_header_render_styles')) {
     function client_header_render_styles(): void
     {
         ?>
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="apple-touch-icon" href="/favicon.svg">
+        <link rel="mask-icon" href="/favicon.svg" color="#2e5038">
+        <meta name="theme-color" content="#0b1f17">
         <style>
         :root {
           --ink:        #0B1F17;

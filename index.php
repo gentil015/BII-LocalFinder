@@ -41,6 +41,9 @@ $copyright_text = $viewData['copyright_text'] ?? '© 2024 BII LocalFinder. All r
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo htmlspecialchars($platform_name); ?> - Find Local Service Providers in Rwanda</title>
     <meta name="description" content="<?php echo htmlspecialchars($platform_description); ?>">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/favicon.svg">
+    <meta name="theme-color" content="#0b1f17">
     
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">

@@ -10,70 +10,24 @@ require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once __DIR__ . '/includes/client_header.php';
 require_once '../payments/PaymentManager.php';
+require_once '../controllers/pages/client/ClientBookingDetailsController.php';
 
-// Verify user is logged in and is a client
 if (!isLoggedIn() || isProvider()) {
     redirect('../login.php');
 }
 
 $db = Database::getInstance()->getConnection();
-$booking = null;
-$service = null;
-$provider = null;
-$payment = null;
-$error = null;
-$success = null;
-$booking_mode = 'request_approval';
 $payment_manager = new PaymentManager();
+$controller = new ClientBookingDetailsController();
 
-// Get booking ID from URL
 $booking_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+$viewModel = $controller->index($db, $_SESSION['user_id'], $booking_id, $payment_manager);
 
-if (!$booking_id) {
-    $error = 'Invalid booking ID';
-} else {
-    try {
-        // Load booking with all details
-        $stmt = $db->prepare("
-            SELECT 
-                b.*,
-                u.full_name as provider_name,
-                u.phone as provider_phone,
-                u.email as provider_email,
-                u.profile_image as provider_image,
-                sp.profession,
-                sp.average_rating,
-                sp.total_reviews,
-                sp.is_verified,
-                ps.name as service_name,
-                ps.booking_mode,
-                ps.description as service_full_desc,
-                cat.name as category_name
-            FROM bookings b
-            LEFT JOIN users u ON b.provider_id = u.id
-            LEFT JOIN service_providers sp ON b.provider_id = sp.user_id
-            LEFT JOIN provider_services ps ON b.service_id = ps.id
-            LEFT JOIN categories cat ON ps.category_id = cat.id
-            WHERE b.id = ? AND b.client_id = ?
-        ");
-        $stmt->execute([$booking_id, $_SESSION['user_id']]);
-        $booking = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$booking) {
-            $error = 'Booking not found or access denied';
-        } else {
-            // Get booking mode from service (default to request_approval)
-            $booking_mode = $booking['booking_mode'] ?? 'request_approval';
-
-            // Get payment information
-            $payment = $payment_manager->getPaymentForBooking($booking_id);
-        }
-
-    } catch (Exception $e) {
-        error_log('Booking details error: ' . $e->getMessage());
-        $error = 'Error loading booking details';
-    }
-}
+$booking = $viewModel['booking'];
+$payment = $viewModel['payment'];
+$error = $viewModel['error'];
+$success = $viewModel['success'];
+$booking_mode = $viewModel['booking_mode'] ?? 'request_approval';
 
 // Helper function to determine payment button visibility
 function shouldShowPayButton($booking_mode, $booking_status, $payment_status) {

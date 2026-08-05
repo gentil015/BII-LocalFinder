@@ -61,6 +61,40 @@ function sanitize_filename($filename) {
     return $filename;
 }
 
+if (!function_exists('cache_get')) {
+    function cache_get($key, $ttl = 60) {
+        $cacheDir = __DIR__ . '/../cache';
+        if (!is_dir($cacheDir)) {
+            mkdir($cacheDir, 0775, true);
+        }
+
+        $file = $cacheDir . '/' . hash('sha256', (string) $key) . '.cache';
+        if (!is_file($file)) {
+            return false;
+        }
+
+        if (filemtime($file) + (int) $ttl < time()) {
+            @unlink($file);
+            return false;
+        }
+
+        $contents = @file_get_contents($file);
+        return $contents === false ? false : unserialize($contents);
+    }
+}
+
+if (!function_exists('cache_set')) {
+    function cache_set($key, $value) {
+        $cacheDir = __DIR__ . '/../cache';
+        if (!is_dir($cacheDir)) {
+            mkdir($cacheDir, 0775, true);
+        }
+
+        $file = $cacheDir . '/' . hash('sha256', (string) $key) . '.cache';
+        return @file_put_contents($file, serialize($value), LOCK_EX) !== false;
+    }
+}
+
 /**
  * Check if user is logged in
  *

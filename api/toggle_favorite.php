@@ -16,7 +16,7 @@ $response = ['success' => false, 'error' => 'Unknown error'];
 
 try {
     $db = Database::getInstance()->getConnection();
-    
+
     // Check if favorites table exists, if not create it
     try {
         $db->query("SELECT 1 FROM favorites LIMIT 1");
@@ -35,41 +35,62 @@ try {
         ";
         $db->exec($createTable);
     }
-    
-    $client_id = $_SESSION['user_id'];
+
+    $client_id = (int) $_SESSION['user_id'];
     $provider_id = intval($_POST['provider_id'] ?? 0);
-    
+
     if ($provider_id <= 0) {
         $response['error'] = 'Invalid provider ID';
         echo json_encode($response);
         exit;
     }
-    
-    // Check if adding or removing favorite
+
+    $existingStmt = $db->prepare("SELECT 1 FROM favorites WHERE client_id = ? AND provider_id = ? LIMIT 1");
+    $existingStmt->execute([$client_id, $provider_id]);
+    $isFavorite = (bool) $existingStmt->fetchColumn();
+
     if (isset($_POST['add_to_favorites'])) {
-        // Add to favorites
         $stmt = $db->prepare("INSERT IGNORE INTO favorites (client_id, provider_id) VALUES (?, ?)");
         if ($stmt->execute([$client_id, $provider_id])) {
             $response['success'] = true;
             $response['message'] = 'Added to favorites';
             $response['action'] = 'added';
+            $response['is_favorite'] = true;
         } else {
             $response['error'] = 'Failed to add favorite';
         }
     } elseif (isset($_POST['remove_from_favorites'])) {
-        // Remove from favorites
         $stmt = $db->prepare("DELETE FROM favorites WHERE client_id = ? AND provider_id = ?");
         if ($stmt->execute([$client_id, $provider_id])) {
             $response['success'] = true;
             $response['message'] = 'Removed from favorites';
             $response['action'] = 'removed';
+            $response['is_favorite'] = false;
+        } else {
+            $response['error'] = 'Failed to remove favorite';
+        }
+    } elseif ($isFavorite) {
+        $stmt = $db->prepare("DELETE FROM favorites WHERE client_id = ? AND provider_id = ?");
+        if ($stmt->execute([$client_id, $provider_id])) {
+            $response['success'] = true;
+            $response['message'] = 'Removed from favorites';
+            $response['action'] = 'removed';
+            $response['is_favorite'] = false;
         } else {
             $response['error'] = 'Failed to remove favorite';
         }
     } else {
-        $response['error'] = 'No action specified';
+        $stmt = $db->prepare("INSERT INTO favorites (client_id, provider_id) VALUES (?, ?)");
+        if ($stmt->execute([$client_id, $provider_id])) {
+            $response['success'] = true;
+            $response['message'] = 'Added to favorites';
+            $response['action'] = 'added';
+            $response['is_favorite'] = true;
+        } else {
+            $response['error'] = 'Failed to add favorite';
+        }
     }
-    
+
 } catch (Exception $e) {
     http_response_code(500);
     $response['error'] = 'Server error: ' . $e->getMessage();
